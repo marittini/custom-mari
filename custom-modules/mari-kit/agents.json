@@ -1,0 +1,15 @@
+[
+  {
+    "id": "mari-kit",
+    "name": "Mari Kit",
+    "description": "개인 기능 모음(TTS·번역·날씨·기억). 이 채팅에서 쓰려면 에이전트를 켜고 Mari Kit를 추가하세요. 추가하지 않은 채팅에는 아무것도 넣지 않습니다.",
+    "author": "marittini",
+    "phase": "post_processing",
+    "enabledByDefault": false,
+    "category": "misc",
+    "modeAllowlist": ["roleplay", "conversation"],
+    "defaultTools": [],
+    "defaultPromptTemplate": "",
+    "execution": "feature"
+  }
+]
