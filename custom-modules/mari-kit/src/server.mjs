@@ -9,6 +9,7 @@
 // never added it pays nothing: no prompt text and no model calls.
 // ──────────────────────────────────────────────
 
+import { memoryFeature } from "./memory.server.mjs";
 import { translationFeature } from "./translation.server.mjs";
 import { ttsFeature } from "./tts.server.mjs";
 import { weatherFeature } from "./weather.server.mjs";
@@ -20,7 +21,7 @@ const SETTINGS_DOC_ID = `${PACKAGE_ID}:settings`;
 const SETTINGS_KIND = "settings";
 
 /** Feature modules. Each may add routes and contribute prompt text for a turn. */
-const features = [ttsFeature, translationFeature, weatherFeature];
+const features = [ttsFeature, translationFeature, weatherFeature, memoryFeature];
 
 let runtime = null;
 

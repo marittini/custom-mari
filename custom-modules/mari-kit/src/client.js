@@ -254,7 +254,32 @@ const STRINGS = {
       pickChat: "채팅을 고르세요",
       noChats: "Convo 채팅이 없습니다.",
     },
-    homeNote: "TTS와 번역은 RP 채팅의 채팅 설정 → 에이전트 → Mari Kit에서 그 채팅에 맞게 설정합니다.",
+    homeNote: "TTS·번역·기억은 RP 채팅의 채팅 설정 → 에이전트 → Mari Kit에서 그 채팅에 맞게 설정합니다.",
+    mem: {
+      title: "기억",
+      model: "정리에 쓸 연결",
+      chatModel: "이 채팅의 연결",
+      organize: "정리하기",
+      organizeRest: "남은 메시지까지 정리",
+      undo: "마지막 정리 되돌리기",
+      preview: "다음 턴에 들어갈 기억 보기",
+      reset: "기억 지우기",
+      resetConfirm: "이 채팅의 기억을 모두 지울까요? (한 번은 되돌릴 수 있습니다)",
+      cost: "정리는 누를 때만 합니다. 묶음 하나에 AI 요청 1번(형식 오류 시 1번 더, 장면이 많이 쌓이면 장 요약 1번). 답장할 때는 AI 요청이 없습니다.",
+      status: (s) =>
+        [
+          `정리된 메시지 ${s.organizedMessages}개 · 대기 ${s.waitingMessages}개 (최근 ${s.keepRecent}개는 바뀔 수 있어 정리하지 않음)`,
+          `장면 ${s.counts.scenes} · 장 ${s.counts.chapters} · 대상 ${s.counts.entities} · 사실 ${s.counts.facts} · 끝나지 않은 일 ${s.counts.openThreads}`,
+          s.changedChunks ? `원문이 바뀐 묶음 ${s.changedChunks}개 (기억은 그대로입니다)` : "",
+          s.counts.sameNameToReview ? `같은 이름의 새 대상 ${s.counts.sameNameToReview}개 (자동으로 합치지 않음)` : "",
+        ]
+          .filter(Boolean)
+          .join("\n"),
+      done: (n, calls) => `${n}묶음 정리 · AI 요청 ${calls}번`,
+      nothing: "정리할 묶음이 아직 없습니다.",
+      tokens: (n, max) => `약 ${n.toLocaleString()} / ${max.toLocaleString()} 토큰`,
+      empty: "아직 넣을 기억이 없습니다.",
+    },
   },
   en: {
     title: "Mari Kit features",
@@ -327,7 +352,32 @@ const STRINGS = {
       pickChat: "Choose a chat",
       noChats: "No Conversation chats yet.",
     },
-    homeNote: "TTS and translation are set per chat in a Roleplay chat: Chat Settings → Agents → Mari Kit.",
+    homeNote: "TTS, translation and memory are set per chat in a Roleplay chat: Chat Settings → Agents → Mari Kit.",
+    mem: {
+      title: "Memory",
+      model: "Connection for organizing",
+      chatModel: "This chat's connection",
+      organize: "Organize",
+      organizeRest: "Organize remaining messages too",
+      undo: "Undo last organize",
+      preview: "Show next turn's memory",
+      reset: "Clear memory",
+      resetConfirm: "Clear this chat's memory? (You can undo once.)",
+      cost: "Organizing happens only when you press it: 1 AI request per chunk (1 more if the reply was malformed, 1 for a chapter summary when many scenes pile up). Replies make no AI request.",
+      status: (s) =>
+        [
+          `${s.organizedMessages} messages organized · ${s.waitingMessages} waiting (the newest ${s.keepRecent} may still change and are left alone)`,
+          `${s.counts.scenes} scenes · ${s.counts.chapters} chapters · ${s.counts.entities} entities · ${s.counts.facts} facts · ${s.counts.openThreads} open threads`,
+          s.changedChunks ? `${s.changedChunks} chunks whose source changed (memory unchanged)` : "",
+          s.counts.sameNameToReview ? `${s.counts.sameNameToReview} new entities share a name (not merged)` : "",
+        ]
+          .filter(Boolean)
+          .join("\n"),
+      done: (n, calls) => `Organized ${n} chunk(s) · ${calls} AI request(s)`,
+      nothing: "No chunk to organize yet.",
+      tokens: (n, max) => `about ${n.toLocaleString()} / ${max.toLocaleString()} tokens`,
+      empty: "No memory to add yet.",
+    },
   },
 };
 
@@ -875,6 +925,157 @@ class WeatherPanel {
   }
 }
 
+/** Memory for one Roleplay chat: status, organize, undo, preview. */
+class MemoryPanel {
+  constructor(element) {
+    this.element = element;
+    this.chatId = null;
+    this.status = null;
+    this.connections = [];
+    this.busy = false;
+    this.message = "";
+    this.error = "";
+    this.previewText = "";
+    this.node = el("div", { style: "display:flex;flex-direction:column;gap:6px;margin-top:6px" });
+  }
+
+  t() {
+    return strings(this.element.capabilityProps).mem;
+  }
+
+  url(path = "") {
+    return `/${PACKAGE_ID}/memory/${encodeURIComponent(this.chatId)}${path}`;
+  }
+
+  async load(chatId) {
+    if (!chatId || this.chatId === chatId) return;
+    this.chatId = chatId;
+    await this.run(async () => {
+      const [state, connections] = await Promise.all([apiClient().get(this.url()), apiClient().get("/connections")]);
+      this.connections = (Array.isArray(connections) ? connections : []).map((c) => ({ id: c.id, name: c.name }));
+      return state;
+    });
+  }
+
+  async run(task) {
+    if (this.busy) return;
+    this.busy = true;
+    this.error = "";
+    this.paint();
+    try {
+      const result = await task();
+      if (result?.status) this.status = result.status;
+    } catch (error) {
+      this.error = String(error?.message ?? error);
+    }
+    this.busy = false;
+    this.paint();
+  }
+
+  organize(force) {
+    return this.run(async () => {
+      let chunks = 0;
+      let calls = 0;
+      let last = null;
+      // Full chunks one by one; with force, one more for whatever is left.
+      for (let i = 0; i < 50; i += 1) {
+        const body = this.element.capabilityProps?.debugMode ? { debugMode: true } : {};
+        last = await apiClient().post(this.url("/organize"), body);
+        calls += last.calls ?? 0;
+        if (!last.organized) break;
+        chunks += 1;
+        this.status = last.status;
+        this.message = this.t().done(chunks, calls);
+        this.paint();
+      }
+      if (force) {
+        last = await apiClient().post(this.url("/organize"), {
+          force: true,
+          ...(this.element.capabilityProps?.debugMode ? { debugMode: true } : {}),
+        });
+        calls += last.calls ?? 0;
+        if (last.organized) chunks += 1;
+      }
+      this.message = chunks ? this.t().done(chunks, calls) : this.t().nothing;
+      return last;
+    });
+  }
+
+  paint() {
+    const t = this.t();
+    const button = (label, action, testId) => {
+      const node = el("button", { type: "button", textContent: label, style: BUTTON, disabled: this.busy });
+      node.dataset.memoryAction = testId;
+      node.addEventListener("click", action);
+      return node;
+    };
+    const children = [el("strong", { textContent: t.title })];
+    if (this.status) {
+      const select = el("select", { style: FIELD, disabled: this.busy });
+      select.append(el("option", { value: "", textContent: t.chatModel }));
+      for (const c of this.connections) select.append(el("option", { value: c.id, textContent: c.name }));
+      select.value = this.status.connectionId ?? "";
+      select.addEventListener(
+        "change",
+        () => void this.run(() => apiClient().patch(this.url("/settings"), { connectionId: select.value || null })),
+      );
+      children.push(
+        el("label", { style: "display:flex;flex-direction:column;gap:3px" }, [
+          el("span", { textContent: t.model }),
+          select,
+        ]),
+        el("span", { textContent: t.status(this.status), role: "status", style: "white-space:pre-line;opacity:.85" }),
+        el("div", { style: "display:flex;flex-wrap:wrap;gap:6px" }, [
+          button(t.organize, () => void this.organize(false), "organize"),
+          button(t.organizeRest, () => void this.organize(true), "organize-rest"),
+          ...(this.status.canUndo
+            ? [button(t.undo, () => void this.run(() => apiClient().post(this.url("/undo"), {})), "undo")]
+            : []),
+          button(
+            t.preview,
+            () =>
+              void this.run(async () => {
+                const preview = await apiClient().get(this.url("/preview"));
+                this.previewText = preview.text
+                  ? `${t.tokens(preview.tokens, preview.budget)}\n\n${preview.text}`
+                  : t.empty;
+              }),
+            "preview",
+          ),
+          button(
+            t.reset,
+            () => {
+              if (window.confirm(t.resetConfirm))
+                void this.run(() => apiClient().post(this.url("/reset"), { confirm: true }));
+            },
+            "reset",
+          ),
+        ]),
+        el("span", { textContent: t.cost, style: "opacity:.7" }),
+      );
+    } else if (!this.error) {
+      children.push(el("span", { textContent: strings(this.element.capabilityProps).loading }));
+    }
+    if (this.message) children.push(el("span", { textContent: this.message, style: "opacity:.85" }));
+    if (this.previewText) {
+      const pre = el("pre", {
+        textContent: this.previewText,
+        style: "white-space:pre-wrap;max-height:320px;overflow:auto;font-size:11px;opacity:.85;margin:0",
+      });
+      pre.dataset.memoryPreview = "true";
+      children.push(pre);
+    }
+    if (this.error)
+      children.push(el("span", { textContent: this.error, role: "alert", style: "color:var(--destructive)" }));
+    this.node.replaceChildren(...children);
+  }
+
+  render() {
+    if (!this.node.childElementCount) this.paint();
+    return this.node;
+  }
+}
+
 /** Home tab: choose which Conversation chat's weather to edit. */
 class WeatherChatPicker {
   constructor(element, weather) {
@@ -922,6 +1123,7 @@ function defineElement() {
       this.translation = null;
       this.weather = null;
       this.weatherChats = null;
+      this.memory = null;
       this.onProps = () => this.render();
       this.onSettings = () => {
         if (this.getAttribute("view") !== "surface") return;
@@ -1035,6 +1237,11 @@ function defineElement() {
         this.translation ??= new TranslationPanel(this);
         void this.translation.load(this.capabilityProps?.chatId);
         box.append(this.translation.render());
+      }
+      if (!home && status?.settings?.features?.memory && (status.implemented ?? []).includes("memory")) {
+        this.memory ??= new MemoryPanel(this);
+        void this.memory.load(this.capabilityProps?.chatId);
+        box.append(this.memory.render());
       }
       const weatherOn = status?.settings?.features?.weather && (status.implemented ?? []).includes("weather");
       if (weatherOn && home) {

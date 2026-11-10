@@ -115,6 +115,134 @@ if (id === "mari-kit") {
   assert.equal(shown.match(/<span class="mk-line/g)?.length, lines.length);
   assert.doesNotMatch(shown, /audio_|\[low|\[soft/, "markup and line-start cues are hidden");
 
+  // ── Memory ──
+  const mem = await import(pathToFileURL(join(outDir, "memory.server.mjs")).href);
+  assert.deepEqual(mem.splitSentences('Aya smiled. "I promise," she said! Then\nnew line?'), [
+    "Aya smiled.",
+    '"I promise," she said!',
+    "Then",
+    "new line?",
+  ]);
+  const records = Array.from({ length: 40 }, (_, i) => ({
+    id: `m${i}`,
+    role: i % 2 ? "assistant" : "user",
+    characterId: i % 2 ? "c1" : null,
+    content: `Line ${i}.`,
+    extra:
+      i === 3
+        ? JSON.stringify({ hiddenFromAI: true })
+        : i === 5
+          ? JSON.stringify({ hiddenFromAICharacterIds: ["c2"] })
+          : "{}",
+  }));
+  const readable = mem.readableMessages(records, (m) => (m.role === "user" ? "Mari" : "Aya"));
+  assert.equal(readable.length, 39, "messages hidden from the AI are not read");
+  let memory = mem.emptyMemory();
+  const first = mem.nextChunk(memory, readable);
+  assert.equal(first.chunk.length, mem.DEFAULT_CHUNK_MESSAGES);
+  assert.ok(
+    !first.chunk.some((m) => readable.slice(-mem.KEEP_RECENT).includes(m)),
+    "the newest messages are left alone",
+  );
+  const numbered = mem.numberChunk(first.chunk, new Map([["c2", "Ren"]]));
+  assert.match(numbered.text, /\[m5\] Aya \(hidden from: Ren\):\n\[5\.1\] Line 5\./);
+
+  const reply = {
+    scene: {
+      title: "Promise",
+      where: "Kyoto",
+      participants: ["Aya", "Mari"],
+      summary: "Aya promised to return.",
+      quotes: [{ ref: "2.1" }, { ref: "99.9" }],
+      keywords: ["promise", "Kyoto"],
+      knownBy: "all",
+    },
+    entities: [
+      { ref: "new1", name: "Aya", aliases: ["아야"], kind: "person" },
+      { ref: "new2", name: "Ren", kind: "person" },
+    ],
+    facts: [
+      { entity: "new1", attribute: "hair", value: "red", knownBy: "all" },
+      { entity: "new2", attribute: "secret job", value: "spy", knownBy: ["Ren"] },
+      { entity: "nobody", attribute: "x", value: "y" },
+    ],
+    threads: [
+      { op: "add", kind: "promise", text: "Aya will return by spring", keywords: ["spring"], knownBy: "all" },
+      { op: "resolve", id: "missing" },
+    ],
+  };
+  const applied = mem.applyOrganizeReply(memory, reply, {
+    chunk: first.chunk,
+    refs: numbered.refs,
+    chunkId: "k1",
+    now: "t",
+  });
+  memory = applied.memory;
+  assert.equal(memory.scenes[0].quotes.length, 1, "an unknown sentence number is dropped");
+  assert.equal(memory.scenes[0].quotes[0].text, "Line 1.", "quotes are copied from the source, not retyped");
+  assert.equal(applied.dropped.length, 3);
+  assert.equal(memory.facts.length, 2);
+  assert.throws(
+    () => mem.applyOrganizeReply(memory, { scene: {} }, { chunk: [], refs: new Map(), chunkId: "x", now: "t" }),
+    /summary/,
+  );
+  assert.equal(mem.nextChunk(memory, readable).chunk, null, "the remaining messages do not fill a chunk");
+  assert.ok(mem.nextChunk(memory, readable, { force: true }).chunk.length > 0, "but can be organized on request");
+
+  // Same attribute: value replaced, old one kept in history; same name without an id: new entity flagged.
+  const second = mem.applyOrganizeReply(
+    memory,
+    {
+      scene: { summary: "Aya dyed her hair." },
+      entities: [{ ref: "new1", name: "Aya" }],
+      facts: [{ entity: memory.entities[0].id, attribute: "hair", value: "black" }],
+    },
+    { chunk: [], refs: new Map(), chunkId: "k2", now: "t" },
+  ).memory;
+  const hair = second.facts.find((f) => f.attribute === "hair");
+  assert.equal(hair.value, "black");
+  assert.deepEqual(hair.history, [{ value: "red", chunk: "k1" }]);
+  assert.equal(second.entities.filter((e) => e.name === "Aya").length, 2);
+  assert.equal(second.entities[2].reviewSameName, true, "same name is never merged silently");
+
+  // Recall: no model call, knowledge isolation, budget.
+  const alone = mem.buildRecall(memory, { recentText: "Back in Kyoto, Ren?", speakers: ["Aya"] });
+  assert.match(alone.text, /Aya will return by spring/);
+  assert.match(alone.text, /Aya · hair: red/);
+  assert.doesNotMatch(alone.text, /spy/, "a single speaker never sees what they do not know");
+  const together = mem.buildRecall(memory, { recentText: "Ren and Aya", speakers: ["Aya", "Ren"] });
+  assert.match(together.text, /spy \(Aya doesn't know\)/);
+  const big = structuredClone(memory);
+  for (let i = 0; i < 400; i += 1)
+    big.threads.push({
+      id: `t${i}`,
+      kind: "open",
+      text: "긴 ".repeat(60),
+      status: "open",
+      knownBy: null,
+      keywords: [],
+    });
+  const capped = mem.buildRecall(big, { recentText: "", speakers: [] });
+  assert.ok(capped.tokens <= mem.TOKEN_BUDGET && mem.estimateTokens(capped.text) <= mem.TOKEN_BUDGET + 200);
+  assert.equal(mem.buildRecall(mem.emptyMemory(), { recentText: "x", speakers: [] }).text, null);
+
+  // Chapters fold the oldest scenes once there are many.
+  const manyScenes = structuredClone(memory);
+  for (let i = 0; i < 25; i += 1)
+    manyScenes.scenes.push({
+      id: `s${i}`,
+      summary: `S${i}`,
+      keywords: [],
+      participants: [],
+      quotes: [],
+      knownBy: null,
+    });
+  const fold = mem.chapterCandidate(manyScenes);
+  assert.equal(fold.length, 12);
+  const chaptered = mem.applyChapterReply(manyScenes, fold, { title: "Part 1", summary: "Things happened." });
+  assert.equal(chaptered.scenes.filter((s) => s.chapterId).length, 12);
+  assert.match(mem.buildRecall(chaptered, { recentText: "", speakers: [] }).text, /Part 1: Things happened\./);
+
   // ── Weather ──
   const wx = await import(pathToFileURL(join(outDir, "weather.server.mjs")).href);
   const now = new Date();
