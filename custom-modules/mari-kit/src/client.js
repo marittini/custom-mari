@@ -148,6 +148,38 @@ function hashText(value) {
   return (hash >>> 0).toString(36);
 }
 
+// ── Glossary text ───────────────────────────────
+
+/** One entry per line: "원문 = 번역" with an optional "# 메모". */
+export function parseGlossaryText(text) {
+  const entries = [];
+  for (const raw of String(text ?? "").split(/\r?\n/)) {
+    const line = raw.trim();
+    if (!line) continue;
+    const [pair, ...noteParts] = line.split(" # ");
+    const at = pair.indexOf("=");
+    if (at <= 0) continue;
+    const source = pair.slice(0, at).trim();
+    const target = pair.slice(at + 1).trim();
+    if (source && target) entries.push({ source, target, notes: noteParts.join(" # ").trim() });
+  }
+  return entries;
+}
+
+export function formatGlossaryText(entries) {
+  return (entries ?? []).map((e) => `${e.source} = ${e.target}${e.notes ? ` # ${e.notes}` : ""}`).join("\n");
+}
+
+/** Adds proposed entries whose source is not in the text yet; existing lines are kept as written. */
+export function mergeGlossaryText(text, proposed) {
+  const known = new Set(parseGlossaryText(text).map((e) => e.source));
+  const added = (proposed ?? []).filter((e) => !known.has(e.source));
+  return {
+    text: [String(text ?? "").trim(), formatGlossaryText(added)].filter(Boolean).join("\n"),
+    added: added.length,
+  };
+}
+
 // ── Browser-only part ───────────────────────────
 
 const STRINGS = {
@@ -172,6 +204,37 @@ const STRINGS = {
     noVoice: "보이스를 먼저 고르세요.",
     lineMissing: "이 대사를 원문에서 찾지 못했습니다.",
     playFailed: "재생하지 못했습니다",
+    tr: {
+      title: "번역",
+      notAi:
+        "이 채팅의 번역 공급자가 AI가 아닙니다. 프리셋·단어장·말투는 채팅 설정 → 번역의 공급자가 AI일 때만 쓰입니다.",
+      incoming: "응답 번역 프리셋",
+      outgoing: "입력 번역 프리셋",
+      glossary: "단어장 (한 줄에 하나: 원문 = 번역 # 메모)",
+      speech: "말투 (응답 번역에만 들어감)",
+      world: "세계관",
+      scanGlossary: "단어장 자동 수집",
+      scanSpeech: "말투 자동 정리",
+      scanWorld: "세계관 정리",
+      scanCost: "누를 때마다 번역 연결로 AI 요청 1번. 결과는 칸에 채워지고, 저장해야 적용됩니다.",
+      apply: "저장하고 적용",
+      restore: "원래대로",
+      applied: "적용됨: 채팅의 번역 지시문을 Mari Kit가 씁니다.",
+      notApplied: "아직 적용하지 않았습니다.",
+      edited: "채팅 설정에서 번역 지시문을 직접 고쳤습니다. 다시 적용하면 고친 지시문을 바탕으로 씁니다.",
+      length: (label, n, max) => `${label} ${n.toLocaleString()} / ${max.toLocaleString()}자`,
+      dropped: (r) =>
+        [
+          r.droppedWorld && "세계관을 뺐습니다",
+          r.droppedGlossary && `단어장 ${r.droppedGlossary}개를 뺐습니다(아래쪽부터)`,
+          r.shortenedVoice && "말투를 줄였습니다",
+        ]
+          .filter(Boolean)
+          .join(", "),
+      scanned: (n) => `${n}개를 추가했습니다. 확인하고 저장하세요.`,
+      scannedText: "결과를 채웠습니다. 확인하고 저장하세요.",
+      working: "처리 중…",
+    },
   },
   en: {
     title: "Mari Kit features",
@@ -194,6 +257,37 @@ const STRINGS = {
     noVoice: "Choose a voice first.",
     lineMissing: "This line was not found in the message.",
     playFailed: "Could not play",
+    tr: {
+      title: "Translation",
+      notAi:
+        "This chat's translation provider is not AI. Presets, glossary and voice notes apply only when Chat Settings → Translation uses AI.",
+      incoming: "Response preset",
+      outgoing: "Draft preset",
+      glossary: "Glossary (one per line: source = translation # note)",
+      speech: "Voice notes (response translation only)",
+      world: "World notes",
+      scanGlossary: "Collect glossary",
+      scanSpeech: "Write voice notes",
+      scanWorld: "Write world notes",
+      scanCost: "Each press makes 1 AI request with the translation connection. Results fill the box; save to apply.",
+      apply: "Save and apply",
+      restore: "Restore",
+      applied: "Applied: Mari Kit writes this chat's translation prompts.",
+      notApplied: "Not applied yet.",
+      edited: "The translation prompt was edited in Chat Settings. Applying again builds on the edited prompt.",
+      length: (label, n, max) => `${label} ${n.toLocaleString()} / ${max.toLocaleString()} chars`,
+      dropped: (r) =>
+        [
+          r.droppedWorld && "world notes left out",
+          r.droppedGlossary && `${r.droppedGlossary} glossary entries left out (from the bottom)`,
+          r.shortenedVoice && "voice notes shortened",
+        ]
+          .filter(Boolean)
+          .join(", "),
+      scanned: (n) => `Added ${n}. Review and save.`,
+      scannedText: "Filled in. Review and save.",
+      working: "Working…",
+    },
   },
 };
 
@@ -409,6 +503,199 @@ class LinePlayer {
   }
 }
 
+const FIELD =
+  "width:100%;box-sizing:border-box;padding:6px;border-radius:6px;border:1px solid var(--border);background:var(--background);color:var(--foreground);font:inherit";
+const BUTTON =
+  "padding:4px 8px;border-radius:6px;border:1px solid var(--border);background:transparent;color:inherit;cursor:pointer;font:inherit";
+
+/** Translation notes for one chat. Owns its DOM so typing survives the host re-rendering the settings box. */
+class TranslationPanel {
+  constructor(element) {
+    this.element = element;
+    this.chatId = null;
+    this.presets = [];
+    this.data = null;
+    this.busy = false;
+    this.message = null;
+    this.error = null;
+    this.node = el("div", { style: "display:flex;flex-direction:column;gap:6px;margin-top:6px" });
+    this.fields = null;
+  }
+
+  t() {
+    return strings(this.element.capabilityProps).tr;
+  }
+
+  async load(chatId) {
+    if (!chatId || this.chatId === chatId) return;
+    this.chatId = chatId;
+    this.fields = null;
+    try {
+      const api = apiClient();
+      const [presets, data] = await Promise.all([
+        api.get(`/${PACKAGE_ID}/translation/presets`),
+        api.get(`/${PACKAGE_ID}/translation/${encodeURIComponent(chatId)}`),
+      ]);
+      this.presets = presets?.presets ?? [];
+      this.data = data;
+      this.error = null;
+    } catch (error) {
+      this.error = String(error?.message ?? error);
+    }
+    this.render();
+  }
+
+  values() {
+    const f = this.fields;
+    return {
+      incomingPresetId: f.incoming.value,
+      outgoingPresetId: f.outgoing.value,
+      glossary: parseGlossaryText(f.glossary.value),
+      speech: f.speech.value,
+      world: f.world.value,
+    };
+  }
+
+  async run(task) {
+    if (this.busy) return;
+    this.busy = true;
+    this.error = null;
+    this.message = this.t().working;
+    this.paintStatus();
+    try {
+      await task();
+    } catch (error) {
+      this.error = String(error?.message ?? error);
+      this.message = null;
+    }
+    this.busy = false;
+    this.paintStatus();
+  }
+
+  async save() {
+    await this.run(async () => {
+      this.data = await apiClient().put(`/${PACKAGE_ID}/translation/${encodeURIComponent(this.chatId)}`, this.values());
+      this.message = null;
+      await host().queryClient?.invalidateQueries?.({ queryKey: ["chats"] });
+    });
+  }
+
+  async restore() {
+    await this.run(async () => {
+      this.data = await apiClient().post(`/${PACKAGE_ID}/translation/${encodeURIComponent(this.chatId)}/restore`, {});
+      this.message = null;
+      await host().queryClient?.invalidateQueries?.({ queryKey: ["chats"] });
+    });
+  }
+
+  async scan(kind) {
+    await this.run(async () => {
+      const result = await apiClient().post(`/${PACKAGE_ID}/translation/${encodeURIComponent(this.chatId)}/scan`, {
+        kind,
+        ...(this.element.capabilityProps?.debugMode === true ? { debugMode: true } : {}),
+      });
+      const t = this.t();
+      if (kind === "glossary") {
+        const merged = mergeGlossaryText(this.fields.glossary.value, result.glossary);
+        this.fields.glossary.value = merged.text;
+        this.message = t.scanned(merged.added);
+      } else {
+        this.fields[kind].value = result.text ?? "";
+        this.message = t.scannedText;
+      }
+    });
+  }
+
+  paintStatus() {
+    if (!this.fields) return;
+    const t = this.t();
+    const status = this.data?.status;
+    const lines = [];
+    if (status) {
+      if (status.provider !== "ai") lines.push(t.notAi);
+      lines.push(status.applied ? t.applied : t.notApplied);
+      if (status.editedSinceApply) lines.push(t.edited);
+      lines.push(
+        `${t.length(t.incoming, status.incoming.length, status.limit)} · ${t.length(t.outgoing, status.outgoing.length, status.limit)}`,
+      );
+      const dropped = [t.dropped(status.incoming), t.dropped(status.outgoing)].filter(Boolean);
+      if (dropped.length) lines.push(dropped[0]);
+    }
+    if (this.message) lines.push(this.message);
+    this.fields.status.textContent = lines.join("\n");
+    this.fields.error.textContent = this.error ?? "";
+    for (const button of this.node.querySelectorAll("button")) button.disabled = this.busy;
+  }
+
+  render() {
+    const t = this.t();
+    if (!this.data) {
+      this.node.replaceChildren(
+        el("span", { textContent: this.error ?? strings(this.element.capabilityProps).loading }),
+      );
+      return this.node;
+    }
+    if (this.fields) return this.node;
+    const room = this.data.room;
+    const select = (value) => {
+      const node = el("select", { style: FIELD });
+      for (const preset of this.presets) node.append(el("option", { value: preset.id, textContent: preset.name }));
+      node.value = value;
+      return node;
+    };
+    const area = (value, rows) => el("textarea", { value: value ?? "", rows, style: FIELD });
+    const button = (label, action) => {
+      const node = el("button", { type: "button", textContent: label, style: BUTTON });
+      node.addEventListener("click", action);
+      return node;
+    };
+    const label = (text, control) =>
+      el("label", { style: "display:flex;flex-direction:column;gap:3px" }, [
+        el("span", { textContent: text }),
+        control,
+      ]);
+    this.fields = {
+      incoming: select(room.incomingPresetId),
+      outgoing: select(room.outgoingPresetId),
+      glossary: area(formatGlossaryText(room.glossary), 5),
+      speech: area(room.speech, 5),
+      world: area(room.world, 3),
+      status: el("span", { role: "status", style: "white-space:pre-line;opacity:.8" }),
+      error: el("span", { role: "alert", style: "color:var(--destructive)" }),
+    };
+    for (const [key, name] of [
+      ["glossary", "glossary"],
+      ["speech", "speech"],
+      ["world", "world"],
+    ]) {
+      this.fields[key].dataset.translationField = name;
+    }
+    const row = (...children) => el("div", { style: "display:flex;flex-wrap:wrap;gap:6px" }, children);
+    this.node.replaceChildren(
+      el("strong", { textContent: t.title }),
+      label(t.incoming, this.fields.incoming),
+      label(t.outgoing, this.fields.outgoing),
+      label(t.glossary, this.fields.glossary),
+      label(t.speech, this.fields.speech),
+      label(t.world, this.fields.world),
+      row(
+        button(t.scanGlossary, () => void this.scan("glossary")),
+        button(t.scanSpeech, () => void this.scan("speech")),
+        button(t.scanWorld, () => void this.scan("world")),
+      ),
+      el("span", { textContent: t.scanCost, style: "opacity:.7" }),
+      row(
+        button(t.apply, () => void this.save()),
+        button(t.restore, () => void this.restore()),
+      ),
+      this.fields.status,
+      this.fields.error,
+    );
+    this.paintStatus();
+    return this.node;
+  }
+}
+
 function defineElement() {
   class MariKitElement extends HTMLElement {
     static observedAttributes = ["view"];
@@ -418,6 +705,7 @@ function defineElement() {
       this.capabilityProps = undefined;
       this.state = { status: null, error: null, saving: false, notice: null };
       this.player = null;
+      this.translation = null;
       this.onProps = () => this.render();
       this.onSettings = () => {
         if (this.getAttribute("view") !== "surface") return;
@@ -521,6 +809,11 @@ function defineElement() {
             ]),
           );
         }
+      }
+      if (status?.settings?.features?.translation && (status.implemented ?? []).includes("translation")) {
+        this.translation ??= new TranslationPanel(this);
+        void this.translation.load(this.capabilityProps?.chatId);
+        box.append(this.translation.render());
       }
       if (notice) box.append(el("span", { textContent: notice, role: "status", style: "opacity:.8" }));
       if (error) box.append(el("span", { textContent: error, role: "alert", style: "color:var(--destructive)" }));

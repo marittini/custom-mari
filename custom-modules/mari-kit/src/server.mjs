@@ -9,6 +9,7 @@
 // never added it pays nothing: no prompt text and no model calls.
 // ──────────────────────────────────────────────
 
+import { translationFeature } from "./translation.server.mjs";
 import { ttsFeature } from "./tts.server.mjs";
 
 export const PACKAGE_ID = "mari-kit";
@@ -18,7 +19,7 @@ const SETTINGS_DOC_ID = `${PACKAGE_ID}:settings`;
 const SETTINGS_KIND = "settings";
 
 /** Feature modules. Each may add routes and contribute prompt text for a turn. */
-const features = [ttsFeature];
+const features = [ttsFeature, translationFeature];
 
 let runtime = null;
 

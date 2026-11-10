@@ -115,6 +115,76 @@ if (id === "mari-kit") {
   assert.equal(shown.match(/<span class="mk-line/g)?.length, lines.length);
   assert.doesNotMatch(shown, /audio_|\[low|\[soft/, "markup and line-start cues are hidden");
 
+  // ── Translation ──
+  const tr = await import(pathToFileURL(join(outDir, "translation.server.mjs")).href);
+  assert.deepEqual(client.parseGlossaryText("Aya = 아야\n  \nbad line\nKyoto = 교토 # 지명 # 일본"), [
+    { source: "Aya", target: "아야", notes: "" },
+    { source: "Kyoto", target: "교토", notes: "지명 # 일본" },
+  ]);
+  assert.equal(client.formatGlossaryText(client.parseGlossaryText("A = B # n")), "A = B # n");
+  assert.deepEqual(
+    client.mergeGlossaryText("Aya = 아야", [
+      { source: "Aya", target: "X" },
+      { source: "Ren", target: "렌" },
+    ]),
+    {
+      text: "Aya = 아야\nRen = 렌",
+      added: 1,
+    },
+  );
+  const room = tr.normalizeRoom({
+    incomingPresetId: "builtin-english-korean-v2",
+    outgoingPresetId: "nope",
+    glossary: [
+      { source: "Aya", target: "아야" },
+      { source: "Aya", target: "dup" },
+      { source: "", target: "x" },
+    ],
+    speech: "[Aya] - 반말",
+    world: "Kyoto, 1999",
+  });
+  assert.equal(room.outgoingPresetId, tr.INHERIT_PRESET_ID, "unknown preset falls back to keeping the chat's prompt");
+  assert.equal(room.glossary.length, 1, "duplicate and empty glossary rows are dropped");
+  const composed = tr.composeRoom(room, { incoming: "own incoming", outgoing: "Own outgoing prompt {{vocab}}" });
+  assert.match(composed.incoming.text, /- Aya → 아야/);
+  assert.match(composed.incoming.text, /\[Aya\] - 반말/);
+  assert.doesNotMatch(composed.incoming.text, /\{\{(voice|vocab)\}\}/, "macros are filled");
+  assert.match(composed.outgoing.text, /^Own outgoing prompt/, "the inherit preset keeps the chat's own prompt");
+  assert.match(composed.outgoing.text, /- 아야 → Aya/, "drafts get the glossary reversed");
+  assert.doesNotMatch(composed.outgoing.text, /반말/, "voice notes are for responses only");
+  // Fitting to the Engine's limit: world first, then glossary from the bottom, then voice notes shortened.
+  const many = Array.from({ length: 300 }, (_, i) => ({ source: `Term${i}`, target: `용어${i}` }));
+  const fitted = tr.composePrompt({
+    presetId: "builtin-roleplay",
+    glossary: many,
+    world: "w".repeat(3000),
+    speech: "s",
+  });
+  assert.ok(fitted.length <= tr.FIT_LIMIT && tr.FIT_LIMIT < tr.PROMPT_LIMIT);
+  assert.equal(fitted.droppedWorld, true);
+  assert.ok(fitted.droppedGlossary > 0 && fitted.droppedGlossary < 300);
+  assert.match(fitted.text, /Term0 → 용어0/, "the top of the glossary is kept");
+  const longVoice = tr.composePrompt({ presetId: "builtin-roleplay", speech: "v".repeat(9000) });
+  assert.ok(longVoice.shortenedVoice && longVoice.length <= tr.FIT_LIMIT);
+  for (const preset of (await import(pathToFileURL(join(outDir, "translation-presets.mjs")).href))
+    .BUILTIN_TRANSLATION_PRESETS) {
+    assert.ok(tr.composePrompt({ presetId: preset.id }).length <= tr.FIT_LIMIT, `${preset.id} fits`);
+  }
+  // Model replies of the automatic notes.
+  assert.deepEqual(
+    tr.parseScan("glossary", '```json\n{"glossary":[{"original":"Aya","translation":"아야"}]}\n```').glossary,
+    [{ source: "Aya", target: "아야", notes: "" }],
+  );
+  assert.equal(
+    tr.parseScan(
+      "speech",
+      JSON.stringify({ characters: [{ character: "Aya", age: "17", speech: "- 반말", samples: ["응."] }] }),
+    ).text,
+    '[Aya]\n- 나이: 17\n- 반말\n- 대사 예시: "응."',
+  );
+  assert.equal(tr.parseScan("world", "```\n교토\n```").text, "교토");
+  assert.equal(tr.languageName("ko"), "Korean");
+
   assert.equal(
     client.pickVoice(
       { voiceMode: "per-character", voice: "def", voiceAssignments: [{ characterId: "c1", voice: "v1" }] },
