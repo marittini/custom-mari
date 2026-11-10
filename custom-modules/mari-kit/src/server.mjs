@@ -11,6 +11,7 @@
 
 import { translationFeature } from "./translation.server.mjs";
 import { ttsFeature } from "./tts.server.mjs";
+import { weatherFeature } from "./weather.server.mjs";
 
 export const PACKAGE_ID = "mari-kit";
 export const FEATURE_IDS = Object.freeze(["tts", "translation", "weather", "memory"]);
@@ -19,7 +20,7 @@ const SETTINGS_DOC_ID = `${PACKAGE_ID}:settings`;
 const SETTINGS_KIND = "settings";
 
 /** Feature modules. Each may add routes and contribute prompt text for a turn. */
-const features = [ttsFeature, translationFeature];
+const features = [ttsFeature, translationFeature, weatherFeature];
 
 let runtime = null;
 
@@ -123,13 +124,20 @@ async function routes(app) {
   for (const feature of features) feature.routes?.(app, { runtime: host(), httpError });
 }
 
-/** Called once per generation by the Engine. Returns null when this chat does not use Mari Kit. */
+/**
+ * Called once per generation by the Engine. A feature runs only when it is on, and — unless it keeps its own
+ * per-chat switch (`ownChatSwitch`, e.g. weather: Conversation chat settings have no agent list) — only in
+ * chats that added the Mari Kit agent.
+ */
 async function promptContext(request) {
-  if (!chatUsesMariKit(request.chatMeta) || features.length === 0) return null;
+  const withFeatures = features.filter((feature) => typeof feature.promptContext === "function");
+  if (!withFeatures.length) return null;
+  const agentAdded = chatUsesMariKit(request.chatMeta);
+  if (!agentAdded && !withFeatures.some((feature) => feature.ownChatSwitch)) return null;
   const { settings } = await readSettings();
   const blocks = [];
-  for (const feature of features) {
-    if (!settings.features[feature.id] || typeof feature.promptContext !== "function") continue;
+  for (const feature of withFeatures) {
+    if (!settings.features[feature.id] || (!agentAdded && !feature.ownChatSwitch)) continue;
     try {
       const text = await feature.promptContext(request, { runtime: host(), settings });
       if (typeof text === "string" && text.trim()) blocks.push(text.trim());

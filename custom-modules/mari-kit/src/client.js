@@ -235,6 +235,26 @@ const STRINGS = {
       scannedText: "결과를 채웠습니다. 확인하고 저장하세요.",
       working: "처리 중…",
     },
+    wx: {
+      title: "Convo 날씨",
+      onlyConvo: "날씨는 Convo 채팅에만 들어갑니다.",
+      mine: "내 지역 (모든 방 공통)",
+      character: "캐릭터 지역 (선택, 이 방만)",
+      enable: "이 방에 날씨 넣기",
+      search: "지역 검색",
+      worldwide: "해외 포함",
+      find: "찾기",
+      clear: "지우기",
+      none: "선택 안 함",
+      noResults: "검색 결과가 없습니다.",
+      privacy: "모델에는 날씨와 기온만 보냅니다. 지역 이름·좌표는 보내지 않습니다. AI 요청 없음.",
+      source: "날씨: Open-Meteo (CC BY 4.0)",
+      needMine: "내 지역을 먼저 고르세요.",
+      chat: "Convo 채팅",
+      pickChat: "채팅을 고르세요",
+      noChats: "Convo 채팅이 없습니다.",
+    },
+    homeNote: "TTS와 번역은 RP 채팅의 채팅 설정 → 에이전트 → Mari Kit에서 그 채팅에 맞게 설정합니다.",
   },
   en: {
     title: "Mari Kit features",
@@ -288,6 +308,26 @@ const STRINGS = {
       scannedText: "Filled in. Review and save.",
       working: "Working…",
     },
+    wx: {
+      title: "Convo weather",
+      onlyConvo: "Weather is added to Conversation chats only.",
+      mine: "My place (all chats)",
+      character: "Character's place (optional, this chat)",
+      enable: "Add weather to this chat",
+      search: "Search places",
+      worldwide: "Worldwide",
+      find: "Find",
+      clear: "Clear",
+      none: "Not set",
+      noResults: "No places found.",
+      privacy: "The model gets only the weather and temperature, never the place name or coordinates. No AI request.",
+      source: "Weather: Open-Meteo (CC BY 4.0)",
+      needMine: "Choose your place first.",
+      chat: "Conversation chat",
+      pickChat: "Choose a chat",
+      noChats: "No Conversation chats yet.",
+    },
+    homeNote: "TTS and translation are set per chat in a Roleplay chat: Chat Settings → Agents → Mari Kit.",
   },
 };
 
@@ -696,6 +736,180 @@ class TranslationPanel {
   }
 }
 
+/** Weather places for one chat. Owns its DOM like the translation panel. */
+class WeatherPanel {
+  constructor(element) {
+    this.element = element;
+    this.chatId = null;
+    this.data = null;
+    this.error = null;
+    this.busy = false;
+    this.node = el("div", { style: "display:flex;flex-direction:column;gap:6px;margin-top:6px" });
+  }
+
+  t() {
+    return strings(this.element.capabilityProps).wx;
+  }
+
+  async load(chatId) {
+    if (!chatId || this.chatId === chatId) return;
+    this.chatId = chatId;
+    await this.run(() => apiClient().get(`/${PACKAGE_ID}/weather/${encodeURIComponent(chatId)}`));
+  }
+
+  async run(task) {
+    if (this.busy) return;
+    this.busy = true;
+    this.error = null;
+    try {
+      const result = await task();
+      if (result && "room" in result) this.data = result;
+    } catch (error) {
+      this.error = String(error?.message ?? error);
+    }
+    this.busy = false;
+    this.paint();
+    const loaded = this.onLoaded;
+    this.onLoaded = null;
+    loaded?.();
+  }
+
+  setMine(location) {
+    return this.run(async () => {
+      await apiClient().put(`/${PACKAGE_ID}/weather/user`, { location });
+      return apiClient().get(`/${PACKAGE_ID}/weather/${encodeURIComponent(this.chatId)}`);
+    });
+  }
+
+  setRoom(patch) {
+    return this.run(() => apiClient().put(`/${PACKAGE_ID}/weather/${encodeURIComponent(this.chatId)}`, patch));
+  }
+
+  picker(label, current, onPick, testId) {
+    const t = this.t();
+    const query = el("input", { type: "search", placeholder: t.search, style: FIELD });
+    const worldwide = el("input", { type: "checkbox" });
+    const results = el("div", { style: "display:flex;flex-wrap:wrap;gap:4px" });
+    const find = el("button", { type: "button", textContent: t.find, style: BUTTON });
+    const clear = el("button", { type: "button", textContent: t.clear, style: BUTTON });
+    query.dataset.weatherSearch = testId;
+    find.addEventListener("click", async () => {
+      results.replaceChildren(el("span", { textContent: "…" }));
+      try {
+        const q = encodeURIComponent(query.value.trim());
+        const { places } = await apiClient().get(
+          `/${PACKAGE_ID}/weather/places?q=${q}${worldwide.checked ? "&worldwide=true" : ""}`,
+        );
+        results.replaceChildren(
+          ...(places.length
+            ? places.map((place) => {
+                const option = el("button", { type: "button", textContent: place.label, style: BUTTON });
+                option.addEventListener("click", () => void onPick(place));
+                return option;
+              })
+            : [el("span", { textContent: t.noResults })]),
+        );
+      } catch (error) {
+        results.replaceChildren(
+          el("span", { textContent: String(error?.message ?? error), style: "color:var(--destructive)" }),
+        );
+      }
+    });
+    clear.addEventListener("click", () => void onPick(null));
+    return el("div", { style: "display:flex;flex-direction:column;gap:4px" }, [
+      el("span", { textContent: `${label}: ${current?.label ?? t.none}` }),
+      el("div", { style: "display:flex;gap:4px;align-items:center" }, [
+        query,
+        find,
+        el("label", { style: "display:flex;gap:3px;align-items:center;white-space:nowrap" }, [
+          worldwide,
+          el("span", { textContent: t.worldwide }),
+        ]),
+        clear,
+      ]),
+      results,
+    ]);
+  }
+
+  paint() {
+    const t = this.t();
+    const children = [el("strong", { textContent: t.title })];
+    if (this.element.capabilityProps?.chatMode && this.element.capabilityProps.chatMode !== "conversation") {
+      children.push(el("span", { textContent: t.onlyConvo, style: "opacity:.8" }));
+    }
+    if (this.data) {
+      const { userLocation, room, summaries } = this.data;
+      const enable = el("input", { type: "checkbox", checked: room.enabled, disabled: this.busy || !userLocation });
+      enable.dataset.weatherEnable = "true";
+      enable.addEventListener("change", () => void this.setRoom({ enabled: enable.checked }));
+      children.push(
+        this.picker(t.mine, userLocation, (place) => this.setMine(place), "mine"),
+        el("label", { style: "display:flex;gap:6px;align-items:center" }, [
+          enable,
+          el("span", { textContent: t.enable }),
+        ]),
+        ...(userLocation ? [] : [el("span", { textContent: t.needMine, style: "opacity:.8" })]),
+        this.picker(
+          t.character,
+          room.characterLocation,
+          (place) => this.setRoom({ characterLocation: place }),
+          "character",
+        ),
+        ...[summaries.user, summaries.character]
+          .filter(Boolean)
+          .map((text) => el("span", { textContent: text, style: "white-space:pre-line;opacity:.85" })),
+        el("span", { textContent: t.privacy, style: "opacity:.7" }),
+        el("span", { textContent: t.source, style: "opacity:.6" }),
+      );
+    } else if (!this.error) {
+      children.push(el("span", { textContent: strings(this.element.capabilityProps).loading }));
+    }
+    if (this.error)
+      children.push(el("span", { textContent: this.error, role: "alert", style: "color:var(--destructive)" }));
+    this.node.replaceChildren(...children);
+  }
+
+  render() {
+    if (!this.node.childElementCount) this.paint();
+    return this.node;
+  }
+}
+
+/** Home tab: choose which Conversation chat's weather to edit. */
+class WeatherChatPicker {
+  constructor(element, weather) {
+    this.element = element;
+    this.weather = weather;
+    this.node = el("div", { style: "display:flex;flex-direction:column;gap:4px" });
+    this.loaded = false;
+  }
+
+  async load() {
+    if (this.loaded) return;
+    this.loaded = true;
+    const t = strings(this.element.capabilityProps).wx;
+    try {
+      const chats = (await apiClient().get("/chats")).filter((chat) => chat?.mode === "conversation");
+      if (!chats.length) {
+        this.node.replaceChildren(el("span", { textContent: t.noChats }));
+        return;
+      }
+      const select = el("select", { style: FIELD });
+      select.dataset.weatherChat = "true";
+      select.append(el("option", { value: "", textContent: t.pickChat }));
+      for (const chat of chats) select.append(el("option", { value: chat.id, textContent: chat.name || chat.id }));
+      select.addEventListener("change", () => {
+        if (select.value) void this.weather.load(select.value);
+      });
+      this.node.replaceChildren(el("span", { textContent: t.chat }), select);
+    } catch (error) {
+      this.node.replaceChildren(
+        el("span", { textContent: String(error?.message ?? error), style: "color:var(--destructive)" }),
+      );
+    }
+  }
+}
+
 function defineElement() {
   class MariKitElement extends HTMLElement {
     static observedAttributes = ["view"];
@@ -706,6 +920,8 @@ function defineElement() {
       this.state = { status: null, error: null, saving: false, notice: null };
       this.player = null;
       this.translation = null;
+      this.weather = null;
+      this.weatherChats = null;
       this.onProps = () => this.render();
       this.onSettings = () => {
         if (this.getAttribute("view") !== "surface") return;
@@ -738,7 +954,7 @@ function defineElement() {
         this.player = new LinePlayer(this);
         void this.player.start();
       }
-      if (view === "settings" && !this.state.status && !this.state.error) void this.load();
+      if ((view === "settings" || view === "browser") && !this.state.status && !this.state.error) void this.load();
       this.render();
     }
 
@@ -779,14 +995,18 @@ function defineElement() {
     }
 
     render() {
-      if (this.getAttribute("view") !== "settings") {
+      const view = this.getAttribute("view");
+      if (view !== "settings" && view !== "browser") {
         this.replaceChildren();
         return;
       }
+      const home = view === "browser";
       const t = strings(this.capabilityProps);
       const { status, error, saving, notice } = this.state;
       const box = el("div", {
-        style: "display:flex;flex-direction:column;gap:6px;padding:8px 10px;font-size:12px;color:var(--foreground)",
+        style: home
+          ? "display:flex;flex-direction:column;gap:8px;padding:16px;max-width:640px;margin:0 auto;font-size:13px;color:var(--foreground)"
+          : "display:flex;flex-direction:column;gap:6px;padding:8px 10px;font-size:12px;color:var(--foreground)",
       });
       box.append(el("strong", { textContent: t.title }));
       box.append(el("span", { textContent: t.hint, style: "opacity:.7" }));
@@ -810,10 +1030,24 @@ function defineElement() {
           );
         }
       }
-      if (status?.settings?.features?.translation && (status.implemented ?? []).includes("translation")) {
+      if (home) box.append(el("span", { textContent: t.homeNote, style: "opacity:.7" }));
+      if (!home && status?.settings?.features?.translation && (status.implemented ?? []).includes("translation")) {
         this.translation ??= new TranslationPanel(this);
         void this.translation.load(this.capabilityProps?.chatId);
         box.append(this.translation.render());
+      }
+      const weatherOn = status?.settings?.features?.weather && (status.implemented ?? []).includes("weather");
+      if (weatherOn && home) {
+        this.weather ??= new WeatherPanel(this);
+        this.weatherChats ??= new WeatherChatPicker(this, this.weather);
+        void this.weatherChats.load();
+        box.append(this.weatherChats.node);
+        if (this.weather.chatId) box.append(this.weather.render());
+        else this.weather.onLoaded = () => this.render();
+      } else if (weatherOn && this.capabilityProps?.chatMode === "conversation") {
+        this.weather ??= new WeatherPanel(this);
+        void this.weather.load(this.capabilityProps?.chatId);
+        box.append(this.weather.render());
       }
       if (notice) box.append(el("span", { textContent: notice, role: "status", style: "opacity:.8" }));
       if (error) box.append(el("span", { textContent: error, role: "alert", style: "color:var(--destructive)" }));

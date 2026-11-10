@@ -115,6 +115,60 @@ if (id === "mari-kit") {
   assert.equal(shown.match(/<span class="mk-line/g)?.length, lines.length);
   assert.doesNotMatch(shown, /audio_|\[low|\[soft/, "markup and line-start cues are hidden");
 
+  // ── Weather ──
+  const wx = await import(pathToFileURL(join(outDir, "weather.server.mjs")).href);
+  const now = new Date();
+  now.setUTCMinutes(Math.floor(now.getUTCMinutes() / 15) * 15, 0, 0);
+  const fakeForecast = (temperature) => ({
+    timezone: "UTC",
+    utc_offset_seconds: 0,
+    current_units: {
+      time: "iso8601",
+      interval: "seconds",
+      temperature_2m: "°C",
+      apparent_temperature: "°C",
+      relative_humidity_2m: "%",
+      wind_speed_10m: "m/s",
+      precipitation: "mm",
+      weather_code: "wmo code",
+      is_day: "",
+    },
+    current: {
+      time: now.toISOString().slice(0, 16),
+      interval: 900,
+      temperature_2m: temperature,
+      apparent_temperature: temperature - 2,
+      relative_humidity_2m: 60,
+      wind_speed_10m: 3,
+      precipitation: 0,
+      weather_code: 61,
+      is_day: 1,
+    },
+  });
+  let fetched = 0;
+  const fakeFetch = async (url) => {
+    fetched += 1;
+    return { ok: true, json: async () => fakeForecast(url.includes("latitude=35") ? 12 : 5) };
+  };
+  const seoul = wx.normalizeLocation({ name: "서울", label: "서울 · 대한민국", latitude: 37.57, longitude: 126.98 });
+  const busan = wx.normalizeLocation({ name: "부산", label: "부산 · 대한민국", latitude: 35.18, longitude: 129.08 });
+  assert.equal(wx.normalizeLocation({ name: "x", latitude: 91, longitude: 0 }), null);
+  const user = await wx.getWeather(seoul, fakeFetch);
+  await wx.getWeather(seoul, fakeFetch);
+  assert.equal(fetched, 1, "a place is fetched once per 15 minutes");
+  const character = await wx.getWeather(busan, fakeFetch);
+  const context = wx.buildWeatherContext({ user, character, userName: "Mari", characterName: "Aya" });
+  assert.match(context, /Mari's weather: slight rain, 5°C, feels like 3°C/);
+  assert.match(context, /Aya's weather: slight rain, 12°C/);
+  assert.doesNotMatch(context, /서울|부산|37\.57|126|Seoul|UTC/, "place names, coordinates and time zones stay out");
+  assert.match(wx.buildWeatherContext({ user }), /Current weather: slight rain, 5°C/);
+  assert.equal(wx.buildWeatherContext({ user: null }), null);
+  const state = wx.normalizeWeatherState({
+    userLocation: seoul,
+    rooms: { c1: { enabled: "yes", characterLocation: { latitude: "x" } } },
+  });
+  assert.deepEqual(state.rooms.c1, { enabled: false, characterLocation: null });
+
   // ── Translation ──
   const tr = await import(pathToFileURL(join(outDir, "translation.server.mjs")).href);
   assert.deepEqual(client.parseGlossaryText("Aya = 아야\n  \nbad line\nKyoto = 교토 # 지명 # 일본"), [
