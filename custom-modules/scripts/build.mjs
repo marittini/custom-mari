@@ -6,7 +6,7 @@
 
 import { createHash } from "node:crypto";
 import { execFileSync } from "node:child_process";
-import { copyFile, mkdir, readFile, rm, stat, writeFile } from "node:fs/promises";
+import { copyFile, mkdir, readFile, readdir, rm, stat, writeFile } from "node:fs/promises";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -31,11 +31,13 @@ export async function buildPackage(id = packageId) {
   await rm(outDir, { recursive: true, force: true });
   await mkdir(outDir, { recursive: true });
 
-  // Entry points are copied flat: agents.json from the package root, the rest from src/.
-  const sources = Object.values(template.entrypoints).map((file) => ({
-    file,
-    from: file === "agents.json" ? join(root, file) : join(root, "src", file),
-  }));
+  // Copied flat: agents.json from the package root, every file in src/ (entry points and the server modules
+  // they import). The browser loads only the client entry, so it must stay a single file.
+  const srcFiles = (await readdir(join(root, "src"))).filter((file) => /\.(?:mjs|js)$/.test(file)).sort();
+  const sources = [
+    ...(template.entrypoints.agents ? [{ file: "agents.json", from: join(root, "agents.json") }] : []),
+    ...srcFiles.map((file) => ({ file, from: join(root, "src", file) })),
+  ];
   const files = [];
   for (const { file, from } of sources) {
     const to = join(outDir, file);

@@ -9,14 +9,16 @@
 // never added it pays nothing: no prompt text and no model calls.
 // ──────────────────────────────────────────────
 
+import { ttsFeature } from "./tts.server.mjs";
+
 export const PACKAGE_ID = "mari-kit";
 export const FEATURE_IDS = Object.freeze(["tts", "translation", "weather", "memory"]);
 
 const SETTINGS_DOC_ID = `${PACKAGE_ID}:settings`;
 const SETTINGS_KIND = "settings";
 
-/** Feature modules register here as they are built. Each may contribute prompt text for a turn. */
-const features = [];
+/** Feature modules. Each may add routes and contribute prompt text for a turn. */
+const features = [ttsFeature];
 
 let runtime = null;
 
@@ -117,6 +119,7 @@ async function routes(app) {
   });
   app.get("/settings", async () => (await readSettings()).settings);
   app.patch("/settings", async (request) => writeSettings(parseFeaturePatch(request.body)));
+  for (const feature of features) feature.routes?.(app, { runtime: host(), httpError });
 }
 
 /** Called once per generation by the Engine. Returns null when this chat does not use Mari Kit. */

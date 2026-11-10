@@ -55,6 +55,81 @@ if (id === "mari-kit") {
   assert.equal(server.chatUsesMariKit({ enableAgents: false, activeAgentIds: ["mari-kit"] }), false);
   assert.equal(server.chatUsesMariKit({ enableAgents: true, activeAgentIds: ["other"] }), false);
   assert.equal(server.chatUsesMariKit(null), false);
+
+  // ── TTS ──
+  const tts = await import(pathToFileURL(join(outDir, "tts.server.mjs")).href);
+  const client = await import(pathToFileURL(join(outDir, "client.js")).href);
+
+  assert.deepEqual(
+    tts.characterParticipant({
+      id: "c1",
+      data: JSON.stringify({ name: "쿠가 테루노리", extensions: { phoneticName: "kuga terunori" } }),
+    }),
+    { kind: "character", id: "c1", name: "쿠가 테루노리", phoneticName: "kuga terunori" },
+  );
+  assert.deepEqual(tts.personaParticipant({ id: "p1", data: { name: "Mari", phoneticName: "" } }), {
+    kind: "persona",
+    id: "p1",
+    name: "Mari",
+    phoneticName: "",
+  });
+  assert.equal(tts.buildTtsGuidance([]), null);
+  const guidance = tts.buildTtsGuidance([{ kind: "character", id: "c1", name: "Aya", phoneticName: "" }]);
+  assert.match(guidance, /<audio_character id="ID">/);
+  assert.match(guidance, /"id":"c1"/);
+  assert.doesNotMatch(guidance, /phoneticName/, "phonetic names are not sent to the model");
+
+  // Pronunciation: the reported case — a given name alone must use its own part of the phonetic name.
+  const kuga = client.buildPronunciations([{ name: "쿠가 테루노리", phoneticName: "kuga terunori" }]);
+  assert.equal(client.applyPronunciations("테루노리가 웃었다.", kuga), "terunori가 웃었다.");
+  assert.equal(client.applyPronunciations("쿠가 테루노리.", kuga), "kuga terunori.");
+  assert.equal(client.applyPronunciations("쿠가 씨.", kuga), "kuga 씨.");
+  // Word counts differ → only the whole name is replaced.
+  const uneven = client.buildPronunciations([
+    { name: "IV", phoneticName: "フォー" },
+    { name: "A B", phoneticName: "x" },
+  ]);
+  assert.deepEqual(
+    uneven.map((entry) => entry.from),
+    ["IV", "A B"].sort((a, b) => b.length - a.length),
+  );
+  assert.equal(client.applyPronunciations("IV and IVY", uneven), "フォー and IVY", "Latin names keep word edges");
+
+  // Voiced lines pair with the screen's spans by order, cue split off as tone.
+  const content =
+    'He leaned back. <audio_character id="c1">"[low, amused] You came **back**, huh?"</audio_character> He smiled.\n' +
+    '<audio_persona id="p1">"Sit."</audio_persona> <audio_character id="c1">"[soft laugh] Fine."';
+  const lines = client.parseVoiceLines(content);
+  assert.deepEqual(lines, [
+    { kind: "character", id: "c1", cue: "low, amused", text: "You came back, huh?" },
+    { kind: "persona", id: "p1", cue: "", text: "Sit." },
+    { kind: "character", id: "c1", cue: "soft laugh", text: "Fine." },
+  ]);
+
+  // Display rules: accepted by the Engine's regex safety check, and they leave one span per parsed line.
+  let shown = content;
+  for (const rule of client.DISPLAY_RULES) {
+    assert.ok(shared.isPatternSafe(rule.findRegex), `display rule rejected as unsafe: ${rule.name}`);
+    shown = shown.replace(new RegExp(rule.findRegex, rule.flags), rule.replaceString);
+  }
+  assert.equal(shown.match(/<span class="mk-line/g)?.length, lines.length);
+  assert.doesNotMatch(shown, /audio_|\[low|\[soft/, "markup and line-start cues are hidden");
+
+  assert.equal(
+    client.pickVoice(
+      { voiceMode: "per-character", voice: "def", voiceAssignments: [{ characterId: "c1", voice: "v1" }] },
+      "c1",
+    ),
+    "v1",
+  );
+  assert.equal(client.pickVoice({ voiceMode: "per-character", voice: "def", voiceAssignments: [] }, "c2"), "def");
+  assert.equal(
+    client.pickVoice(
+      { voiceMode: "single", voice: "def", voiceAssignments: [{ characterId: "c1", voice: "v1" }] },
+      "c1",
+    ),
+    "def",
+  );
 }
 
 console.log(
