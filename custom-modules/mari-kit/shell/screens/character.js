@@ -130,20 +130,18 @@ export function characterScreen({ mount, args, go }) {
               "div",
               { class: "box" },
               h("span", { class: "tag" }, "chats"),
-              theirChats
-                .slice(0, 5)
-                .map((x) =>
-                  h(
-                    "a",
-                    {
-                      class: "rr",
-                      href: `#/${x.mode === "conversation" ? "convo" : "rp"}/${encodeURIComponent(x.id)}`,
-                      style: { gridTemplateColumns: "minmax(0,1fr) auto" },
-                    },
-                    h("span", { class: "rv" }, chatTitle(x, characterIndex(chars))),
-                    h("span", { class: "rk" }, "›"),
-                  ),
+              theirChats.slice(0, 5).map((x) =>
+                h(
+                  "a",
+                  {
+                    class: "rr",
+                    href: `#/${x.mode === "conversation" ? "convo" : "rp"}/${encodeURIComponent(x.id)}`,
+                    style: { gridTemplateColumns: "minmax(0,1fr) auto" },
+                  },
+                  h("span", { class: "rv" }, chatTitle(x, characterIndex(chars))),
+                  h("span", { class: "rk" }, "›"),
                 ),
+              ),
             )
           : null,
         h("div", { style: { height: "24px" } }),

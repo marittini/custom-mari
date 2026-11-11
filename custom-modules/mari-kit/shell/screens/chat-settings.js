@@ -31,7 +31,7 @@ export function chatSettingsScreen({ mount, args, go }) {
       h("span", null, label),
       h(
         "select",
-        { class: "sel", style: { maxWidth: "170px" }, onChange: (e) => onChange(e.target.value) },
+        { class: "sel", style: { width: "170px" }, onChange: (e) => onChange(e.target.value) },
         options.map(([v, text]) => h("option", { value: v, selected: (value || "") === v }, text)),
       ),
     );

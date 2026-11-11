@@ -6,12 +6,10 @@ import { h, icon, dots, I, setChildren } from "../lib/h.js";
 import { api, parseJson } from "../lib/api.js";
 import { data, characterIndex, chatTitle, chatMeta, messageText } from "../lib/data.js";
 import { TOOL_DEFS, toolPlace, prefs } from "../lib/prefs.js";
-import { topBar, toast, errorBox, sheet } from "../lib/ui.js";
+import { topBar, toast, errorBox } from "../lib/ui.js";
 import { parseMessage, inline, buildPronunciations, applyPronunciations, pickVoice } from "../lib/render.js";
 import * as tts from "../lib/tts.js";
-
-const GUIDE = (text) =>
-  `[Guided generation instruction — do not include a reply from {{user}}. Instead, write the next generated message steering it toward the following: ${text.trim()}]`;
+import { GUIDE, quickReplies, runTool as sharedTool, streamGenerate } from "../lib/actions.js";
 
 export function rpScreen({ mount, args, go }) {
   const chatId = args[0];
@@ -134,18 +132,7 @@ export function rpScreen({ mount, args, go }) {
         (await api.get(`/mari-kit/tts/participants/${encodeURIComponent(chatId)}`).catch(() => null))?.participants ||
         [];
     }
-    quick = [];
-    if (ui.showQuickReplyGuide !== false) quick.push({ id: "guide", label: "방향 지시", icon: I.guide });
-    for (const entry of Array.isArray(ui.customQuickReplies) ? ui.customQuickReplies : []) {
-      const content = String(entry?.content || "").trim();
-      if (!content) continue;
-      quick.push({
-        id: `custom-${entry.id}`,
-        label: String(entry.label || "").trim() || content.slice(0, 24),
-        emoji: String(entry.icon || "").trim() || "✨",
-        content,
-      });
-    }
+    quick = quickReplies(ui, I.guide);
     qrBtn.hidden = quick.length === 0;
     if (settings?.features?.memory && usesKit) {
       memory = { waiting: 0, busy: false };
@@ -525,33 +512,24 @@ export function rpScreen({ mount, args, go }) {
     scroller.scrollTop = scroller.scrollHeight;
     abort = new AbortController();
     try {
-      for await (const event of api.stream(
-        "/generate",
-        {
-          chatId,
-          connectionId: null,
-          streaming: true,
-          userTimeZone: Intl.DateTimeFormat().resolvedOptions().timeZone || "",
-          ...body,
-        },
-        abort.signal,
-      )) {
-        if (!alive) return;
-        if (event.type === "token" && typeof event.data === "string") {
-          live += event.data;
+      await streamGenerate({
+        chatId,
+        body,
+        signal: abort.signal,
+        onToken: (text) => {
+          if (!alive) return;
+          live = text;
           draw();
-          const near = scroller.scrollHeight - scroller.scrollTop - scroller.clientHeight < 160;
-          if (near) scroller.scrollTop = scroller.scrollHeight;
-        } else if (event.type === "message_saved") {
-          const saved = event.data;
-          if (saved?.role === "user") {
+          if (scroller.scrollHeight - scroller.scrollTop - scroller.clientHeight < 160)
+            scroller.scrollTop = scroller.scrollHeight;
+        },
+        onSaved: (saved) => {
+          if (alive && saved?.role === "user") {
             messages.push(saved);
             draw();
           }
-        } else if (event.type === "error") {
-          toast(typeof event.data === "string" ? event.data : event.data?.message || "생성하지 못했어요");
-        }
-      }
+        },
+      });
     } catch (error) {
       if (error.name !== "AbortError") toast(`생성하지 못했어요: ${error.message}`);
     } finally {
@@ -598,89 +576,8 @@ export function rpScreen({ mount, args, go }) {
     generate({ userMessage: q.content });
   }
 
-  async function runTool(id, m) {
-    const text = messageText(m);
-    const base = `/chats/${encodeURIComponent(chatId)}/messages/${encodeURIComponent(m.id)}`;
-    try {
-      if (id === "copy") {
-        await navigator.clipboard.writeText(text);
-        toast("복사했어요");
-      } else if (id === "regen") {
-        generate({ regenerateMessageId: m.id });
-      } else if (id === "translate") {
-        const meta = chatMeta(chat);
-        const res = await api.post("/translate", {
-          chatId,
-          text,
-          provider: meta.translationProvider || "google",
-          targetLanguage: meta.translationOutputTargetLang || meta.translationTargetLang || "ko",
-          ...(meta.translationConnectionId ? { connectionId: meta.translationConnectionId } : {}),
-          ...(typeof meta.translationOutputPrompt === "string" && meta.translationOutputPrompt
-            ? { systemPrompt: meta.translationOutputPrompt }
-            : {}),
-        });
-        await api.patch(`${base}/extra`, {
-          translation: res.translatedText,
-          translationSource: text,
-          translationHidden: false,
-        });
-        await load();
-      } else if (id === "edit") {
-        editMessage(m, base, text);
-      } else if (id === "branch") {
-        const created = await api.post(`/chats/${encodeURIComponent(chatId)}/branch`, { upToMessageId: m.id });
-        data.chats(true);
-        if (created?.id) go(`rp/${encodeURIComponent(created.id)}`);
-      } else if (id === "del") {
-        if (!confirm("이 메시지를 지울까요?")) return;
-        await api.delete(base);
-        await load();
-      }
-    } catch (error) {
-      toast(error.message);
-    }
-  }
-
-  function editMessage(m, base, text) {
-    const area = h("textarea", {
-      class: "inp",
-      rows: 10,
-      style: { resize: "vertical", fontSize: "15px", lineHeight: "1.6" },
-    });
-    area.value = String(m.content ?? text);
-    const s = sheet(
-      h(
-        "div",
-        {
-          style: { display: "flex", flexDirection: "column", gap: "12px", padding: "8px 20px 24px", overflowY: "auto" },
-        },
-        h("b", { style: { fontSize: "15px" } }, "메시지 편집"),
-        area,
-        h(
-          "div",
-          { style: { display: "flex", justifyContent: "flex-end", gap: "8px" } },
-          h("button", { type: "button", class: "pill", onClick: () => s.close() }, "취소"),
-          h(
-            "button",
-            {
-              type: "button",
-              class: "pill main",
-              onClick: async () => {
-                try {
-                  await api.patch(base, { content: area.value });
-                  s.close();
-                  await load();
-                } catch (error) {
-                  toast(error.message);
-                }
-              },
-            },
-            "저장",
-          ),
-        ),
-      ),
-      { label: "메시지 편집" },
-    );
+  function runTool(id, m) {
+    return sharedTool(id, { chatId, chat, message: m, reload: load, generate, go });
   }
 
   function openSettings() {
