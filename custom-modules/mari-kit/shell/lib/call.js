@@ -11,7 +11,7 @@ import { api } from "./api.js";
 import { chatMeta } from "./data.js";
 import { pickVoice } from "./render.js";
 import { prefs, setPrefs } from "./prefs.js";
-import { toast, sheet, popMenu, avatar } from "./ui.js";
+import { toast, sheet, popMenu, avatar, thumb } from "./ui.js";
 import * as tts from "./tts.js";
 
 const BASE = "/conversation-calls";
@@ -135,7 +135,7 @@ export function callScreen(ctx) {
     }
   }
 
-  async function speakTurns(list) {
+  async function speakTurns(list, force = false) {
     const items = list
       .filter((m) => m.participantKind === "character" && m.kind === "speech" && m.content)
       .map((m) => {
@@ -152,7 +152,7 @@ export function callScreen(ctx) {
           },
         };
       });
-    if (ctx.ttsConfig && items.length) await tts.speakSequence(items);
+    if (ctx.ttsConfig && items.length && (!muted || force)) await tts.speakSequence(items);
   }
 
   async function sendText(text, inputMode = "typed") {
@@ -305,7 +305,7 @@ export function callScreen(ctx) {
               m.participantKind === "character" && m.kind === "speech" && ctx.ttsConfig
                 ? h(
                     "button",
-                    { type: "button", class: "ib", "aria-label": "다시 듣기", onClick: () => speakTurns([m]) },
+                    { type: "button", class: "ib", "aria-label": "다시 듣기", onClick: () => speakTurns([m], true) },
                     icon("M8 5v14l11-7z", 13, 0),
                   )
                 : null,
@@ -315,20 +315,32 @@ export function callScreen(ctx) {
     );
   }
 
-  // The call screen is built once; draw() only updates the time, the lines and the mic state, so a reply
-  // being typed keeps its text and focus while the clock ticks.
-  const timeEl = h("span", { class: "label", style: { fontVariantNumeric: "tabular-nums" } });
-  const nameEl = h("b");
-  const faceEl = h("span");
-  const linesEl = h("div", { class: "callx-lines", "aria-live": "polite" });
+  // A phone call, not a chat page: always dark, the caller's face blurred behind, name and clock on top, the
+  // line being said as a live caption, round buttons and the reply box below. Built once; draw() only updates
+  // the clock, caption and button states, so a reply being typed keeps its text and focus. While the reply box
+  // has focus the button row (with 종료) steps away, so a tap meant for the keyboard can't end the call.
+  let muted = false;
+  const backdrop = h("div", { class: "cx-bg", "aria-hidden": "true" });
+  const timeEl = h("span", { class: "cx-time" });
+  const nameEl = h("b", { class: "cx-name" });
+  const faceEl = h("span", { class: "cx-face" });
+  const prevEl = h("p", { class: "cx-prev" });
+  const capEl = h("button", {
+    type: "button",
+    class: "cx-cap",
+    "aria-live": "polite",
+    onClick: () => ((showOriginal = !showOriginal), draw()),
+  });
   const input = h("textarea", {
-    class: "cin",
+    class: "cx-in",
     rows: 1,
     "aria-label": "할 말",
     onInput: () => {
       input.style.height = "auto";
-      input.style.height = `${Math.min(input.scrollHeight, 120)}px`;
+      input.style.height = `${Math.min(input.scrollHeight, 110)}px`;
     },
+    onFocus: () => layer.classList.add("typing"),
+    onBlur: () => setTimeout(() => document.activeElement !== input && layer.classList.remove("typing"), 120),
     onKeydown: (e) => {
       if (e.key === "Enter" && !e.shiftKey && !e.isComposing && matchMedia("(pointer: fine)").matches) {
         e.preventDefault();
@@ -336,67 +348,82 @@ export function callScreen(ctx) {
       }
     },
   });
-  const micBtn = h(
-    "button",
-    { type: "button", class: "cb", "aria-label": "말로 하기", onClick: () => toggleMic() },
-    icon(I.mic, 18, 1.6),
-  );
   const sendBtn = h(
     "button",
-    { type: "button", class: "cb send", "aria-label": "보내기", onClick: () => submit() },
+    { type: "button", class: "cx-send", "aria-label": "보내기", onClick: () => submit() },
     icon(I.send, 16, 2),
   );
-  const composer = h("div", { class: "cmp callx-cmp" }, micBtn, input, sendBtn);
+  const ctl = (label, path, onClick) =>
+    h(
+      "button",
+      { type: "button", class: "cx-key", onClick },
+      h("span", { class: "cx-round" }, icon(path, 22, 1.6)),
+      h("small", null, label),
+    );
+  const flipBtn = ctl(
+    "원문",
+    "M4 6h9M8.5 4v2M6 6c.8 3.5 3 6 6 7M11 6c-.8 3.5-3 6-6 7M13 20l3.5-8 3.5 8M14.2 17.5h4.6",
+    () => ((showOriginal = !showOriginal), draw()),
+  );
+  const micBtn = ctl("마이크", I.mic, () => toggleMic());
+  const soundBtn = ctl("소리", "M4 10v4h4l5 4V6L8 10zM16 9a4 4 0 0 1 0 6", () => {
+    muted = !muted;
+    if (muted) tts.stop();
+    draw();
+  });
+  const logBtn = ctl("대사", "M5 6h14M5 12h14M5 18h9", () => logSheet());
+  const endBtn = h(
+    "button",
+    { type: "button", class: "cx-key", onClick: () => end(true) },
+    h("span", { class: "cx-round end" }, icon(I.hangup, 26, 1.8)),
+    h("small", null, "종료"),
+  );
+  const keys = h("div", { class: "cx-keys" }, flipBtn, micBtn, endBtn, soundBtn, logBtn);
+  const reply = h("div", { class: "cx-reply" }, input, sendBtn);
   const ringRow = h(
     "div",
-    { class: "callx-btns" },
+    { class: "cx-ring" },
     h(
       "button",
-      { type: "button", class: "o soft", "aria-label": "거절", onClick: () => decline() },
-      icon("M6 6l12 12M18 6L6 18", 22, 1.8),
+      { type: "button", class: "cx-key", onClick: () => decline() },
+      h("span", { class: "cx-round end" }, icon(I.hangup, 26, 1.8)),
+      h("small", null, "거절"),
     ),
     h(
       "button",
-      { type: "button", class: "o hard", "aria-label": "받기", onClick: () => accept() },
-      icon(I.phone, 22, 1.7),
+      { type: "button", class: "cx-key", onClick: () => accept() },
+      h("span", { class: "cx-round take" }, icon(I.phone, 24, 1.7)),
+      h("small", null, "받기"),
     ),
   );
-  const menuBtn = h(
-    "button",
-    {
-      type: "button",
-      class: "ib",
-      "aria-label": "통화 메뉴",
-      onClick: () =>
-        popMenu([
-          {
-            label: showOriginal ? "번역으로 보기" : "원문으로 보기",
-            onClick: () => ((showOriginal = !showOriginal), draw()),
-          },
-          { label: "지금까지 대사", onClick: () => logSheet() },
-          { label: "통화 설정", sub: "›", onClick: () => ctx.go(`call-settings/${encodeURIComponent(ctx.chatId)}`) },
-        ]),
-    },
-    dots(),
-  );
-  // 종료 sits at the top, away from the keyboard and the send button.
-  const endBtn = h("button", { type: "button", class: "callx-end", onClick: () => end(true) }, "통화 종료");
   setChildren(
     layer,
+    backdrop,
     h(
       "div",
-      { class: "callx-top" },
+      { class: "cx-top" },
       h(
         "button",
-        { type: "button", class: "ib", "aria-label": "대화 보기", onClick: () => ((minimized = true), draw()) },
+        { type: "button", class: "cx-ib", "aria-label": "대화 보기", onClick: () => ((minimized = true), draw()) },
         icon(I.down, 22, 1.8),
       ),
-      h("span", { style: { display: "flex", alignItems: "center", gap: "4px" } }, menuBtn, endBtn),
+      h("span", { class: "cx-kind" }, "음성 통화"),
+      h(
+        "button",
+        {
+          type: "button",
+          class: "cx-ib",
+          "aria-label": "통화 설정",
+          onClick: () => ctx.go(`call-settings/${encodeURIComponent(ctx.chatId)}`),
+        },
+        dots(),
+      ),
     ),
-    h("div", { class: "callx-who" }, faceEl, nameEl, timeEl),
-    linesEl,
+    h("div", { class: "cx-who" }, faceEl, nameEl, timeEl),
+    h("div", { class: "cx-say" }, prevEl, capEl),
     ringRow,
-    composer,
+    keys,
+    reply,
   );
 
   function submit() {
@@ -416,50 +443,56 @@ export function callScreen(ctx) {
     const ringing = session.status === "ringing";
     const started = Date.parse(session.startedAt || session.createdAt || "") || Date.now();
     timeEl.textContent = ringing
-      ? "음성 통화"
-      : `${fmt(Date.now() - started)}${rec ? " · 듣는 중 · 마이크를 다시 누르면 보내요" : busy ? " · …" : ""}`;
+      ? "전화가 왔어요"
+      : rec
+        ? "듣는 중 · 마이크를 다시 누르면 보내요"
+        : busy
+          ? "…"
+          : fmt(Date.now() - started);
     pill.textContent = `${who?.name || "통화"} · ${fmt(Date.now() - started)}`;
     pill.hidden = !minimized || ringing;
     layer.hidden = minimized;
     if (minimized) return;
     if (faceFor !== who?.id) {
       faceFor = who?.id;
-      setChildren(faceEl, avatar(who?.avatar, who?.name?.[0] || "·", 72));
+      setChildren(faceEl, avatar(who?.avatar, who?.name?.[0] || "·", 96));
       nameEl.textContent = who?.name || "통화";
+      backdrop.style.backgroundImage = who?.avatar ? `url("${thumb(who.avatar, 240)}")` : "";
     }
+    layer.classList.toggle("ringing", ringing);
     ringRow.hidden = !ringing;
-    composer.hidden = ringing;
-    menuBtn.hidden = ringing;
-    endBtn.hidden = ringing;
-    micBtn.setAttribute("aria-pressed", rec ? "true" : "false");
-    micBtn.setAttribute("aria-label", rec ? "말한 것 보내기" : "말로 하기");
+    keys.hidden = ringing;
+    reply.hidden = ringing;
+    micBtn.classList.toggle("on", !!rec);
+    soundBtn.classList.toggle("on", muted);
+    soundBtn.querySelector("small").textContent = muted ? "소리 꺼짐" : "소리";
+    flipBtn.classList.toggle("on", showOriginal);
     sendBtn.disabled = busy;
-    input.placeholder = meta().translateInput === true ? "한국어로 써도 옮겨서 전해요" : "할 말";
-    if (ringing) return setChildren(linesEl);
-    const recent = messages.slice(-6);
+    input.placeholder = meta().translateInput === true ? "한국어로 써도 옮겨서 전해요" : "할 말을 쓰세요";
+    if (ringing) {
+      prevEl.textContent = "";
+      setChildren(capEl);
+      return;
+    }
+    const recent = messages.slice(-2);
     const rows = await Promise.all(recent.map(async (m) => ({ m, ...(await shown(m)) })));
     if (seq !== drawSeq || !session) return;
+    const cur = rows[rows.length - 1];
+    const prev = rows.length > 1 ? rows[0] : null;
     const key = rows.map((r) => r.m.id + r.top).join("|") + showOriginal;
-    if (linesEl.dataset.key === key) return;
-    linesEl.dataset.key = key;
+    if (capEl.dataset.key === key) return;
+    capEl.dataset.key = key;
+    prevEl.textContent = prev ? `${prev.m.participantKind === "user" ? "나" : nameEl.textContent} · ${prev.top}` : "";
     setChildren(
-      linesEl,
-      rows.length
-        ? rows.map(({ m, top, bottom }) =>
-            h(
-              "button",
-              {
-                type: "button",
-                class: m.participantKind === "user" ? "cl me" : "cl",
-                onClick: () => ((showOriginal = !showOriginal), draw()),
-              },
-              h("span", null, top),
-              bottom ? h("small", null, bottom) : null,
-            ),
-          )
-        : h("p", { class: "label", style: { textAlign: "center" } }, "연결됐어요 · 아래에 할 말을 쓰세요"),
+      capEl,
+      cur
+        ? [
+            cur.m.participantKind === "user" ? h("small", { class: "cx-me" }, "나") : null,
+            h("span", null, cur.top),
+            cur.bottom ? h("small", null, cur.bottom) : null,
+          ]
+        : h("small", null, "연결됐어요 · 아래에 할 말을 쓰세요"),
     );
-    linesEl.scrollTop = linesEl.scrollHeight;
   }
 
   return {
