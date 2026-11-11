@@ -167,7 +167,7 @@ export function rpScreen({ mount, args, go }) {
 
   async function organize() {
     if (!memory || memory.busy) return;
-    if (!memory.waiting) return toast("정리할 메시지가 없어요");
+    if (!memory.waiting) return go(`memory/${encodeURIComponent(chatId)}`); // nothing waiting: open the memory library
     memory.busy = true;
     drawMemory();
     let calls = 0;

@@ -23,6 +23,7 @@ const CHAPTER_AFTER_SCENES = 24;
 const CHAPTER_FOLD = 12;
 const MAX_FACTS_PER_ENTITY = 8;
 const DOC_KIND = "memory";
+export const THREAD_KINDS = Object.freeze(["promise", "emotion", "state", "secret", "pending", "deadline", "open"]);
 
 const str = (value, max) => (typeof value === "string" ? value.trim().replace(/\s+/g, " ").slice(0, max) : "");
 const list = (value) => (Array.isArray(value) ? value : []);
@@ -45,11 +46,56 @@ export function estimateTokens(text) {
   return Math.ceil(ascii / 4 + other / 1.6);
 }
 
+export const SETTING_CHOICES = Object.freeze({
+  keepRecent: [4, 6, 10],
+  budget: [2000, 5000, 8000],
+  detail: ["standard", "detailed", "very_detailed"],
+  npc: ["standard", "expanded"],
+  quoteMode: ["dialogue", "narration", "both"],
+  recallAmount: ["less", "normal", "more"],
+  chapterLength: ["short", "normal", "long", "full"],
+  recallStyle: ["quiet", "natural", "active"],
+  writeLanguage: ["auto", "ko", "en", "zh"],
+  memoryLanguage: ["auto", "ko", "en", "zh"],
+});
+export const DEFAULT_SETTINGS = Object.freeze({
+  keepRecent: KEEP_RECENT,
+  budget: TOKEN_BUDGET,
+  detail: "standard",
+  npc: "standard",
+  quoteMode: "dialogue",
+  recallAmount: "normal",
+  chapterLength: "normal",
+  recallStyle: "natural",
+  writeLanguage: "auto",
+  memoryLanguage: "auto",
+  translateConnectionId: null,
+  embedding: false,
+});
+
+export function normalizeSettings(raw) {
+  const source = raw && typeof raw === "object" ? raw : {};
+  const out = { ...DEFAULT_SETTINGS };
+  for (const [key, choices] of Object.entries(SETTING_CHOICES))
+    if (choices.includes(source[key])) out[key] = source[key];
+  out.translateConnectionId = str(source.translateConnectionId, 200) || null;
+  out.embedding = source.embedding === true;
+  return out;
+}
+
 export function emptyMemory() {
   return {
     version: 1,
     connectionId: null,
     chunkMessages: DEFAULT_CHUNK_MESSAGES,
+    settings: { ...DEFAULT_SETTINGS },
+    routines: [],
+    notebook: [],
+    keepsakes: [],
+    trackers: [],
+    addresses: [],
+    conflicts: [],
+    storyDate: "",
     entities: [],
     facts: [],
     threads: [],
@@ -70,6 +116,14 @@ export function normalizeMemory(raw) {
       60,
       Math.max(6, Number.isInteger(data.chunkMessages) ? data.chunkMessages : base.chunkMessages),
     ),
+    settings: normalizeSettings(data.settings),
+    routines: list(data.routines),
+    notebook: list(data.notebook),
+    keepsakes: list(data.keepsakes),
+    trackers: list(data.trackers),
+    addresses: list(data.addresses),
+    conflicts: list(data.conflicts),
+    storyDate: str(data.storyDate, 20),
     entities: list(data.entities),
     facts: list(data.facts),
     threads: list(data.threads),
@@ -131,7 +185,8 @@ export function readableMessages(records, nameOf) {
 /** The next chunk to organize, or null. The newest KEEP_RECENT messages are never organized. */
 export function nextChunk(memory, messages, { force = false } = {}) {
   const done = new Set(memory.chunks.flatMap((c) => c.messageIds));
-  const open = messages.slice(0, Math.max(0, messages.length - KEEP_RECENT)).filter((m) => !done.has(m.id));
+  const keep = memory.settings?.keepRecent ?? KEEP_RECENT;
+  const open = messages.slice(0, Math.max(0, messages.length - keep)).filter((m) => !done.has(m.id));
   const picked = [];
   let chars = 0;
   for (const m of open) {
@@ -196,9 +251,42 @@ function knownMaterial(memory, chunkText) {
   });
 }
 
+const LANG_NAME = { ko: "Korean", en: "English", zh: "Simplified Chinese" };
+
+/** Further keys and the viewer's organize settings, appended to ORGANIZE_PROMPT. */
+export function organizeExtras(settings) {
+  const s = normalizeSettings(settings);
+  const lines = [
+    "",
+    "Also, when present in the excerpt (otherwise omit the key):",
+    '"threads" may also use kind "emotion" (a feeling still unresolved), "state" (an ongoing condition) and "pending" (an open question), and add "due":"YY-MM-DD", "time":"HH:MM", "owner":"who promised", "to":"to whom", "hides":"what a secret hides", "unlock":"what would reveal it". "resolve" may carry "outcome":"kept|broken|cancelled|settled".',
+    '"routines":[{"who":"","kind":"meal|wash|groom|sleep|wake|medicine|other","what":""}] — daily-life events of this excerpt.',
+    '"notebook":[{"who":"","kind":"about|heart","text":""}] — "about": how this character treats someone; "heart": an inner feeling or resolution.',
+    '"keepsakes":[{"name":"","owner":"","note":""}] — objects that matter to someone (gifts, mementos).',
+    '"addresses":[{"from":"","to":"","term":""}] — what someone calls someone else ("보스", "선배").',
+    '"storyDate":"YY-MM-DD" — the story\'s current date when stated.',
+    "Lines that start with (OOC, ((, or [OOC are the user talking outside the story: never record them as events.",
+    s.detail === "detailed"
+      ? "Write scene summaries in 4–7 sentences with concrete details."
+      : s.detail === "very_detailed"
+        ? "Write scene summaries in 6–10 sentences, keeping small concrete details, objects and wording."
+        : "",
+    s.npc === "expanded"
+      ? "Also record minor characters and extras (NPCs, passers-by) as entities with their facts."
+      : "",
+    s.quoteMode === "narration"
+      ? "quotes: prefer narration sentences over dialogue."
+      : s.quoteMode === "both"
+        ? "quotes: up to 3 dialogue lines and up to 2 narration sentences."
+        : "",
+    s.writeLanguage !== "auto" ? `Write every value in ${LANG_NAME[s.writeLanguage]}.` : "",
+  ];
+  return lines.filter(Boolean).join("\n");
+}
+
 export function buildOrganizeMessages(memory, numberedText) {
   return [
-    { role: "system", content: ORGANIZE_PROMPT },
+    { role: "system", content: `${ORGANIZE_PROMPT}\n${organizeExtras(memory.settings)}` },
     {
       role: "user",
       content: `Already known (reuse these ids):\n${knownMaterial(memory, numberedText)}\n\nExcerpt:\n${numberedText}`,
@@ -266,6 +354,16 @@ export function applyOrganizeReply(memory, parsed, { chunk, refs, chunkId, now }
     if (current) {
       if (current.value === value) continue;
       current.history = [...list(current.history), { value: current.value, chunk: current.chunk }].slice(-5);
+      // A changed value may be a real change or a mistake: kept for the viewer to answer (앞의 것 / 뒤의 것 / 둘 다).
+      if (Array.isArray(next.conflicts))
+        next.conflicts.push({
+          id: randomUUID(),
+          factId: current.id,
+          before: current.value,
+          after: value,
+          chunk: chunkId,
+          status: "open",
+        });
       Object.assign(current, { value, knownBy, chunk: chunkId });
     } else {
       next.facts.push({
@@ -295,10 +393,18 @@ export function applyOrganizeReply(memory, parsed, { chunk, refs, chunkId, now }
     if (op === "add") {
       const text = str(row?.text, 400);
       if (!text) continue;
+      // The same open thread said again is not a second thread.
+      if (next.threads.some((t) => t.status === "open" && t.text === text)) continue;
       next.threads.push({
         id: randomUUID(),
-        kind: ["promise", "secret", "deadline", "open"].includes(row?.kind) ? row.kind : "open",
+        kind: THREAD_KINDS.includes(row?.kind) ? row.kind : "open",
         text,
+        due: /^\d{2,4}-\d{1,2}-\d{1,2}$/.test(str(row?.due, 12)) ? str(row?.due, 12) : "",
+        time: /^\d{1,2}:\d{2}$/.test(str(row?.time, 5)) ? str(row?.time, 5) : "",
+        owner: str(row?.owner, 100),
+        to: str(row?.to, 100),
+        hides: str(row?.hides, 300),
+        unlock: str(row?.unlock, 300),
         keywords: list(row?.keywords)
           .map((k) => str(k, 60))
           .filter(Boolean)
@@ -313,14 +419,53 @@ export function applyOrganizeReply(memory, parsed, { chunk, refs, chunkId, now }
         dropped.push(`${op} of unknown thread`);
         continue;
       }
-      if (op === "resolve") Object.assign(thread, { status: "resolved", resolvedChunk: chunkId });
+      if (op === "resolve")
+        Object.assign(thread, {
+          status: "resolved",
+          outcome: ["kept", "broken", "cancelled", "settled"].includes(row?.outcome) ? row.outcome : "settled",
+          resolvedChunk: chunkId,
+        });
       else if (thread.knownBy) thread.knownBy = [...new Set([...thread.knownBy, ...(names(row?.to) ?? [])])];
     }
   }
 
+  // Daily life, notebook, keepsakes, forms of address, story date.
+  const add = (key, row) => Array.isArray(next[key]) && next[key].push({ id: randomUUID(), chunk: chunkId, ...row });
+  for (const row of list(parsed.routines).slice(0, 12)) {
+    const who = str(row?.who, 100);
+    const what = str(row?.what, 200);
+    if (who && what)
+      add("routines", {
+        who,
+        kind: ["meal", "wash", "groom", "sleep", "wake", "medicine"].includes(row?.kind) ? row.kind : "other",
+        what,
+      });
+  }
+  for (const row of list(parsed.notebook).slice(0, 8)) {
+    const who = str(row?.who, 100);
+    const text = str(row?.text, 400);
+    if (who && text && !list(next.notebook).some((n) => n.who === who && n.text === text))
+      add("notebook", { who, kind: row?.kind === "heart" ? "heart" : "about", text, star: false });
+  }
+  for (const row of list(parsed.keepsakes).slice(0, 8)) {
+    const name = str(row?.name, 120);
+    if (!name || list(next.keepsakes).some((k) => k.name === name)) continue;
+    add("keepsakes", { name, owner: str(row?.owner, 100), note: str(row?.note, 300) });
+  }
+  for (const row of list(parsed.addresses).slice(0, 12)) {
+    const from = str(row?.from, 100);
+    const to = str(row?.to, 100);
+    const term = str(row?.term, 60);
+    if (!from || !to || !term) continue;
+    const same = list(next.addresses).find((a) => a.from === from && a.to === to);
+    if (same) Object.assign(same, { term, chunk: chunkId });
+    else add("addresses", { from, to, term, note: "" });
+  }
+  if (/^\d{2,4}-\d{1,2}-\d{1,2}$/.test(str(parsed.storyDate, 12))) next.storyDate = str(parsed.storyDate, 12);
+
   // Scene with quotes copied from the original sentences.
   const quotes = [];
-  for (const q of list(scene.quotes).slice(0, 3)) {
+  for (const q of list(scene.quotes).slice(0, 5)) {
     const source = refs.get(str(q?.ref, 20));
     if (!source) {
       dropped.push(`quote ${JSON.stringify(q?.ref ?? "")}`);
@@ -397,9 +542,59 @@ const hiddenFrom = (knownBy, speakers) => (knownBy ? speakers.filter((s) => !kno
  * The memory block for one turn. `speakers` are the names of the characters this turn writes for.
  * One speaker: what they do not know is left out. Several: it is kept, marked with who does not know.
  */
-export function buildRecall(memory, { recentText, speakers, budget = TOKEN_BUDGET }) {
+const SCENE_COUNT = { less: 2, normal: 4, more: 6 };
+const CHAPTER_TOKENS = { short: 1000, normal: 2000, long: 4000, full: 8000 };
+const STYLE_LINE = {
+  quiet: "Bring up past events only when the scene clearly needs them, briefly.",
+  natural: "Characters may bring up past events on their own when it fits the moment.",
+  active: "Characters often recall past promises and things said before, and act on them.",
+};
+
+/** Days between two "YY-MM-DD" (or "YYYY-MM-DD") dates; null when either is missing. */
+export function daysBetween(from, to) {
+  const parse = (d) => {
+    const m = /^(\d{2,4})-(\d{1,2})-(\d{1,2})$/.exec(String(d || ""));
+    if (!m) return null;
+    const y = m[1].length === 2 ? 2000 + Number(m[1]) : Number(m[1]);
+    return Date.UTC(y, Number(m[2]) - 1, Number(m[3]));
+  };
+  const a = parse(from);
+  const b = parse(to);
+  return a === null || b === null ? null : Math.round((b - a) / 86400000);
+}
+
+/** Trackers as lines for the memory block (D-day, days since, cycles), counted on the story's date or today. */
+export function trackerLine(t, storyDate, today) {
+  const now = t.clock === "real" ? today : storyDate || today;
+  if (t.type === "until") {
+    const d = daysBetween(now, t.target);
+    return d === null
+      ? `- ${t.title}: ${t.target}`
+      : `- ${t.title}: ${d > 0 ? `D-${d}` : d === 0 ? "today" : `${-d} days ago`}`;
+  }
+  if (t.type === "cycle") {
+    const d = daysBetween(t.start, now);
+    const every = Math.max(1, Number(t.every) || 1);
+    return d === null ? `- ${t.title}` : `- ${t.title}: day ${(((d % every) + every) % every) + 1} of ${every}`;
+  }
+  const d = daysBetween(t.start, now);
+  return d === null ? `- ${t.title}` : `- ${t.title}: day ${d + 1}`;
+}
+
+/**
+ * The memory block for one turn. `speakers` are the names of the characters this turn writes for.
+ * One speaker: what they do not know is left out. Several: it is kept, marked with who does not know.
+ * `nearIds` are scene ids found by meaning (embeddings), added after keyword hits. Items the viewer excluded
+ * never go in; pinned ones always do.
+ */
+export function buildRecall(memory, { recentText, speakers, budget, nearIds = [], today = "" }) {
+  const settings = normalizeSettings(memory.settings);
+  const cap = budget ?? settings.budget ?? TOKEN_BUDGET;
+  const lang = settings.memoryLanguage;
+  const tr = (item, key) => (lang !== "auto" && item?.tr?.[lang]?.[key]) || item?.[key];
   const text = String(recentText ?? "").toLowerCase();
   const single = speakers.length === 1;
+  const live = (item) => !item?.excluded;
   const visible = (knownBy) => !single || !knownBy || knownBy.includes(speakers[0]);
   const mark = (knownBy) => {
     const unaware = single ? [] : hiddenFrom(knownBy, speakers);
@@ -411,45 +606,79 @@ export function buildRecall(memory, { recentText, speakers, budget = TOKEN_BUDGE
       .filter((e) => speakers.includes(e.name) || [e.name, ...list(e.aliases)].some((n) => mentions(text, n)))
       .map((e) => e.id),
   );
+  const presentNames = new Set(memory.entities.filter((e) => present.has(e.id)).map((e) => e.name));
 
   const sections = [];
+  const report = [];
   let used = 0;
-  const add = (title, lines) => {
+  const add = (title, lines, limit = cap) => {
     const kept = [];
+    let own = 0;
     for (const line of lines) {
       const cost = estimateTokens(line) + 1;
-      if (used + cost > budget) break;
+      if (used + cost > cap || own + cost > limit) break;
       kept.push(line);
       used += cost;
+      own += cost;
     }
-    if (kept.length) sections.push(`<${title}>\n${kept.join("\n")}\n</${title}>`);
+    if (kept.length) {
+      sections.push(`<${title}>\n${kept.join("\n")}\n</${title}>`);
+      report.push({ section: title, items: kept.length, tokens: own });
+    }
   };
 
   // 1. Chapters: the story so far (they change rarely, so they come first for prompt caching).
   add(
     "story_so_far",
-    memory.chapters.map((c) => `- ${c.title ? `${c.title}: ` : ""}${c.summary}`),
+    memory.chapters.filter(live).map((c) => `- ${tr(c, "title") ? `${tr(c, "title")}: ` : ""}${tr(c, "summary")}`),
+    CHAPTER_TOKENS[settings.chapterLength],
   );
-  // 2. Unresolved threads and pinned facts: always.
+  // 2. Unresolved threads (deadlines first, then the ones the recent text mentions) and pinned facts: always.
+  const open = memory.threads.filter((t) => t.status === "open" && live(t) && visible(t.knownBy));
+  const hit = (t) => Number(list(t.keywords).some((k) => mentions(text, k)) || t.pinned === true);
+  open.sort((a, b) => Number(Boolean(b.due)) - Number(Boolean(a.due)) || hit(b) - hit(a));
   add(
     "open_threads",
-    memory.threads
-      .filter((t) => t.status === "open" && visible(t.knownBy))
-      .sort(
-        (a, b) =>
-          Number(list(b.keywords).some((k) => mentions(text, k))) -
-          Number(list(a.keywords).some((k) => mentions(text, k))),
-      )
-      .map((t) => `- [${t.kind}] ${t.text}${mark(t.knownBy)}`),
+    open.map((t) => {
+      const due = t.due ? ` (due ${t.due}${t.time ? ` ${t.time}` : ""})` : "";
+      const who = t.owner ? ` — ${t.owner}${t.to ? ` → ${t.to}` : ""}` : "";
+      return `- [${t.kind}] ${tr(t, "text")}${who}${due}${mark(t.knownBy)}`;
+    }),
   );
-  const factLine = (f) => `- ${entityName.get(f.entityId) ?? "?"} · ${f.attribute}: ${f.value}${mark(f.knownBy)}`;
-  const facts = memory.facts.filter((f) => !f.archived && visible(f.knownBy));
-  add("pinned", facts.filter((f) => f.pinned).map(factLine));
-  // 3. What is true now about people and things in the scene.
+  const factLine = (f) =>
+    `- ${entityName.get(f.entityId) ?? "?"} · ${f.attribute}: ${tr(f, "value")}${mark(f.knownBy)}`;
+  const facts = memory.facts.filter((f) => !f.archived && live(f) && visible(f.knownBy));
+  add("pinned", [
+    ...facts.filter((f) => f.pinned).map(factLine),
+    ...list(memory.notebook)
+      .filter((n) => live(n) && (n.star || n.pinned))
+      .map((n) => `- ${n.who} (${n.kind === "heart" ? "inner" : "how they treat others"}): ${tr(n, "text")}`),
+  ]);
+  // 3. What is true now about people and things in the scene; their notes, names for each other, and trackers.
   add("current_state", facts.filter((f) => !f.pinned && present.has(f.entityId)).map(factLine));
-  // 4. Up to 3 earlier scenes the recent messages call back to, then the latest scene for flow.
-  const loose = memory.scenes.filter((s) => visible(s.knownBy));
+  add(
+    "character_notes",
+    list(memory.notebook)
+      .filter((n) => live(n) && !n.star && !n.pinned && presentNames.has(n.who))
+      .slice(-12)
+      .map((n) => `- ${n.who} (${n.kind === "heart" ? "inner" : "how they treat others"}): ${tr(n, "text")}`),
+  );
+  add(
+    "forms_of_address",
+    list(memory.addresses)
+      .filter((a) => live(a) && (presentNames.has(a.from) || presentNames.has(a.to)))
+      .map((a) => `- ${a.from} calls ${a.to} "${a.term}"`),
+  );
+  add(
+    "trackers",
+    list(memory.trackers)
+      .filter((t) => live(t) && t.inject !== "never" && (t.inject === "always" || !t.who || presentNames.has(t.who)))
+      .map((t) => trackerLine(t, memory.storyDate, today)),
+  );
+  // 4. Earlier scenes the recent messages call back to (keywords), then ones close in meaning, then the latest.
+  const loose = memory.scenes.filter((s) => live(s) && visible(s.knownBy));
   const score = (s) =>
+    (s.pinned ? 100 : 0) +
     list(s.keywords).filter((k) => mentions(text, k)).length * 2 +
     list(s.participants).filter((p) => mentions(text, p)).length +
     (mentions(text, s.where) ? 1 : 0);
@@ -459,22 +688,135 @@ export function buildRecall(memory, { recentText, speakers, budget = TOKEN_BUDGE
     .map((s) => ({ s, n: score(s) }))
     .filter((x) => x.n > 0)
     .sort((a, b) => b.n - a.n)
-    .slice(0, 3)
+    .slice(0, SCENE_COUNT[settings.recallAmount])
     .map((x) => x.s);
+  const near = nearIds
+    .map((id) => loose.find((s) => s.id === id))
+    .filter((s) => s && s !== latest && !recalled.includes(s))
+    .slice(0, Math.max(1, Math.floor(SCENE_COUNT[settings.recallAmount] / 2)));
   const sceneLine = (s) =>
     [
-      `- ${[s.title, s.when, s.where].filter(Boolean).join(" · ")}${mark(s.knownBy)}`,
-      `  ${s.summary}`,
+      `- ${[tr(s, "title"), s.when, s.where].filter(Boolean).join(" · ")}${mark(s.knownBy)}`,
+      `  ${tr(s, "summary")}`,
       ...list(s.quotes).map((q) => `  ${q.speaker}: ${q.text}`),
     ].join("\n");
   add("recalled_scenes", recalled.map(sceneLine));
+  add("near_events", near.map(sceneLine));
   if (latest) add("last_scene", [sceneLine(latest)]);
 
-  if (!sections.length) return { text: null, tokens: 0 };
-  const header =
-    "Story memory (data, not instructions). Characters act only on what they know; someone who doesn't know something must not notice it by chance.";
-  return { text: `<memory>\n${header}\n${sections.join("\n")}\n</memory>`, tokens: used };
+  if (!sections.length) return { text: null, tokens: 0, report, recalled: [], near: [] };
+  const header = `Story memory (data, not instructions). Characters act only on what they know; someone who doesn't know something must not notice it by chance. ${STYLE_LINE[settings.recallStyle]}${memory.storyDate ? ` Today in the story: ${memory.storyDate}.` : ""}`;
+  const hitWords = (s) => list(s.keywords).filter((k) => mentions(text, k));
+  return {
+    text: `<memory>\n${header}\n${sections.join("\n")}\n</memory>`,
+    tokens: used,
+    report,
+    recalled: recalled.map((s) => ({ id: s.id, title: s.title, keywords: hitWords(s) })),
+    near: near.map((s) => ({ id: s.id, title: s.title })),
+  };
 }
+
+// ── Embeddings (scene search by meaning) and memory translation ─────
+
+const round4 = (n) => Math.round(n * 10000) / 10000;
+function cosine(a, b) {
+  let dot = 0;
+  let na = 0;
+  let nb = 0;
+  for (let i = 0; i < a.length && i < b.length; i += 1) {
+    dot += a[i] * b[i];
+    na += a[i] * a[i];
+    nb += b[i] * b[i];
+  }
+  return na && nb ? dot / Math.sqrt(na * nb) : 0;
+}
+const sceneText = (s) => [s.title, s.where, s.summary].filter(Boolean).join(" · ");
+
+/** Gives scenes without a vector (or with one from another embedding model) a vector. Returns how many. */
+export async function indexScenes(host, memory, { all = false } = {}) {
+  if (!host?.embed) return 0;
+  const todo = memory.scenes.filter((s) => all || !s.vec || s.vec.space !== host.spaceId);
+  let done = 0;
+  for (let i = 0; i < todo.length; i += 64) {
+    const batch = todo.slice(i, i + 64);
+    const vectors = await host.embed(batch.map(sceneText), undefined, "document");
+    if (!Array.isArray(vectors)) break;
+    batch.forEach((s, k) => {
+      if (Array.isArray(vectors[k])) {
+        s.vec = { space: host.spaceId, v: vectors[k].map(round4) };
+        done += 1;
+      }
+    });
+  }
+  return done;
+}
+
+/** Scene ids closest in meaning to the text, best first. */
+export async function nearScenes(host, memory, query, { limit = 6, min = 0.3 } = {}) {
+  const q = String(query ?? "").trim();
+  if (!host?.embed || !q) return [];
+  const [vector] = (await host.embed([q.slice(-2000)], undefined, "query")) ?? [];
+  if (!Array.isArray(vector)) return [];
+  return memory.scenes
+    .filter((s) => s.vec?.space === host.spaceId && !s.excluded)
+    .map((s) => ({ id: s.id, score: cosine(vector, s.vec.v) }))
+    .filter((x) => x.score >= min)
+    .sort((a, b) => b.score - a.score)
+    .slice(0, limit);
+}
+
+export const TRANSLATE_PROMPT = (lang) =>
+  `Translate the values of this JSON into ${LANG_NAME[lang] ?? lang}. Keep ids and keys, keep names as the story writes them, translate nothing else. Reply with JSON only, in the same shape.`;
+
+/** Items whose text has no translation into `lang` yet, as { id, type, fields }. */
+export function untranslated(memory, lang) {
+  const out = [];
+  const need = (item, type, keys) => {
+    if (item.tr?.[lang]) return;
+    const fields = Object.fromEntries(keys.filter((k) => item[k]).map((k) => [k, item[k]]));
+    if (Object.keys(fields).length) out.push({ id: item.id, type, fields });
+  };
+  for (const c of memory.chapters) need(c, "chapter", ["title", "summary"]);
+  for (const s of memory.scenes) need(s, "scene", ["title", "summary"]);
+  for (const f of memory.facts) need(f, "fact", ["value"]);
+  for (const t of memory.threads) need(t, "thread", ["text"]);
+  for (const n of list(memory.notebook)) need(n, "notebook", ["text"]);
+  return out;
+}
+
+export function applyTranslation(memory, lang, parsed) {
+  const rows = list(parsed?.items ?? parsed);
+  const pools = {
+    chapter: memory.chapters,
+    scene: memory.scenes,
+    fact: memory.facts,
+    thread: memory.threads,
+    notebook: list(memory.notebook),
+  };
+  let n = 0;
+  for (const row of rows) {
+    const item = pools[row?.type]?.find((x) => x.id === row?.id);
+    if (!item || !row.fields || typeof row.fields !== "object") continue;
+    const fields = Object.fromEntries(
+      Object.entries(row.fields)
+        .map(([k, v]) => [k, str(v, 3000)])
+        .filter(([, v]) => v),
+    );
+    if (!Object.keys(fields).length) continue;
+    item.tr = { ...(item.tr ?? {}), [lang]: fields };
+    n += 1;
+  }
+  return n;
+}
+
+const OOC = /^\s*(?:\(\s*OOC|\(\(|\[\s*OOC)/i;
+export function oocMessages(records) {
+  return records
+    .filter((m) => m.role === "user" && OOC.test(String(m.content ?? "")))
+    .map((m) => ({ id: m.id, text: String(m.content).slice(0, 300), createdAt: m.createdAt }));
+}
+
+const lastRecall = new Map();
 
 // ── Storage, routes and the turn hook ───────────
 
@@ -551,7 +893,7 @@ function statusOf(memory, messages) {
   return {
     connectionId: memory.connectionId,
     chunkMessages: memory.chunkMessages,
-    keepRecent: KEEP_RECENT,
+    keepRecent: memory.settings?.keepRecent ?? KEEP_RECENT,
     organizedMessages: memory.chunks.reduce((n, c) => n + c.messageIds.length, 0),
     waitingMessages: waiting,
     readyChunk: full,
@@ -588,7 +930,7 @@ export const memoryFeature = {
   async promptContext(request, { runtime }) {
     if (request.mode !== "roleplay") return null;
     const { memory } = await readMemory(runtime, request.chatId);
-    if (!memory.scenes.length && !memory.facts.length && !memory.threads.length) return null;
+    if (!memory.scenes.length && !memory.facts.length && !memory.threads.length && !memory.trackers.length) return null;
     const chat = await runtime.persistence.getChat(request.chatId);
     if (!chat) return null;
     const { idToName } = await chatNames(runtime, chat);
@@ -598,7 +940,28 @@ export const memoryFeature = {
       .map((m) => m.agentContent ?? m.content ?? "")
       .join("\n");
     const speakers = (request.targetCharacterIds ?? []).map((id) => idToName.get(id)).filter(Boolean);
-    return buildRecall(memory, { recentText, speakers }).text;
+    let nearIds = [];
+    if (memory.settings.embedding) {
+      try {
+        const host = await runtime.resolveEmbeddings();
+        const query = records
+          .slice(-3)
+          .map((m) => m.agentContent ?? m.content ?? "")
+          .join("\n");
+        nearIds = (await nearScenes(host, memory, query)).map((x) => x.id);
+      } catch (error) {
+        runtime.logger.warn?.(error, "[mari-kit] memory embedding recall failed; keyword recall only");
+      }
+    }
+    const recall = buildRecall(memory, { recentText, speakers, nearIds, today: new Date().toISOString().slice(2, 10) });
+    lastRecall.set(request.chatId, {
+      at: new Date().toISOString(),
+      tokens: recall.tokens,
+      recalled: recall.recalled,
+      near: recall.near,
+      report: recall.report,
+    });
+    return recall.text;
   },
   routes(app, { runtime, httpError }) {
     const chatOf = async (request) => {
@@ -623,6 +986,9 @@ export const memoryFeature = {
         ...memory,
         ...(body.connectionId !== undefined ? { connectionId: body.connectionId } : {}),
         ...(body.chunkMessages !== undefined ? { chunkMessages: Number(body.chunkMessages) } : {}),
+        ...(body.settings && typeof body.settings === "object"
+          ? { settings: { ...memory.settings, ...body.settings } }
+          : {}),
       });
       await saveMemory(runtime, chat.id, doc, next);
       const { messages } = await loadMessages(runtime, chat);
@@ -688,6 +1054,35 @@ export const memoryFeature = {
           // The chunk is still saved; the chapter is tried again on the next press.
         }
       }
+      // Memory written in another language than the one it should be read in: translated once, here.
+      const lang = next.settings.memoryLanguage;
+      if (lang !== "auto") {
+        const items = untranslated(next, lang);
+        if (items.length) {
+          const tm = next.settings.translateConnectionId
+            ? await runtime.languageModels.resolve(next.settings.translateConnectionId)
+            : model;
+          calls += 1;
+          const { parsed } = await completeJson(
+            runtime,
+            tm,
+            [
+              { role: "system", content: TRANSLATE_PROMPT(lang) },
+              { role: "user", content: JSON.stringify({ items }) },
+            ],
+            debug,
+            "translate",
+          );
+          applyTranslation(next, lang, parsed);
+        }
+      }
+      if (next.settings.embedding) {
+        try {
+          await indexScenes(await runtime.resolveEmbeddings(), next);
+        } catch (error) {
+          runtime.logger.warn?.(error, "[mari-kit] memory scene indexing failed");
+        }
+      }
       next.undo = { chunkId, before: { ...memory, undo: null } };
       await saveMemory(runtime, chat.id, doc, next);
       return {
@@ -736,6 +1131,401 @@ export const memoryFeature = {
         .join("\n");
       const speakers = chat.characterIds.length === 1 ? [idToName.get(chat.characterIds[0])].filter(Boolean) : [];
       return { ...buildRecall(memory, { recentText, speakers }), budget: TOKEN_BUDGET };
+    });
+
+    // ── Memory library (the shell's screen) ──
+
+    const strip = (memory) => {
+      const out = structuredClone({ ...memory, undo: undefined });
+      for (const scene of out.scenes) if (scene.vec) scene.vec = { space: scene.vec.space };
+      return out;
+    };
+    const mutate = async (chat, change) => {
+      const { doc, memory } = await readMemory(runtime, chat.id);
+      const next = normalizeMemory(structuredClone(memory));
+      const result = await change(next);
+      await saveMemory(runtime, chat.id, doc, next);
+      return { next, result };
+    };
+    const POOLS = {
+      scene: "scenes",
+      chapter: "chapters",
+      fact: "facts",
+      thread: "threads",
+      entity: "entities",
+      routine: "routines",
+      notebook: "notebook",
+      keepsake: "keepsakes",
+      tracker: "trackers",
+      address: "addresses",
+    };
+    const EDITABLE = {
+      scene: ["title", "summary", "when", "where", "keywords", "knownBy"],
+      chapter: ["title", "summary", "keywords"],
+      fact: ["attribute", "value", "knownBy"],
+      thread: [
+        "kind",
+        "text",
+        "keywords",
+        "knownBy",
+        "status",
+        "outcome",
+        "due",
+        "time",
+        "owner",
+        "to",
+        "hides",
+        "unlock",
+      ],
+      entity: ["name", "aliases", "kind", "state"],
+      routine: ["who", "kind", "what"],
+      notebook: ["who", "kind", "text"],
+      keepsake: ["name", "owner", "note"],
+      tracker: ["title", "type", "start", "target", "every", "inject", "clock", "who"],
+      address: ["from", "to", "term", "note"],
+    };
+    const FLAGS = ["pinned", "excluded", "star"];
+    const clean = (key, value) => {
+      if (["keywords", "aliases"].includes(key))
+        return list(value)
+          .map((v) => str(v, 100))
+          .filter(Boolean)
+          .slice(0, 30);
+      if (key === "knownBy") return value === "all" || value == null ? null : names(value);
+      if (key === "every") return Math.max(1, Math.min(3650, Number(value) || 1));
+      return str(value, key === "summary" ? 3000 : 600);
+    };
+
+    app.get("/memory/:chatId/data", async (request) => {
+      const chat = await chatOf(request);
+      const { memory } = await readMemory(runtime, chat.id);
+      const { messages } = await loadMessages(runtime, chat);
+      const records = await runtime.persistence.listMessages(chat.id);
+      let embedding = { label: "", available: false };
+      try {
+        const host = await runtime.resolveEmbeddings();
+        embedding = {
+          label: host?.label ?? "",
+          available: Boolean(host?.embed),
+          indexed: memory.scenes.filter((s) => s.vec?.space === host?.spaceId).length,
+        };
+      } catch {}
+      return {
+        memory: strip(memory),
+        status: statusOf(memory, messages),
+        ooc: oocMessages(records),
+        lastRecall: lastRecall.get(chat.id) ?? null,
+        embedding,
+        today: new Date().toISOString().slice(2, 10),
+      };
+    });
+
+    app.patch("/memory/:chatId/item", async (request) => {
+      const chat = await chatOf(request);
+      const body = request.body && typeof request.body === "object" ? request.body : {};
+      const pool = POOLS[body.type];
+      if (!pool) throw httpError(400, "Unknown item type.");
+      const { next } = await mutate(chat, (memory) => {
+        const items = memory[pool];
+        const at = items.findIndex((x) => x.id === body.id);
+        if (at < 0) throw httpError(404, "Item not found.");
+        if (body.delete === true) {
+          items.splice(at, 1);
+          return;
+        }
+        const item = items[at];
+        const patch = body.patch && typeof body.patch === "object" ? body.patch : {};
+        for (const [key, value] of Object.entries(patch)) {
+          if (FLAGS.includes(key)) item[key] = value === true;
+          else if (EDITABLE[body.type].includes(key)) item[key] = clean(key, value);
+        }
+        if (Object.keys(patch).some((k) => EDITABLE[body.type].includes(k))) {
+          item.manual = true;
+          if (item.tr) delete item.tr;
+          if (body.type === "scene" && item.vec) delete item.vec;
+        }
+      });
+      return { memory: strip(next) };
+    });
+
+    app.post("/memory/:chatId/item", async (request) => {
+      const chat = await chatOf(request);
+      const body = request.body && typeof request.body === "object" ? request.body : {};
+      const pool = POOLS[body.type];
+      if (!pool || !["tracker", "address", "routine", "keepsake", "notebook", "thread"].includes(body.type))
+        throw httpError(400, "This kind cannot be added by hand.");
+      const data = body.data && typeof body.data === "object" ? body.data : {};
+      const { next } = await mutate(chat, (memory) => {
+        const item = { id: randomUUID(), manual: true };
+        for (const key of EDITABLE[body.type]) if (data[key] !== undefined) item[key] = clean(key, data[key]);
+        if (body.type === "thread")
+          Object.assign(item, {
+            kind: THREAD_KINDS.includes(item.kind) ? item.kind : "open",
+            status: "open",
+            keywords: item.keywords ?? [],
+            knownBy: item.knownBy ?? null,
+          });
+        if (body.type === "tracker")
+          Object.assign(item, {
+            type: ["count", "until", "cycle"].includes(item.type) ? item.type : "count",
+            inject: ["present", "always", "never"].includes(item.inject) ? item.inject : "present",
+            clock: item.clock === "real" ? "real" : "story",
+          });
+        memory[pool].push(item);
+      });
+      return { memory: strip(next) };
+    });
+
+    app.post("/memory/:chatId/conflict", async (request) => {
+      const chat = await chatOf(request);
+      const { id, answer } = request.body ?? {};
+      if (!["keepA", "keepB", "both", "dismiss"].includes(answer))
+        throw httpError(400, "answer must be keepA, keepB, both or dismiss.");
+      const { next } = await mutate(chat, (memory) => {
+        const conflict = memory.conflicts.find((c) => c.id === id);
+        if (!conflict) throw httpError(404, "Not found.");
+        const fact = memory.facts.find((f) => f.id === conflict.factId);
+        if (fact && answer === "keepA") fact.value = conflict.before;
+        if (fact && answer === "both") fact.value = `${conflict.before} / ${conflict.after}`;
+        conflict.status = answer;
+      });
+      return { memory: strip(next) };
+    });
+
+    // Two entries for one person: facts, notes and names move to the kept one; the other becomes an alias.
+    app.post("/memory/:chatId/merge", async (request) => {
+      const chat = await chatOf(request);
+      const { fromId, intoId } = request.body ?? {};
+      const { next } = await mutate(chat, (memory) => {
+        const from = memory.entities.find((e) => e.id === fromId);
+        const into = memory.entities.find((e) => e.id === intoId);
+        if (!from || !into || from === into) throw httpError(400, "Pick two different entries.");
+        into.aliases = [...new Set([...list(into.aliases), from.name, ...list(from.aliases)])].filter(
+          (n) => n !== into.name,
+        );
+        delete into.reviewSameName;
+        for (const f of memory.facts) if (f.entityId === from.id) f.entityId = into.id;
+        const rename = (v) => (v === from.name ? into.name : v);
+        for (const key of ["routines", "notebook"]) for (const r of memory[key]) r.who = rename(r.who);
+        for (const a of memory.addresses) Object.assign(a, { from: rename(a.from), to: rename(a.to) });
+        memory.entities = memory.entities.filter((e) => e !== from);
+      });
+      return { memory: strip(next) };
+    });
+
+    app.get("/memory/:chatId/search", async (request) => {
+      const chat = await chatOf(request);
+      const q = str(request.query?.q, 200).toLowerCase();
+      if (!q) return { results: [] };
+      const { memory } = await readMemory(runtime, chat.id);
+      const entityName = new Map(memory.entities.map((e) => [e.id, e.name]));
+      const results = [];
+      const look = (type, item, title, body) => {
+        const hay = `${title} ${body}`.toLowerCase();
+        if (hay.includes(q)) results.push({ type, id: item.id, title, body: body.slice(0, 300), by: "text" });
+      };
+      for (const s of memory.scenes)
+        look(
+          "scene",
+          s,
+          s.title || "장면",
+          `${s.summary} ${list(s.quotes)
+            .map((x) => x.text)
+            .join(" ")} ${list(s.keywords).join(" ")}`,
+        );
+      for (const c of memory.chapters) look("chapter", c, c.title || "챕터", c.summary);
+      for (const f of memory.facts) look("fact", f, `${entityName.get(f.entityId) ?? "?"} · ${f.attribute}`, f.value);
+      for (const t of memory.threads) look("thread", t, t.kind, t.text);
+      for (const n of memory.notebook) look("notebook", n, n.who, n.text);
+      if (memory.settings.embedding) {
+        try {
+          const near = await nearScenes(await runtime.resolveEmbeddings(), memory, q, { limit: 5, min: 0.35 });
+          for (const { id, score } of near) {
+            if (results.some((r) => r.id === id)) continue;
+            const s = memory.scenes.find((x) => x.id === id);
+            results.push({
+              type: "scene",
+              id,
+              title: s.title || "장면",
+              body: s.summary.slice(0, 300),
+              by: "meaning",
+              score: Math.round(score * 100) / 100,
+            });
+          }
+        } catch {}
+      }
+      return { results };
+    });
+
+    // What a message would bring back, without generating a reply.
+    app.post("/memory/:chatId/recall-test", async (request) => {
+      const chat = await chatOf(request);
+      const text = str(request.body?.text, 2000);
+      const { memory } = await readMemory(runtime, chat.id);
+      const { idToName } = await chatNames(runtime, chat);
+      const speakers = chat.characterIds.length === 1 ? [idToName.get(chat.characterIds[0])].filter(Boolean) : [];
+      let nearIds = [];
+      if (memory.settings.embedding && text) {
+        try {
+          nearIds = (await nearScenes(await runtime.resolveEmbeddings(), memory, text)).map((x) => x.id);
+        } catch {}
+      }
+      return buildRecall(memory, { recentText: text, speakers, nearIds, today: new Date().toISOString().slice(2, 10) });
+    });
+
+    app.post("/memory/:chatId/reindex", async (request) => {
+      const chat = await chatOf(request);
+      const { result } = await mutate(chat, async (memory) =>
+        indexScenes(await runtime.resolveEmbeddings(), memory, { all: true }),
+      );
+      return { indexed: result };
+    });
+
+    app.post("/memory/:chatId/translate", async (request) => {
+      const chat = await chatOf(request);
+      const debug = request.body?.debugMode === true || runtime.isDebugAgentsEnabled();
+      const { result } = await mutate(chat, async (memory) => {
+        const lang = memory.settings.memoryLanguage;
+        if (lang === "auto") return { translated: 0, calls: 0 };
+        const items = untranslated(memory, lang);
+        let translated = 0;
+        let calls = 0;
+        const model = await runtime.languageModels.resolve(
+          memory.settings.translateConnectionId || memory.connectionId || chat.connectionId || null,
+        );
+        for (let i = 0; i < items.length; i += 40) {
+          calls += 1;
+          const { parsed } = await completeJson(
+            runtime,
+            model,
+            [
+              { role: "system", content: TRANSLATE_PROMPT(lang) },
+              { role: "user", content: JSON.stringify({ items: items.slice(i, i + 40) }) },
+            ],
+            debug,
+            "translate",
+          );
+          translated += applyTranslation(memory, lang, parsed);
+        }
+        return { translated, calls };
+      });
+      return result;
+    });
+
+    // 장부 점검: one call that closes settled threads and merges duplicates among the open ones.
+    app.post("/memory/:chatId/tidy", async (request) => {
+      const chat = await chatOf(request);
+      const debug = request.body?.debugMode === true || runtime.isDebugAgentsEnabled();
+      const { memory } = await readMemory(runtime, chat.id);
+      const open = memory.threads.filter((t) => t.status === "open" && !t.manual);
+      if (!open.length) return { closed: 0, merged: 0, calls: 0 };
+      const recent = memory.scenes
+        .slice(-6)
+        .map((s) => `- ${s.title}: ${s.summary}`)
+        .join("\n");
+      const model = await runtime.languageModels.resolve(memory.connectionId || chat.connectionId || null);
+      const { parsed } = await completeJson(
+        runtime,
+        model,
+        [
+          {
+            role: "system",
+            content:
+              'You tidy the open threads of a roleplay memory. Given open threads and the latest scenes, reply with JSON only: {"close":[{"id":"","outcome":"kept|broken|cancelled|settled"}],"merge":[{"keep":"id","drop":["id"]}]}. Close only what the scenes clearly settled; merge only true duplicates.',
+          },
+          {
+            role: "user",
+            content: `Open threads:\n${JSON.stringify(open.map(({ id, kind, text }) => ({ id, kind, text })))}\n\nLatest scenes:\n${recent}`,
+          },
+        ],
+        debug,
+        "tidy",
+      );
+      const { next } = await mutate(chat, (m) => {
+        let closed = 0;
+        let merged = 0;
+        for (const row of list(parsed?.close)) {
+          const t = m.threads.find((x) => x.id === row?.id && x.status === "open");
+          if (t) {
+            Object.assign(t, {
+              status: "resolved",
+              outcome: ["kept", "broken", "cancelled", "settled"].includes(row?.outcome) ? row.outcome : "settled",
+            });
+            closed += 1;
+          }
+        }
+        for (const row of list(parsed?.merge)) {
+          const keep = m.threads.find((x) => x.id === row?.keep);
+          if (!keep) continue;
+          for (const id of list(row?.drop)) {
+            const drop = m.threads.find((x) => x.id === id && x !== keep);
+            if (!drop) continue;
+            keep.keywords = [...new Set([...list(keep.keywords), ...list(drop.keywords)])];
+            m.threads = m.threads.filter((x) => x !== drop);
+            merged += 1;
+          }
+        }
+        m.lastTidy = { at: new Date().toISOString(), closed, merged };
+      });
+      return { ...next.lastTidy, calls: 1 };
+    });
+
+    // 챕터만 다시 묶기: scenes stay; chapters are folded again from the start.
+    app.post("/memory/:chatId/rechapter", async (request) => {
+      const chat = await chatOf(request);
+      const debug = request.body?.debugMode === true || runtime.isDebugAgentsEnabled();
+      const { doc, memory } = await readMemory(runtime, chat.id);
+      let next = normalizeMemory({ ...structuredClone(memory), chapters: [] });
+      for (const s of next.scenes) delete s.chapterId;
+      const model = await runtime.languageModels.resolve(memory.connectionId || chat.connectionId || null);
+      let calls = 0;
+      for (let scenes = chapterCandidate(next); scenes && calls < 40; scenes = chapterCandidate(next)) {
+        calls += 1;
+        const { parsed } = await completeJson(
+          runtime,
+          model,
+          [
+            { role: "system", content: CHAPTER_PROMPT },
+            { role: "user", content: scenes.map((s) => `- ${s.title}: ${s.summary}`).join("\n") },
+          ],
+          debug,
+          "chapter",
+        );
+        next = applyChapterReply(next, scenes, parsed);
+      }
+      next.undo = { chunkId: null, before: { ...memory, undo: null } };
+      await saveMemory(runtime, chat.id, doc, next);
+      return { chapters: next.chapters.length, calls };
+    });
+
+    app.get("/memory/:chatId/export", async (request) => {
+      const chat = await chatOf(request);
+      const { memory } = await readMemory(runtime, chat.id);
+      return {
+        format: "mari-kit-memory",
+        version: 1,
+        chatId: chat.id,
+        exportedAt: new Date().toISOString(),
+        memory: { ...memory, undo: null },
+      };
+    });
+
+    // Restore a backup, or copy another room's memory into this one ("다른 방의 백업을 이 방에 적용").
+    app.post("/memory/:chatId/import", async (request) => {
+      const chat = await chatOf(request);
+      const body = request.body && typeof request.body === "object" ? request.body : {};
+      let source = null;
+      if (typeof body.fromChatId === "string") source = (await readMemory(runtime, str(body.fromChatId, 200))).memory;
+      else if (body.format === "mari-kit-memory" && body.memory) source = body.memory;
+      if (!source) throw httpError(400, "Send a Mari Kit memory export or fromChatId.");
+      const { doc, memory } = await readMemory(runtime, chat.id);
+      const next = normalizeMemory({
+        ...source,
+        chunks: body.fromChatId ? [] : list(source.chunks),
+        undo: { chunkId: null, before: { ...memory, undo: null } },
+      });
+      await saveMemory(runtime, chat.id, doc, next);
+      return { memory: strip(next) };
     });
   },
 };
