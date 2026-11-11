@@ -10,6 +10,7 @@
 // ──────────────────────────────────────────────
 
 import { memoryFeature } from "./memory.server.mjs";
+import { shellRoutes } from "./shell.server.mjs";
 import { translationFeature } from "./translation.server.mjs";
 import { ttsFeature } from "./tts.server.mjs";
 import { weatherFeature } from "./weather.server.mjs";
@@ -123,6 +124,7 @@ async function routes(app) {
   app.get("/settings", async () => (await readSettings()).settings);
   app.patch("/settings", async (request) => writeSettings(parseFeaturePatch(request.body)));
   for (const feature of features) feature.routes?.(app, { runtime: host(), httpError });
+  await shellRoutes(app);
 }
 
 /**

@@ -8,7 +8,7 @@
 //   node custom-modules/scripts/install.mjs [--data-dir <path>] [package-id]
 //   DATA_DIR defaults to $DATA_DIR, else packages/server/data (the Engine's own default).
 
-import { copyFile, mkdir, readFile, readdir, rename, rm, writeFile } from "node:fs/promises";
+import { cp, mkdir, readFile, rename, rm, writeFile } from "node:fs/promises";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { buildPackage } from "./build.mjs";
@@ -47,8 +47,9 @@ export async function installPackage({ dataDir, id }) {
   const staging = `${target}.install-${process.pid}`;
 
   await rm(staging, { recursive: true, force: true });
-  await mkdir(staging, { recursive: true });
-  for (const name of await readdir(outDir)) await copyFile(join(outDir, name), join(staging, name));
+  await mkdir(dirname(staging), { recursive: true });
+  // Copied with sub-folders: the shell keeps its own folder layout.
+  await cp(outDir, staging, { recursive: true });
   await rm(target, { recursive: true, force: true });
   await rename(staging, target);
 
