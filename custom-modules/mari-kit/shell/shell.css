@@ -1309,3 +1309,135 @@ label.grow {
   font-size: 14px;
   cursor: pointer;
 }
+/* calls */
+.callx {
+  position: absolute;
+  inset: 0;
+  z-index: 15;
+  display: flex;
+  flex-direction: column;
+  background: var(--paper);
+}
+.callx-top {
+  display: flex;
+  justify-content: space-between;
+  padding: 12px 8px 0;
+}
+.callx-mid {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  padding: 44px 32px 0;
+}
+.callx-mid b {
+  margin-top: 12px;
+  font-family: var(--font-read);
+  font-size: 24px;
+  font-weight: 600;
+}
+.callx-cap {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 8px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--ink);
+  font: inherit;
+  text-align: center;
+  cursor: pointer;
+}
+.callx-cap span {
+  font-family: var(--font-read);
+  font-size: 21px;
+  line-height: 1.55;
+  word-break: keep-all;
+}
+.callx-cap small {
+  font-size: 13px;
+  color: var(--ink-3);
+}
+.callx-btns {
+  display: flex;
+  justify-content: center;
+  gap: 56px;
+  padding: 0 0 52px;
+}
+.o {
+  width: 64px;
+  height: 64px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
+  cursor: pointer;
+}
+.o.soft {
+  background: var(--fill);
+  color: var(--ink);
+}
+.o.soft[aria-pressed="true"] {
+  background: var(--ink);
+  color: var(--paper);
+}
+.o.hard {
+  background: var(--ink);
+  color: var(--paper);
+}
+.o:disabled {
+  opacity: 0.45;
+}
+.callpill {
+  position: absolute;
+  left: 50%;
+  top: 74px;
+  z-index: 14;
+  transform: translateX(-50%);
+  height: 30px;
+  padding: 0 14px;
+  border: 0;
+  border-radius: 999px;
+  background: var(--ink);
+  color: var(--paper);
+  font: inherit;
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+  cursor: pointer;
+}
+.callev {
+  align-self: center;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  margin: 20px 0 4px;
+  padding: 6px 12px;
+  border: 0;
+  border-radius: 999px;
+  background: transparent;
+  color: var(--ink-3);
+  font: inherit;
+  font-size: 12px;
+  cursor: pointer;
+}
+.tline2 {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 44px;
+  gap: 8px;
+  align-items: start;
+  padding: 14px 0;
+  border-top: 1px solid var(--line);
+}
+.tline2:first-child {
+  border-top: 0;
+}
+.callx[hidden],
+.callpill[hidden] {
+  display: none;
+}

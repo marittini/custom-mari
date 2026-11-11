@@ -28,6 +28,7 @@ const SCREENS = {
   schedule: () => import("./screens/schedule.js").then((m) => m.scheduleScreen),
   voice: () => import("./screens/voice.js").then((m) => m.voiceScreen),
   radio: () => import("./screens/radio.js").then((m) => m.radioScreen),
+  "call-settings": () => import("./screens/call-settings.js").then((m) => m.callSettingsScreen),
 };
 
 export function go(path) {
