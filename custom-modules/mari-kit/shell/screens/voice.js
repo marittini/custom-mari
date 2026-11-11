@@ -104,33 +104,53 @@ export function voiceScreen({ mount, args, go }) {
   const voiceName = (id) => voices.find((x) => x.id === id)?.name || id;
 
   // ── 사람 ─────────────────────────────
+  let query = "";
+  function personRow(p) {
+    const vid = voiceOf(p.id);
+    const sub = [vid ? voiceName(vid) : "기본 목소리", p.pron].filter(Boolean).join(" · ");
+    return h(
+      "div",
+      { class: "row", style: { gridTemplateColumns: "40px minmax(0,1fr) 44px" } },
+      avatar(p.avatar, firstLetter(p.name), 40),
+      h(
+        "button",
+        { type: "button", class: "plain", onClick: () => editPerson(p) },
+        h("span", { style: { fontSize: "15px" } }, p.name),
+        h("span", { style: { fontSize: "12px", color: "var(--ink-3)" } }, sub),
+      ),
+      h(
+        "button",
+        { type: "button", class: "ib", "aria-label": `${p.name} 들어보기`, onClick: () => listen(p) },
+        icon(I.play, 14),
+      ),
+    );
+  }
   function peopleView() {
     if (!people.length) return [h("div", { class: "empty" }, "캐릭터나 페르소나가 아직 없어요")];
+    const listEl = h("div", { style: { borderTop: "1px solid var(--line)" } });
+    const fill = () => {
+      const q = query.trim().toLowerCase();
+      const list = q ? people.filter((p) => `${p.name} ${p.pron}`.toLowerCase().includes(q)) : people;
+      setChildren(listEl, list.length ? list.map(personRow) : h("div", { class: "empty" }, "찾는 사람이 없어요"));
+    };
+    fill();
     return [
-      h(
-        "div",
-        { style: { borderTop: "1px solid var(--line)" } },
-        people.map((p) => {
-          const vid = voiceOf(p.id);
-          const sub = [vid ? voiceName(vid) : "기본 목소리", p.pron].filter(Boolean).join(" · ");
-          return h(
+      // A long cast gets a search box; only the list redraws, so typing keeps focus.
+      people.length > 8
+        ? h(
             "div",
-            { class: "row", style: { gridTemplateColumns: "40px minmax(0,1fr) 44px" } },
-            avatar(p.avatar, firstLetter(p.name), 40),
-            h(
-              "button",
-              { type: "button", class: "plain", onClick: () => editPerson(p) },
-              h("span", { style: { fontSize: "15px" } }, p.name),
-              h("span", { style: { fontSize: "12px", color: "var(--ink-3)" } }, sub),
-            ),
-            h(
-              "button",
-              { type: "button", class: "ib", "aria-label": `${p.name} 들어보기`, onClick: () => listen(p) },
-              icon(I.play, 14),
-            ),
-          );
-        }),
-      ),
+            { style: { padding: "0 20px 12px" } },
+            h("input", {
+              class: "inp",
+              type: "search",
+              placeholder: "이름으로 찾기",
+              "aria-label": "이름으로 찾기",
+              value: query,
+              onInput: (e) => ((query = e.target.value), fill()),
+            }),
+          )
+        : null,
+      listEl,
       config
         ? null
         : h("p", { class: "hint", style: { padding: "16px 20px" } }, "엔진 TTS가 꺼져 있어요 · ⋯ › 엔진 TTS 연결"),
