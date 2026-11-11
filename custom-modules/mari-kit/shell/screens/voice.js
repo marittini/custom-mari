@@ -3,7 +3,7 @@
 //   #/voice/settings   감정 표현 · 자동 재생 · 쓰는 곳 · 대사 옆 버튼 · 엔진 TTS 연결
 //   #/voice/tune       ElevenLabs 다듬기 (account voice settings, key kept on the Mari Kit server)
 
-import { h, icon, I, setChildren } from "../lib/h.js";
+import { h, icon, I, setChildren, dots } from "../lib/h.js";
 import { api, characterCard } from "../lib/api.js";
 import { data, firstLetter } from "../lib/data.js";
 import { pageHead, toast, errorBox, sheet, popMenu, hbox, avatar } from "../lib/ui.js";
@@ -52,7 +52,7 @@ export function voiceScreen({ mount, args, go }) {
               { label: "엔진 TTS 연결", sub: "›", onClick: () => go("settings/voice") },
             ]),
         },
-        icon(I.dots),
+        dots(),
       ),
     });
   }

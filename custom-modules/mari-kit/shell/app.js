@@ -27,6 +27,7 @@ const SCREENS = {
   translation: () => import("./screens/translation.js").then((m) => m.translationScreen),
   schedule: () => import("./screens/schedule.js").then((m) => m.scheduleScreen),
   voice: () => import("./screens/voice.js").then((m) => m.voiceScreen),
+  radio: () => import("./screens/radio.js").then((m) => m.radioScreen),
 };
 
 export function go(path) {

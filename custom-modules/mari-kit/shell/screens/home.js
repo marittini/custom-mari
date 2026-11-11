@@ -11,6 +11,7 @@ import {
 } from "../lib/data.js";
 import { pageHead, avatar, errorBox, lazyBg } from "../lib/ui.js";
 import { modelStatus } from "../lib/status.js";
+import { api } from "../lib/api.js";
 
 export function homeScreen({ mount, go }) {
   let alive = true;
@@ -23,7 +24,12 @@ export function homeScreen({ mount, go }) {
 
   (async () => {
     try {
-      const [chats, chars, conns] = await Promise.all([data.chats(true), data.characters(), data.connections()]);
+      const [chats, chars, conns, radio] = await Promise.all([
+        data.chats(true),
+        data.characters(),
+        data.connections(),
+        api.get("/mari-kit/radio").catch(() => null),
+      ]);
       const index = characterIndex(chars);
       const sorted = [...chats].sort(byLastActivity);
       const rp = sorted.find((c) => c.mode === "roleplay");
@@ -201,6 +207,37 @@ export function homeScreen({ mount, go }) {
                 h("span", { class: "hint", style: { fontSize: "11px" } }, shortTime(c.lastMessageAt || c.updatedAt)),
               );
             }),
+          ),
+        );
+      }
+      // 라디오: the newest episode, marked when it finished while the reader was away.
+      if (radio) {
+        const ep = radio.episodes?.[0];
+        const fresh = ep && ep.status === "done" && ep.seen === false;
+        const line = !ep
+          ? "DJ에게 사연 보내기"
+          : ep.status === "making"
+            ? `${ep.no}회 · 방송 만드는 중…`
+            : ep.status === "failed"
+              ? `${ep.no}회 · 만들지 못했어요`
+              : `${ep.no}회 · ${ep.title}`;
+        parts.splice(
+          rp ? 1 : 0,
+          0,
+          h(
+            "a",
+            {
+              class: "gcard grow",
+              href: ep && ep.status === "done" ? `#/radio/air/${encodeURIComponent(ep.id)}` : "#/radio",
+              style: { marginTop: "12px", color: "var(--ink)", textDecoration: "none" },
+            },
+            h(
+              "span",
+              { style: { display: "flex", flexDirection: "column", gap: "2px", minWidth: "0" } },
+              h("span", { class: "label" }, fresh ? "라디오 · 새 방송" : "라디오"),
+              h("span", { style: { whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" } }, line),
+            ),
+            h("span", { style: { display: "flex", color: "var(--ink-3)" } }, icon(I.radio, 18)),
           ),
         );
       }

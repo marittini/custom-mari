@@ -16,6 +16,7 @@ import { translationFeature } from "./translation.server.mjs";
 import { ttsFeature } from "./tts.server.mjs";
 import { weatherFeature } from "./weather.server.mjs";
 import { scheduleFeature } from "./schedule.server.mjs";
+import { radioFeature } from "./radio.server.mjs";
 
 export const PACKAGE_ID = "mari-kit";
 export const FEATURE_IDS = Object.freeze(["tts", "translation", "weather", "memory", "schedule"]);
@@ -24,7 +25,7 @@ const SETTINGS_DOC_ID = `${PACKAGE_ID}:settings`;
 const SETTINGS_KIND = "settings";
 
 /** Feature modules. Each may add routes and contribute prompt text for a turn. */
-const features = [ttsFeature, translationFeature, weatherFeature, memoryFeature, scheduleFeature];
+const features = [ttsFeature, translationFeature, weatherFeature, memoryFeature, scheduleFeature, radioFeature];
 
 let runtime = null;
 

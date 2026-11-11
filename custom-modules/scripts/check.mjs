@@ -81,6 +81,26 @@ if (id === "mari-kit") {
   assert.equal(sched.nowState(sp, new Date("2026-11-11T11:00:00Z")).activity, "집", "an expired override is ignored");
   assert.equal(sched.scheduleContext({ ...sp, config: { ...sp.config, enabled: false } }, at), "");
 
+  // ── Radio ──
+  const radio = await import(pathToFileURL(join(outDir, "radio.server.mjs")).href);
+  assert.match(radio.anonymousName(0.27), /^010-\*\*\*\*-27$/);
+  assert.equal(radio.normalizeRadioSettings({ zone: "x", rooms: ["a", 3] }).zone, "Asia/Seoul");
+  assert.deepEqual(radio.normalizeRadioSettings({ rooms: ["a", 3] }).rooms, ["a"]);
+  assert.throws(() => radio.parseEpisode({ segments: [] }), /no script/);
+  assert.equal(radio.parseEpisode({ title: "", segments: [{ type: "x", text: "hi" }] }).segments[0].type, "dj");
+  assert.match(
+    radio.radioPrompt({
+      dj: { name: "DJ", brief: "" },
+      guide: "g",
+      time: radio.airTime("Asia/Seoul"),
+      letter: "",
+      sender: "",
+      poster: null,
+      roomNotes: "",
+    }),
+    /story board/,
+  );
+
   // ── TTS ──
   const tts = await import(pathToFileURL(join(outDir, "tts.server.mjs")).href);
   const client = await import(pathToFileURL(join(outDir, "client.js")).href);

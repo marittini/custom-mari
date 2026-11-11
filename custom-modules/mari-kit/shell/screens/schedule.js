@@ -4,7 +4,7 @@
 //   #/schedule/<key>/make/<chatId?>  AI로 만들기 · 실제 생활
 // <key> is the persona id ("default" when the chat has none); <chatId> lets "캐릭터 일정과 맞춰서" read the room.
 
-import { h, icon, I, setChildren } from "../lib/h.js";
+import { h, icon, I, setChildren, dots } from "../lib/h.js";
 import { api } from "../lib/api.js";
 import { data } from "../lib/data.js";
 import { pageHead, toast, errorBox, sheet, popMenu, hbox } from "../lib/ui.js";
@@ -55,7 +55,7 @@ export function scheduleScreen({ mount, args, go }) {
     return pageHead("내 일정", {
       label: state ? `오늘 · ${DAY_KO[DAYS.indexOf(state.today)]}요일` : " ",
       back,
-      actions: h("button", { type: "button", class: "ib", "aria-label": "일정 메뉴", onClick: openMenu }, icon(I.dots)),
+      actions: h("button", { type: "button", class: "ib", "aria-label": "일정 메뉴", onClick: openMenu }, dots()),
     });
   };
   mount.append(h("div", { class: "phead-host" }), body);
