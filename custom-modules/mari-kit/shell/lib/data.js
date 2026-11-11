@@ -1,0 +1,165 @@
+// Engine data the screens share, fetched once per load and refreshed on demand.
+
+import { api, characterCard, parseJson } from "./api.js";
+
+let chatsP = null;
+let charsP = null;
+const cards = new Map();
+let connsP = null;
+let personasP = null;
+let uiP = null;
+
+export const data = {
+  chats: (fresh) => (fresh || !chatsP ? (chatsP = api.get("/chats")) : chatsP),
+  /** Names, avatars and readings of every character: Mari Kit's slim list plus the Engine's avatar summaries. */
+  characters: (fresh) => {
+    if (fresh || !charsP) {
+      cards.clear();
+      charsP = api.get("/mari-kit/shell/characters").then(async (rows) => {
+        const list = Array.isArray(rows) ? rows : [];
+        const sums = list.length
+          ? await api.post("/characters/summaries", { ids: list.map((c) => c.id) }).catch(() => [])
+          : [];
+        const avatars = new Map((Array.isArray(sums) ? sums : []).map((s) => [s.id, s.avatarUrl || null]));
+        return list.map((c) => ({ ...c, avatarPath: avatars.get(c.id) || null }));
+      });
+      charsP.catch(() => (charsP = null));
+    }
+    return charsP;
+  },
+  /** One character's full card, read when a screen needs its text (profile, greetings, a card edit). */
+  character: (id) => {
+    if (!cards.has(id)) {
+      const p = api.get(`/characters/${encodeURIComponent(id)}`);
+      p.catch(() => cards.delete(id));
+      cards.set(id, p);
+    }
+    return cards.get(id);
+  },
+  connections: () => connsP || (connsP = api.get("/connections").catch(() => [])),
+  personas: () => personasP || (personasP = api.get("/characters/personas/list").catch(() => [])),
+  /** The Engine's own synced UI settings (quick replies live here). */
+  engineUi: () =>
+    uiP ||
+    (uiP = api
+      .get("/app-settings/ui")
+      .then((res) => {
+        // The Engine stores its synced UI settings as one JSON string.
+        const value = typeof res?.value === "string" ? JSON.parse(res.value) : res?.value;
+        return value && typeof value === "object" ? value : localUi();
+      })
+      .catch(() => localUi())),
+  messages: (chatId, limit) =>
+    api.get(`/chats/${encodeURIComponent(chatId)}/messages${limit ? `?limit=${limit}` : ""}`),
+  chat: (chatId) => api.get(`/chats/${encodeURIComponent(chatId)}`),
+};
+
+/**
+ * The latest messages of a chat, read a page at a time: a long story is thousands of messages, and a phone
+ * should not download all of them to show the last screen. `reload()` re-reads as many as are on screen, so
+ * edits, deletions and new replies show without dropping the older pages the reader opened.
+ */
+export function messageWindow(chatId, page = 40) {
+  let list = [];
+  let more = false;
+  const base = `/chats/${encodeURIComponent(chatId)}/messages`;
+  return {
+    get list() {
+      return list;
+    },
+    get more() {
+      return more;
+    },
+    set list(next) {
+      list = next;
+    },
+    async reload() {
+      // A reply adds messages at the end; ask a few past what is on screen so the oldest one stays.
+      const firstId = list[0]?.id;
+      const limit = Math.max(page, list.length + 4);
+      const rows = await api.get(`${base}?limit=${limit}`);
+      list = Array.isArray(rows) ? rows : [];
+      more = list.length >= limit;
+      // More arrived than that (another device wrote meanwhile): read back until the reader's first message.
+      for (let i = 0; firstId && more && i < 20 && !list.some((m) => m.id === firstId); i += 1) await this.older();
+      return list;
+    },
+    /** Adds the page before the first message on screen; returns how many came. */
+    async older() {
+      const first = list[0];
+      if (!first || !more) return 0;
+      const cursor = `${first.createdAt}|${encodeURIComponent(first.id)}`;
+      const rows = await api.get(`${base}?limit=${page}&before=${encodeURIComponent(cursor)}`);
+      const got = Array.isArray(rows) ? rows : [];
+      more = got.length >= page;
+      list = [...got, ...list];
+      return got.length;
+    },
+  };
+}
+
+function localUi() {
+  try {
+    const raw = JSON.parse(localStorage.getItem("marinara-engine-ui") || "{}");
+    return raw.state || raw || {};
+  } catch {
+    return {};
+  }
+}
+
+export function chatMeta(chat) {
+  return parseJson(chat?.metadata, {}) || {};
+}
+
+export function byLastActivity(a, b) {
+  return String(b.lastMessageAt || b.updatedAt || "").localeCompare(String(a.lastMessageAt || a.updatedAt || ""));
+}
+
+export function characterIndex(rows) {
+  const map = new Map();
+  for (const row of rows || []) {
+    // Slim rows (the shell's list) carry no card; full Engine rows still work.
+    const card = row.data ? characterCard(row) : null;
+    const name = row.name || card?.name || "";
+    map.set(row.id, { id: row.id, name: name || "이름 없음", card, avatar: row.avatarPath || null, row });
+  }
+  return map;
+}
+
+export function messageText(message) {
+  const extra = parseJson(message?.extra, {}) || {};
+  return typeof extra.displayText === "string" && extra.displayText
+    ? extra.displayText
+    : String(message?.content ?? "");
+}
+
+export function firstLetter(name) {
+  const s = String(name || "").trim();
+  return s ? Array.from(s)[0] : "·";
+}
+
+const pad = (n) => String(n).padStart(2, "0");
+
+/** 14:20 today, 어제, else MM.DD. */
+export function shortTime(iso) {
+  if (!iso) return "";
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return "";
+  const now = new Date();
+  const day = (x) => new Date(x.getFullYear(), x.getMonth(), x.getDate()).getTime();
+  const diff = (day(now) - day(d)) / 86400000;
+  if (diff === 0) return `${pad(d.getHours())}:${pad(d.getMinutes())}`;
+  if (diff === 1) return "어제";
+  return `${pad(d.getMonth() + 1)}.${pad(d.getDate())}`;
+}
+
+export function todayLabel() {
+  const d = new Date();
+  return `${d.getMonth() + 1}월 ${d.getDate()}일 ${"일월화수목금토"[d.getDay()]}요일`;
+}
+
+export function chatTitle(chat, chars) {
+  if (chat?.name && chat.name.trim()) return chat.name.trim();
+  const names = (chat?.characterIds || []).map((id) => chars.get(id)?.name).filter(Boolean);
+  return names.join(", ") || "제목 없는 채팅";
+}

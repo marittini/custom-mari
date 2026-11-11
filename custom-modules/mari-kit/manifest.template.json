@@ -1,0 +1,17 @@
+{
+  "schemaVersion": 2,
+  "capabilityApi": { "major": 1, "minor": 391 },
+  "id": "mari-kit",
+  "name": "Mari Kit",
+  "version": "0.5.0",
+  "description": "개인 기능 모음(TTS·번역·날씨·기억)을 엔진 소스 수정 없이 붙이는 패키지입니다.",
+  "engine": { "min": "2.5.2", "maxExclusive": "3.0.0" },
+  "kind": ["agent"],
+  "entrypoints": { "agents": "agents.json", "server": "server.mjs", "client": "client.js" },
+  "contributions": {
+    "slots": ["chat-settings", "conversation-surface", "home-browser-tab"],
+    "homeBrowserTab": { "label": "Mari Kit", "ariaLabel": "Mari Kit settings" }
+  },
+  "permissions": ["agent-runtime", "chat-read", "chat-write", "network", "prompt-context", "routes", "storage", "ui"],
+  "restartRequired": true
+}
