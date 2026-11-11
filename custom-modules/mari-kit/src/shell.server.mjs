@@ -11,7 +11,8 @@
 // ──────────────────────────────────────────────
 
 import { createHash } from "node:crypto";
-import { readdir, readFile } from "node:fs/promises";
+import { readdir, readFile, realpath, stat } from "node:fs/promises";
+import { join, sep } from "node:path";
 import { brotliCompressSync, constants, gzipSync } from "node:zlib";
 
 const SHELL_ROOT = new URL("./shell/", import.meta.url);
@@ -123,7 +124,79 @@ export function slimCharacter(record) {
   };
 }
 
+// ── avatar previews ──────────────────────────
+// The Engine serves character avatars only at full size (often a 1–3 MB card PNG); its own WebP thumbnailer
+// covers backgrounds and the gallery, not avatars. The shell shows avatars at 32–76 px, so this route reads the
+// avatar file from the Engine's data folder and answers a small WebP made with the Engine's `sharp`.
+// Without sharp (some Termux builds) it redirects to the original, which is what the shell loaded before.
+export const AVATAR_WIDTHS = [96, 240];
+const AVATAR_CACHE_BYTES = 16 * 1024 * 1024;
+const avatarCache = new Map();
+let avatarBytes = 0;
+let sharpP = null;
+
+export function avatarFile(raw) {
+  const name = String(raw ?? "");
+  return /^[A-Za-z0-9][A-Za-z0-9._-]{0,199}$/.test(name) && !name.includes("..") ? name : null;
+}
+
+function loadSharp() {
+  sharpP ??= import("sharp").then((m) => m.default ?? m).catch(() => null);
+  return sharpP;
+}
+
+// The Engine hands packages its data folder as an absolute DATA_DIR; avatars live in its avatars/ folder.
+async function avatarPath(file) {
+  const root = process.env.DATA_DIR;
+  if (!root) return null;
+  const dir = await realpath(join(root, "avatars")).catch(() => null);
+  if (!dir) return null;
+  const path = await realpath(join(dir, file)).catch(() => null);
+  return path && path.startsWith(dir + sep) ? path : null;
+}
+
+async function avatarPreview(file, width) {
+  const path = await avatarPath(file);
+  if (!path) return { status: 404 };
+  const info = await stat(path);
+  const key = `${width}/${file}/${info.mtimeMs}`;
+  const hit = avatarCache.get(key);
+  if (hit) return hit;
+  const sharp = await loadSharp();
+  if (!sharp) return null;
+  try {
+    const data = await sharp(path, { animated: false })
+      .rotate()
+      .resize({ width, withoutEnlargement: true })
+      .webp({ quality: 78 })
+      .toBuffer();
+    const entry = { data };
+    avatarCache.set(key, entry);
+    avatarBytes += data.length;
+    for (const [k, old] of avatarCache) {
+      if (avatarBytes <= AVATAR_CACHE_BYTES || k === key) break;
+      avatarCache.delete(k);
+      avatarBytes -= old.data.length;
+    }
+    return entry;
+  } catch {
+    return null;
+  }
+}
+
 export async function shellRoutes(app, { runtime } = {}) {
+  app.get("/shell/avatar", async (request, reply) => {
+    const file = avatarFile(request.query?.f);
+    if (!file) return reply.status(400).send({ error: "Invalid avatar" });
+    const width = AVATAR_WIDTHS.includes(Number(request.query?.w)) ? Number(request.query.w) : AVATAR_WIDTHS[0];
+    const preview = await avatarPreview(file, width);
+    if (preview?.status) return reply.status(preview.status).send({ error: "Not found" });
+    if (!preview) return reply.redirect(`/api/avatars/file/${encodeURIComponent(file)}`);
+    // Avatar file names are never reused for other pictures (the Engine caches the originals for good too).
+    reply.header("Cache-Control", "public, max-age=31536000, immutable");
+    reply.header("Content-Type", "image/webp");
+    return reply.send(preview.data);
+  });
   app.get("/shell/characters", async () =>
     (await runtime.resources.listCharacters()).filter((c) => !BUILT_IN.has(c.id)).map(slimCharacter),
   );

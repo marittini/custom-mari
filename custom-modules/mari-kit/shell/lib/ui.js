@@ -39,8 +39,16 @@ export function iconButton(path, label, onClick, extra = {}) {
 // Pictures are set only when their box comes near the screen: a library of cards would otherwise download
 // every avatar at full size on the first visit, most of them never scrolled to.
 let seen = null;
-export function lazyBg(el, src) {
+
+/** A small WebP of an Engine avatar (Mari Kit makes it); other pictures stay as they are. */
+export function thumb(src, width = 96) {
+  const m = /^\/api\/avatars\/file\/([^/?#]+)$/.exec(String(src || ""));
+  return m ? `/api/mari-kit/shell/avatar?f=${m[1]}&w=${width}` : src;
+}
+
+export function lazyBg(el, src, width = 240) {
   if (!src) return el;
+  src = thumb(src, width);
   if (typeof IntersectionObserver !== "function") {
     el.style.backgroundImage = `url("${src}")`;
     return el;
@@ -71,6 +79,7 @@ export function avatar(src, letter, size, round = true) {
       src ? "" : letter,
     ),
     src,
+    size <= 40 ? 96 : 240,
   );
 }
 

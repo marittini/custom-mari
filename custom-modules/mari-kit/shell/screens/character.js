@@ -1,7 +1,7 @@
 import { h, icon, I, setChildren } from "../lib/h.js";
 import { api, characterCard } from "../lib/api.js";
 import { data, characterIndex, firstLetter, chatTitle, byLastActivity } from "../lib/data.js";
-import { topBar, errorBox, toast } from "../lib/ui.js";
+import { topBar, errorBox, toast, thumb } from "../lib/ui.js";
 import { openNewChat } from "../lib/newchat.js";
 
 const FIELDS = [
@@ -90,7 +90,7 @@ export function characterScreen({ mount, args, go }) {
                 width: "72px",
                 height: "96px",
                 fontSize: "20px",
-                ...(c.avatar ? { backgroundImage: `url("${c.avatar}")` } : {}),
+                ...(c.avatar ? { backgroundImage: `url("${thumb(c.avatar, 240)}")` } : {}),
               },
             },
             c.avatar ? "" : firstLetter(c.name),
