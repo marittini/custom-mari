@@ -45,16 +45,41 @@ if (id === "mari-kit") {
     translation: false,
     weather: false,
     memory: false,
+    schedule: false,
   });
   assert.deepEqual(
     server.normalizeSettings({ features: { tts: true, memory: "yes", bogus: true } }).features,
-    { tts: true, translation: false, weather: false, memory: false },
+    { tts: true, translation: false, weather: false, memory: false, schedule: false },
     "unknown keys and non-boolean values are dropped",
   );
   assert.equal(server.chatUsesMariKit({ enableAgents: true, activeAgentIds: ["mari-kit"] }), true);
   assert.equal(server.chatUsesMariKit({ enableAgents: false, activeAgentIds: ["mari-kit"] }), false);
   assert.equal(server.chatUsesMariKit({ enableAgents: true, activeAgentIds: ["other"] }), false);
   assert.equal(server.chatUsesMariKit(null), false);
+
+  // ── Schedule ──
+  const sched = await import(pathToFileURL(join(outDir, "schedule.server.mjs")).href);
+  assert.deepEqual(
+    sched
+      .repairDay([
+        { time: "22:00-07:00", activity: "잠", status: "offline" },
+        { time: "06:00-09:00", activity: "출근", status: "idle" },
+      ])
+      .map((b) => b.time),
+    ["00:00-07:00", "07:00-09:00", "09:00-22:00", "22:00-24:00"],
+    "repair fills gaps and trims overlaps",
+  );
+  assert.throws(() => sched.validateDay([{ time: "09:00-10:00", activity: "a", status: "busy" }], "Monday"));
+  const at = new Date("2026-11-11T09:30:00Z"); // Wednesday 18:30 in Seoul
+  const sp = sched.normalizeProfile({
+    config: { enabled: true, zone: "Asia/Seoul" },
+    days: { Wednesday: [{ time: "00:00-24:00", activity: "집", status: "online" }] },
+    override: { status: "dnd", activity: "과제", expiresAt: "2026-11-11T10:30:00Z" },
+  });
+  assert.equal(sched.nowState(sp, at).activity, "과제", "an unexpired override wins");
+  assert.match(sched.scheduleContext(sp, at, "마리"), /Right now 마리 is: 과제 \(do not disturb, until 19:30\)/);
+  assert.equal(sched.nowState(sp, new Date("2026-11-11T11:00:00Z")).activity, "집", "an expired override is ignored");
+  assert.equal(sched.scheduleContext({ ...sp, config: { ...sp.config, enabled: false } }, at), "");
 
   // ── TTS ──
   const tts = await import(pathToFileURL(join(outDir, "tts.server.mjs")).href);

@@ -27,6 +27,7 @@ export function convoScreen({ mount, args, go }) {
   let qrOpen = false;
   let ttsConfig = null;
   let abort = null;
+  let me = null; // the persona's schedule state (Mari Kit 내 일정), when there is one
 
   const who = h("span", {
     style: { display: "flex", flexDirection: "column", alignItems: "center", gap: "4px", minWidth: "0" },
@@ -151,12 +152,49 @@ export function convoScreen({ mount, args, go }) {
         );
         who.style.cursor = lead ? "pointer" : "";
         if (lead) who.onclick = () => go(`character/${encodeURIComponent(lead.id)}`);
+        loadMe();
       }
       draw();
       if (first) requestAnimationFrame(() => (scroller.scrollTop = scroller.scrollHeight));
     } catch (error) {
       if (alive) setChildren(list, errorBox(error));
     }
+  }
+
+  // "나 · 퇴근길 · 오후 7:00까지" under the name; tapping it opens 내 일정.
+  const SCHED_LABEL = { online: "온라인", idle: "자리 비움", dnd: "방해 금지", offline: "오프라인" };
+  async function loadMe() {
+    try {
+      me = await api.get(`/mari-kit/schedule/chat/${encodeURIComponent(chatId)}`);
+    } catch {
+      me = null;
+    }
+    if (!alive || !me) return;
+    who.querySelector(".me-line")?.remove();
+    const n = me.now;
+    const line = h(
+      "button",
+      {
+        type: "button",
+        class: "me-line",
+        onClick: (e) => {
+          e.stopPropagation();
+          go(`schedule/${encodeURIComponent(me.key)}/now/${encodeURIComponent(chatId)}`);
+        },
+      },
+      n ? h("span", { class: `sdot ${n.status}` }) : null,
+      n ? `나 · ${n.activity}` : "내 일정 만들기",
+    );
+    who.append(line);
+  }
+  /** The Engine's own presence fields, so its autonomy sees the user's planned status too. */
+  function presence() {
+    const n = me?.profile?.config?.enabled ? me.now : null;
+    if (!n) return {};
+    return {
+      userStatus: n.status === "online" ? "active" : n.status === "dnd" ? "dnd" : "idle",
+      userActivity: `${SCHED_LABEL[n.status]}; 설정상 현재 일정: ${n.activity}`.slice(0, 120),
+    };
   }
 
   function toolsFor(m) {
@@ -417,7 +455,7 @@ export function convoScreen({ mount, args, go }) {
     try {
       await streamGenerate({
         chatId,
-        body,
+        body: { ...presence(), ...body },
         signal: abort.signal,
         onToken: (text) => {
           if (!alive) return;

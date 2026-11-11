@@ -25,6 +25,7 @@ const SCREENS = {
   memory: () => import("./screens/memory.js").then((m) => m.memoryScreen),
   "chat-settings": () => import("./screens/chat-settings.js").then((m) => m.chatSettingsScreen),
   translation: () => import("./screens/translation.js").then((m) => m.translationScreen),
+  schedule: () => import("./screens/schedule.js").then((m) => m.scheduleScreen),
 };
 
 export function go(path) {
