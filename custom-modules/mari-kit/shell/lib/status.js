@@ -1,6 +1,6 @@
 // Model status from Radiosonde (rs.igx.kr), asked by the browser for the models of my own connections only.
 // Connection model names vary ("anthropic/claude-opus-4-6", "claude-opus-4.6"), so a few spellings are tried.
-// When the service cannot be reached the status simply stays hidden.
+// When the service cannot be reached, or does not track a model, its status simply stays hidden.
 
 const LEVEL = { OPERATIONAL: "ok", DEGRADED: "warn", IMPACTED: "warn", CRITICAL: "bad", DOWN: "bad", OUTAGE: "bad" };
 const LABEL = { ok: "정상", warn: "느림", bad: "장애" };
@@ -18,9 +18,28 @@ export function candidates(model) {
   return [...new Set([base, dotted, undated])];
 }
 
+// The bulk endpoint rejects the whole request when any name is unknown, so only names from its own list are asked.
+let known = null;
+async function knownModels() {
+  if (!known) {
+    known = fetch("https://rs.igx.kr/api/v2/models", { credentials: "omit" })
+      .then((res) => (res.ok ? res.json() : null))
+      .then((body) => new Set(Array.isArray(body?.data) ? body.data.map(String) : []))
+      .catch(() => {
+        known = null;
+        return new Set();
+      });
+  }
+  return known;
+}
+
 export async function modelStatus(models) {
+  const list = await knownModels();
   const wanted = new Map();
-  for (const m of models) for (const id of candidates(m)) wanted.set(id, m);
+  for (const m of models) {
+    const id = candidates(m).find((c) => list.has(c));
+    if (id) wanted.set(id, m);
+  }
   if (!wanted.size) return null;
   try {
     const res = await fetch(

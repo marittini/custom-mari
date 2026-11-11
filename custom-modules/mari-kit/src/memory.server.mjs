@@ -913,7 +913,14 @@ function statusOf(memory, messages) {
 
 async function completeJson(runtime, model, messages, debug, label) {
   runtime.logger.debugOverride(debug, "[mari-kit] memory %s prompt=%s", label, JSON.stringify(messages));
-  const result = await model.chatComplete(messages, { temperature: 0.2, maxTokens: 4000, debugMode: debug });
+  let result;
+  try {
+    result = await model.chatComplete(messages, { temperature: 0.2, maxTokens: 4000, debugMode: debug });
+  } catch (error) {
+    // A bare 500 tells the reader nothing; say which call failed and why. Nothing was saved yet.
+    runtime.logger.warn?.(error, "[mari-kit] memory %s call failed", label);
+    throw httpError(502, `The memory model call failed (${label}): ${error?.message ?? error}. Nothing was saved.`);
+  }
   const raw = typeof result?.content === "string" ? result.content : "";
   runtime.logger.debugOverride(debug, "[mari-kit] memory %s reply=%s", label, raw);
   let parsed = null;
@@ -1518,6 +1525,8 @@ export const memoryFeature = {
       if (typeof body.fromChatId === "string") source = (await readMemory(runtime, str(body.fromChatId, 200))).memory;
       else if (body.format === "mari-kit-memory" && body.memory) source = body.memory;
       if (!source) throw httpError(400, "Send a Mari Kit memory export or fromChatId.");
+      if (![source.scenes, source.facts, source.threads].some((x) => list(x).length))
+        throw httpError(400, "That memory is empty; nothing was changed.");
       const { doc, memory } = await readMemory(runtime, chat.id);
       const next = normalizeMemory({
         ...source,

@@ -1415,7 +1415,20 @@ export function memoryScreen({ mount, args, go }) {
       },
     });
     const fromRoom = async () => {
-      const chats = (await data.chats()).filter((c) => c.id !== chatId && c.mode === "roleplay");
+      // Only rooms that have something to copy: picking an empty one would just wipe this room.
+      const rooms = (await data.chats()).filter((c) => c.id !== chatId && c.mode === "roleplay");
+      const counts = await Promise.all(
+        rooms.map((c) =>
+          api
+            .get(`/mari-kit/memory/${encodeURIComponent(c.id)}`)
+            .then((r) => r.status?.counts)
+            .catch(() => null),
+        ),
+      );
+      const chats = rooms
+        .map((c, i) => ({ ...c, counts: counts[i] }))
+        .filter((c) => c.counts && c.counts.scenes + c.counts.facts + c.counts.openThreads > 0);
+      if (!chats.length) return toast("기억이 있는 다른 방이 없어요");
       const sh = sheet(
         h(
           "div",
@@ -1431,7 +1444,6 @@ export function memoryScreen({ mount, args, go }) {
               {
                 type: "button",
                 class: "r two",
-                style: { gridTemplateColumns: "minmax(0,1fr)" },
                 onClick: () => {
                   sh.close();
                   run("옮기기", async () => {
@@ -1440,7 +1452,12 @@ export function memoryScreen({ mount, args, go }) {
                   });
                 },
               },
-              chatTitle(c, state.index),
+              h("span", null, chatTitle(c, state.index)),
+              h(
+                "span",
+                { class: "hint" },
+                `장면 ${c.counts.scenes} · 사실 ${c.counts.facts} · 장부 ${c.counts.openThreads}`,
+              ),
             ),
           ),
         ),
