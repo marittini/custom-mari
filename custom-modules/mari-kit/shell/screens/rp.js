@@ -4,9 +4,9 @@
 
 import { h, icon, dots, I, setChildren } from "../lib/h.js";
 import { api, parseJson } from "../lib/api.js";
-import { data, characterIndex, chatTitle, chatMeta, messageText } from "../lib/data.js";
+import { data, characterIndex, chatTitle, chatMeta, messageText, messageWindow } from "../lib/data.js";
 import { TOOL_DEFS, toolPlace, prefs } from "../lib/prefs.js";
-import { topBar, toast, errorBox } from "../lib/ui.js";
+import { olderButton, topBar, toast, errorBox } from "../lib/ui.js";
 import { parseMessage, inline, buildPronunciations, applyPronunciations, pickVoice } from "../lib/render.js";
 import * as tts from "../lib/tts.js";
 import { runSlash } from "../lib/slash.js";
@@ -18,6 +18,8 @@ export function rpScreen({ mount, args, go }) {
   let chat = null;
   let index = new Map();
   let messages = [];
+  const win = messageWindow(chatId);
+  let total = null; // whole-chat message count, for the header
   let participants = [];
   let ttsConfig = null;
   let memory = null; // { waiting, busy } when Mari Kit memory is on for this chat
@@ -96,18 +98,24 @@ export function rpScreen({ mount, args, go }) {
   // ── data ───────────────────────────────
   async function load(first) {
     try {
-      const [c, chars, msgs] = await Promise.all([data.chat(chatId), data.characters(), data.messages(chatId)]);
+      const [c, chars, , count] = await Promise.all([
+        data.chat(chatId),
+        data.characters(),
+        win.reload(),
+        api.get(`/chats/${encodeURIComponent(chatId)}/message-count`).catch(() => null),
+      ]);
       if (!alive) return;
       chat = c;
       index = characterIndex(chars);
-      messages = Array.isArray(msgs) ? msgs : [];
+      messages = win.list;
+      total = Number.isFinite(count?.count) ? count.count : null;
       title.textContent = chatTitle(chat, index);
       sub.textContent = [
         (chat.characterIds || [])
           .map((id) => index.get(id)?.name)
           .filter(Boolean)
           .join(", "),
-        `메시지 ${messages.length}`,
+        `메시지 ${total ?? messages.length}`,
       ]
         .filter(Boolean)
         .join(" · ");
@@ -412,6 +420,7 @@ export function rpScreen({ mount, args, go }) {
     const blocks = visible.map((m, i) =>
       m.role === "user" ? h("div", { class: "umsg" }, messageText(m)) : assistantBlock(m, i === lastIdx),
     );
+    if (win.more) blocks.unshift(olderButton(win, scroller, () => ((messages = win.list), draw())));
     if (busy)
       blocks.push(
         live ? h("div", { class: "read" }, h("p", null, inline(live))) : h("div", { class: "typing" }, "쓰는 중…"),

@@ -27,6 +27,16 @@ export async function openNewChat({ mode = "roleplay", characterId = null, go })
   let connectionId = (conns.find((c) => c.isDefault === true || c.isDefault === "true") || {}).id || "";
   let personaId = "";
 
+  // The list carries names only; the greetings come with the picked character's own card.
+  async function withCard(c) {
+    try {
+      return { ...c, card: characterCard(await data.character(c.id)) };
+    } catch (error) {
+      toast(error.message);
+      return null;
+    }
+  }
+
   const title = (t) => h("div", { style: { padding: "8px 20px 12px", fontSize: "15px", fontWeight: "600" } }, t);
 
   function pickCharacter() {
@@ -45,9 +55,9 @@ export async function openNewChat({ mode = "roleplay", characterId = null, go })
                   type: "button",
                   class: "r two",
                   style: { gridTemplateColumns: "36px minmax(0,1fr)" },
-                  onClick: () => {
-                    pickedChar = c;
-                    options();
+                  onClick: async () => {
+                    pickedChar = await withCard(c);
+                    if (pickedChar) options();
                   },
                 },
                 avatar(c.avatar, firstLetter(c.name), 36),
@@ -211,6 +221,7 @@ export async function openNewChat({ mode = "roleplay", characterId = null, go })
     }
   }
 
+  if (pickedChar) pickedChar = await withCard(pickedChar);
   if (pickedChar) options();
   else pickCharacter();
   void characterCard;

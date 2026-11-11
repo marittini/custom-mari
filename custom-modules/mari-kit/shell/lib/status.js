@@ -33,7 +33,19 @@ async function knownModels() {
   return known;
 }
 
+// Returning to Home within two minutes reuses the last answer instead of asking again.
+const FRESH_MS = 2 * 60 * 1000;
+let last = null;
+
 export async function modelStatus(models) {
+  const key = [...new Set(models)].sort().join("\n");
+  if (last && last.key === key && Date.now() - last.at < FRESH_MS) return last.value;
+  const value = await lookup(models);
+  if (value) last = { key, at: Date.now(), value };
+  return value;
+}
+
+async function lookup(models) {
   const list = await knownModels();
   const wanted = new Map();
   for (const m of models) {

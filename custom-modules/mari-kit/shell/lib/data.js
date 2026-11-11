@@ -4,13 +4,38 @@ import { api, characterCard, parseJson } from "./api.js";
 
 let chatsP = null;
 let charsP = null;
+const cards = new Map();
 let connsP = null;
 let personasP = null;
 let uiP = null;
 
 export const data = {
   chats: (fresh) => (fresh || !chatsP ? (chatsP = api.get("/chats")) : chatsP),
-  characters: (fresh) => (fresh || !charsP ? (charsP = api.get("/characters")) : charsP),
+  /** Names, avatars and readings of every character: Mari Kit's slim list plus the Engine's avatar summaries. */
+  characters: (fresh) => {
+    if (fresh || !charsP) {
+      cards.clear();
+      charsP = api.get("/mari-kit/shell/characters").then(async (rows) => {
+        const list = Array.isArray(rows) ? rows : [];
+        const sums = list.length
+          ? await api.post("/characters/summaries", { ids: list.map((c) => c.id) }).catch(() => [])
+          : [];
+        const avatars = new Map((Array.isArray(sums) ? sums : []).map((s) => [s.id, s.avatarUrl || null]));
+        return list.map((c) => ({ ...c, avatarPath: avatars.get(c.id) || null }));
+      });
+      charsP.catch(() => (charsP = null));
+    }
+    return charsP;
+  },
+  /** One character's full card, read when a screen needs its text (profile, greetings, a card edit). */
+  character: (id) => {
+    if (!cards.has(id)) {
+      const p = api.get(`/characters/${encodeURIComponent(id)}`);
+      p.catch(() => cards.delete(id));
+      cards.set(id, p);
+    }
+    return cards.get(id);
+  },
   connections: () => connsP || (connsP = api.get("/connections").catch(() => [])),
   personas: () => personasP || (personasP = api.get("/characters/personas/list").catch(() => [])),
   /** The Engine's own synced UI settings (quick replies live here). */
@@ -28,6 +53,50 @@ export const data = {
     api.get(`/chats/${encodeURIComponent(chatId)}/messages${limit ? `?limit=${limit}` : ""}`),
   chat: (chatId) => api.get(`/chats/${encodeURIComponent(chatId)}`),
 };
+
+/**
+ * The latest messages of a chat, read a page at a time: a long story is thousands of messages, and a phone
+ * should not download all of them to show the last screen. `reload()` re-reads as many as are on screen, so
+ * edits, deletions and new replies show without dropping the older pages the reader opened.
+ */
+export function messageWindow(chatId, page = 40) {
+  let list = [];
+  let more = false;
+  const base = `/chats/${encodeURIComponent(chatId)}/messages`;
+  return {
+    get list() {
+      return list;
+    },
+    get more() {
+      return more;
+    },
+    set list(next) {
+      list = next;
+    },
+    async reload() {
+      // A reply adds messages at the end; ask a few past what is on screen so the oldest one stays.
+      const firstId = list[0]?.id;
+      const limit = Math.max(page, list.length + 4);
+      const rows = await api.get(`${base}?limit=${limit}`);
+      list = Array.isArray(rows) ? rows : [];
+      more = list.length >= limit;
+      // More arrived than that (another device wrote meanwhile): read back until the reader's first message.
+      for (let i = 0; firstId && more && i < 20 && !list.some((m) => m.id === firstId); i += 1) await this.older();
+      return list;
+    },
+    /** Adds the page before the first message on screen; returns how many came. */
+    async older() {
+      const first = list[0];
+      if (!first || !more) return 0;
+      const cursor = `${first.createdAt}|${encodeURIComponent(first.id)}`;
+      const rows = await api.get(`${base}?limit=${page}&before=${encodeURIComponent(cursor)}`);
+      const got = Array.isArray(rows) ? rows : [];
+      more = got.length >= page;
+      list = [...got, ...list];
+      return got.length;
+    },
+  };
+}
 
 function localUi() {
   try {
@@ -49,8 +118,10 @@ export function byLastActivity(a, b) {
 export function characterIndex(rows) {
   const map = new Map();
   for (const row of rows || []) {
-    const card = characterCard(row);
-    map.set(row.id, { id: row.id, name: card.name || "이름 없음", card, avatar: row.avatarPath || null, row });
+    // Slim rows (the shell's list) carry no card; full Engine rows still work.
+    const card = row.data ? characterCard(row) : null;
+    const name = row.name || card?.name || "";
+    map.set(row.id, { id: row.id, name: name || "이름 없음", card, avatar: row.avatarPath || null, row });
   }
   return map;
 }

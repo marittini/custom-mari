@@ -36,20 +36,68 @@ export function iconButton(path, label, onClick, extra = {}) {
   return h("button", { type: "button", class: "ib", "aria-label": label, title: label, onClick, ...extra }, icon(path));
 }
 
+// Pictures are set only when their box comes near the screen: a library of cards would otherwise download
+// every avatar at full size on the first visit, most of them never scrolled to.
+let seen = null;
+export function lazyBg(el, src) {
+  if (!src) return el;
+  if (typeof IntersectionObserver !== "function") {
+    el.style.backgroundImage = `url("${src}")`;
+    return el;
+  }
+  seen ??= new IntersectionObserver(
+    (entries) => {
+      for (const e of entries) {
+        if (!e.isIntersecting) continue;
+        e.target.style.backgroundImage = `url("${e.target.dataset.bg}")`;
+        seen.unobserve(e.target);
+      }
+    },
+    { rootMargin: "300px" },
+  );
+  el.dataset.bg = src;
+  seen.observe(el);
+  return el;
+}
+
 export function avatar(src, letter, size, round = true) {
-  return h(
-    "span",
+  return lazyBg(
+    h(
+      "span",
+      {
+        class: round ? "av" : "ph",
+        style: { width: `${size}px`, height: `${size}px`, fontSize: `${Math.round(size * 0.36)}px` },
+      },
+      src ? "" : letter,
+    ),
+    src,
+  );
+}
+
+/** "이전 메시지" at the top of a story: reads the page before, keeping the reader's place on screen. */
+export function olderButton(win, scroller, redraw) {
+  const btn = h(
+    "button",
     {
-      class: round ? "av" : "ph",
-      style: {
-        width: `${size}px`,
-        height: `${size}px`,
-        fontSize: `${Math.round(size * 0.36)}px`,
-        ...(src ? { backgroundImage: `url("${src}")` } : {}),
+      type: "button",
+      class: "older",
+      onClick: async (e) => {
+        e.stopPropagation();
+        btn.disabled = true;
+        btn.textContent = "불러오는 중…";
+        const from = scroller.scrollHeight - scroller.scrollTop;
+        try {
+          await win.older();
+        } catch (error) {
+          toast(error.message);
+        }
+        redraw();
+        scroller.scrollTop = scroller.scrollHeight - from;
       },
     },
-    src ? "" : letter,
+    "이전 메시지",
   );
+  return btn;
 }
 
 export function errorBox(error) {

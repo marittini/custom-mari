@@ -927,3 +927,20 @@ a {
   font-size: 13px;
   box-shadow: 0 8px 24px rgba(0, 0, 0, 0.18);
 }
+/* "이전 메시지" above the first message on screen */
+.older {
+  align-self: center;
+  display: block;
+  margin: 0 auto 24px;
+  min-height: 30px;
+  padding: 0 14px;
+  border: 1px solid var(--line-2);
+  border-radius: 999px;
+  background: transparent;
+  color: var(--ink-3);
+  font-size: 12px;
+  cursor: pointer;
+}
+.older:disabled {
+  opacity: 0.5;
+}

@@ -11,7 +11,10 @@ const MAX_CSS = 64 * 1024;
 const MAX_FONT = 12 * 1024 * 1024;
 const FONT_TYPES = /^(?:font\/|application\/(?:font|x-font|vnd\.ms-fontobject|octet-stream))/i;
 const fontCache = new Map();
-let cssCache = null;
+let fontBytes = 0;
+const MAX_FONT_CACHE = 48 * 1024 * 1024;
+// Built stylesheets by browser User-Agent (each browser family gets its own format); a few at most in practice.
+const cssCache = new Map();
 
 function httpsUrl(raw, base) {
   try {
@@ -30,8 +33,13 @@ export function rewriteFontUrls(css, base) {
   });
 }
 
-async function fetchText(url) {
-  const res = await fetch(url, { headers: { Accept: "text/css,*/*;q=0.1" }, signal: AbortSignal.timeout(15000) });
+// Font services pick the format by the asking browser: a phone's browser gets small woff2 slices split by
+// unicode-range (it downloads only the slices a page uses), while a request with no browser behind it gets one
+// whole TTF — 8 MB for a Korean font. The shell's own browser is the one asking, so its User-Agent is passed on.
+async function fetchText(url, userAgent) {
+  const headers = { Accept: "text/css,*/*;q=0.1" };
+  if (userAgent) headers["User-Agent"] = userAgent;
+  const res = await fetch(url, { headers, signal: AbortSignal.timeout(15000) });
   if (!res.ok) throw new Error(`${res.status} ${url}`);
   const text = await res.text();
   if (text.length > MAX_CSS * 4) throw new Error("stylesheet too large");
@@ -39,7 +47,7 @@ async function fetchText(url) {
 }
 
 /** Inlines @import url(...) (one level) and rewrites font URLs. */
-export async function buildFontCss(source, fetcher = fetchText) {
+export async function buildFontCss(source, fetcher = fetchText, userAgent = "") {
   const imports = [];
   const rest = source.replace(/@import\s+(?:url\(\s*)?(['"]?)([^'")\s;]+)\1\s*\)?[^;]*;?/g, (_m, _q, raw) => {
     const url = httpsUrl(raw);
@@ -49,7 +57,7 @@ export async function buildFontCss(source, fetcher = fetchText) {
   const parts = [];
   for (const url of imports) {
     try {
-      parts.push(rewriteFontUrls(await fetcher(url.href), url.href));
+      parts.push(rewriteFontUrls(await fetcher(url.href, userAgent), url.href));
     } catch {
       // A failing import only loses that font.
     }
@@ -90,17 +98,23 @@ export function fontRoutes(app, { runtime, httpError }) {
         createdAt: now,
         updatedAt: now,
       });
-    cssCache = null;
+    cssCache.clear();
     return { ok: true };
   });
-  app.get("/fonts/css", async (_request, reply) => {
-    if (!cssCache) {
+  app.get("/fonts/css", async (request, reply) => {
+    const userAgent = String(request.headers["user-agent"] || "").slice(0, 400);
+    let css = cssCache.get(userAgent);
+    if (css === undefined) {
       const doc = await read();
-      cssCache = await buildFontCss(String(doc?.data?.css || ""));
+      css = await buildFontCss(String(doc?.data?.css || ""), fetchText, userAgent);
+      if (cssCache.size >= 8) cssCache.delete(cssCache.keys().next().value);
+      cssCache.set(userAgent, css);
     }
     reply.header("Content-Type", "text/css; charset=utf-8");
-    reply.header("Cache-Control", "no-cache");
-    return reply.send(cssCache);
+    // The page asks with ?v=<hash of the saved CSS>, so a given URL never changes for a given browser.
+    reply.header("Cache-Control", request.query?.v ? "private, max-age=31536000, immutable" : "no-cache");
+    reply.header("Vary", "User-Agent");
+    return reply.send(css);
   });
   app.get("/fonts/file", async (request, reply) => {
     const url = httpsUrl(String(request.query?.u || ""));
@@ -114,9 +128,17 @@ export function fontRoutes(app, { runtime, httpError }) {
       if (data.length > MAX_FONT) throw httpError(413, "font too large");
       hit = { data, type };
       fontCache.set(url.href, hit);
+      fontBytes += data.length;
+      // Oldest first out, so a phone that tried many fonts does not hold them all in the server's memory.
+      for (const [key, old] of fontCache) {
+        if (fontBytes <= MAX_FONT_CACHE || key === url.href) break;
+        fontCache.delete(key);
+        fontBytes -= old.data.length;
+      }
     }
     reply.header("Content-Type", hit.type);
-    reply.header("Cache-Control", "private, max-age=604800");
+    // Font host URLs carry their version; the browser keeps the file and never asks again.
+    reply.header("Cache-Control", "private, max-age=31536000, immutable");
     return reply.send(hit.data);
   });
 }

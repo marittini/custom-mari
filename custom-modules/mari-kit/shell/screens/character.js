@@ -1,5 +1,5 @@
 import { h, icon, I, setChildren } from "../lib/h.js";
-import { api } from "../lib/api.js";
+import { api, characterCard } from "../lib/api.js";
 import { data, characterIndex, firstLetter, chatTitle, byLastActivity } from "../lib/data.js";
 import { topBar, errorBox, toast } from "../lib/ui.js";
 import { openNewChat } from "../lib/newchat.js";
@@ -27,15 +27,16 @@ export function characterScreen({ mount, args, go }) {
   mount.append(topBar({ back: () => history.back(), plain: true }), body);
   (async () => {
     try {
-      const [chars, chats, mk] = await Promise.all([
+      const [chars, chats, mk, row] = await Promise.all([
         data.characters(),
         data.chats(),
         api.get("/mari-kit/status").catch(() => null),
+        data.character(id).catch(() => null),
       ]);
       const c = characterIndex(chars).get(id);
       if (!alive) return;
-      if (!c) return setChildren(body, h("div", { class: "empty" }, "캐릭터를 찾지 못했어요."));
-      const card = c.card;
+      if (!c || !row) return setChildren(body, h("div", { class: "empty" }, "캐릭터를 찾지 못했어요."));
+      const card = characterCard(row);
       const ext = card.extensions || {};
       const voice = ext.ttsVoice || ext.voice || "";
       const pron = ext.phoneticName || "";

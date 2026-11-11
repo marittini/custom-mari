@@ -4,9 +4,9 @@
 
 import { h, icon, dots, I, setChildren } from "../lib/h.js";
 import { api } from "../lib/api.js";
-import { data, characterIndex, chatTitle, messageText, firstLetter, shortTime } from "../lib/data.js";
+import { data, characterIndex, chatTitle, messageText, firstLetter, shortTime, messageWindow } from "../lib/data.js";
 import { TOOL_DEFS, toolPlace } from "../lib/prefs.js";
-import { toast, errorBox, avatar } from "../lib/ui.js";
+import { toast, errorBox, avatar, olderButton } from "../lib/ui.js";
 import { pickVoice } from "../lib/render.js";
 import * as tts from "../lib/tts.js";
 import { runSlash } from "../lib/slash.js";
@@ -18,6 +18,7 @@ export function convoScreen({ mount, args, go }) {
   let chat = null;
   let index = new Map();
   let messages = [];
+  const win = messageWindow(chatId);
   let busy = false;
   let live = null;
   let picked = null;
@@ -119,11 +120,11 @@ export function convoScreen({ mount, args, go }) {
 
   async function load(first) {
     try {
-      const [c, chars, msgs] = await Promise.all([data.chat(chatId), data.characters(), data.messages(chatId)]);
+      const [c, chars] = await Promise.all([data.chat(chatId), data.characters(), win.reload()]);
       if (!alive) return;
       chat = c;
       index = characterIndex(chars);
-      messages = (Array.isArray(msgs) ? msgs : []).filter((m) => m.role !== "system");
+      messages = shown();
       if (first) {
         const [ui, config] = await Promise.all([data.engineUi(), api.get("/tts/config").catch(() => null)]);
         quick = quickReplies(ui, I.guide);
@@ -168,9 +169,14 @@ export function convoScreen({ mount, args, go }) {
     };
   }
 
+  function shown() {
+    return win.list.filter((m) => m.role !== "system");
+  }
+
   function draw() {
     if (!chat) return;
     const items = [];
+    if (win.more) items.push(olderButton(win, scroller, () => ((messages = shown()), draw())));
     const first = messages[0];
     if (first)
       items.push(

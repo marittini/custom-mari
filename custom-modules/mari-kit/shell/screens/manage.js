@@ -465,17 +465,18 @@ export function voicePage(body) {
           toast(error.message);
         }
       });
-      const ext = characterCard(c.row)?.extensions || {};
-      const pron = text(ext.phoneticName || "", {
+      const pron = text(c.row.phoneticName || "", {
         placeholder: "읽는 법 (예: kuga terunori)",
         style: { minHeight: "36px", fontSize: "13px" },
       });
       pron.addEventListener("change", async () => {
         try {
+          // The list has no card; read this one so its other extensions are kept.
+          const ext = characterCard(await data.character(c.id))?.extensions || {};
           await api.patch(`/characters/${encodeURIComponent(c.id)}`, {
             data: { extensions: { ...ext, phoneticName: pron.value.trim() } },
           });
-          ext.phoneticName = pron.value.trim();
+          data.characters(true);
           toast(`${c.name} 읽는 법을 저장했어요`);
         } catch (error) {
           toast(error.message);

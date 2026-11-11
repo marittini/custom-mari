@@ -11,7 +11,8 @@
 // ──────────────────────────────────────────────
 
 import { createHash } from "node:crypto";
-import { readFile } from "node:fs/promises";
+import { readdir, readFile } from "node:fs/promises";
+import { brotliCompressSync, constants, gzipSync } from "node:zlib";
 
 const SHELL_ROOT = new URL("./shell/", import.meta.url);
 const TYPES = { js: "text/javascript; charset=utf-8", css: "text/css; charset=utf-8", svg: "image/svg+xml" };
@@ -24,7 +25,13 @@ export function shellFile(raw) {
   return path;
 }
 
-export function shellPage() {
+/**
+ * The page loads everything under /app/v/<version>/, where the version hashes every shell file. Those URLs
+ * never change content, so the phone keeps them for a year and asks nothing on the next visit; a new package
+ * build gives a new version and the page fetches only then.
+ */
+export function shellPage(version) {
+  const base = `/api/mari-kit/app/v/${version}`;
   return `<!doctype html>
 <html lang="ko">
 <head>
@@ -32,8 +39,8 @@ export function shellPage() {
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta name="color-scheme" content="light dark">
 <title>Marinara</title>
-<link rel="stylesheet" href="/api/mari-kit/app/shell.css">
-<script type="module" src="/api/mari-kit/app/app.js"></script>
+<link rel="stylesheet" href="${base}/shell.css">
+<script type="module" src="${base}/app.js"></script>
 </head>
 <body>
 <div id="app" class="mk"></div>
@@ -43,25 +50,92 @@ export function shellPage() {
 `;
 }
 
+/** Brotli when the browser takes it, else gzip, else plain. */
+export function pickEncoding(header) {
+  const offered = new Set();
+  for (const part of String(header ?? "").split(",")) {
+    const [name = "", ...params] = part.trim().toLowerCase().split(";");
+    if (params.some((p) => /^\s*q=0(?:\.0*)?\s*$/.test(p))) continue;
+    offered.add(name.trim());
+  }
+  return offered.has("br") ? "br" : offered.has("gzip") ? "gzip" : null;
+}
+
 const cache = new Map();
 
 async function readShellFile(path) {
   const hit = cache.get(path);
   if (hit) return hit;
   const data = await readFile(new URL(path, SHELL_ROOT));
-  const entry = { data, etag: `"${createHash("sha256").update(data).digest("hex").slice(0, 32)}"` };
+  // Compressed once per file and kept: the shell is a few hundred KB of text that shrinks to about a quarter.
+  const entry = {
+    data,
+    br: brotliCompressSync(data, { params: { [constants.BROTLI_PARAM_QUALITY]: 11 } }),
+    gzip: gzipSync(data, { level: 9 }),
+    etag: `"${createHash("sha256").update(data).digest("hex").slice(0, 32)}"`,
+  };
   cache.set(path, entry);
   return entry;
 }
 
-export async function shellRoutes(app) {
+async function listShell(dir = SHELL_ROOT, prefix = "") {
+  const out = [];
+  for (const item of await readdir(dir, { withFileTypes: true })) {
+    if (item.isDirectory()) out.push(...(await listShell(new URL(`${item.name}/`, dir), `${prefix}${item.name}/`)));
+    else if (shellFile(prefix + item.name)) out.push(prefix + item.name);
+  }
+  return out.sort();
+}
+
+let versionP = null;
+function shellVersion() {
+  if (!versionP) {
+    versionP = (async () => {
+      const hash = createHash("sha256");
+      for (const path of await listShell()) hash.update(path).update((await readShellFile(path)).etag);
+      return hash.digest("hex").slice(0, 12);
+    })().catch((error) => {
+      versionP = null;
+      throw error;
+    });
+  }
+  return versionP;
+}
+
+const BUILT_IN = new Set(["__professor_mari__"]);
+
+/** What a character list needs — never the card body, which with a lorebook can be hundreds of KB a character. */
+export function slimCharacter(record) {
+  let data = record?.data;
+  if (typeof data === "string") {
+    try {
+      data = JSON.parse(data);
+    } catch {
+      data = {};
+    }
+  }
+  const card = data && typeof data === "object" ? data : {};
+  const ext = card.extensions && typeof card.extensions === "object" ? card.extensions : {};
+  return {
+    id: record.id,
+    name: typeof card.name === "string" ? card.name.trim() : "",
+    phoneticName: typeof ext.phoneticName === "string" ? ext.phoneticName : "",
+  };
+}
+
+export async function shellRoutes(app, { runtime } = {}) {
+  app.get("/shell/characters", async () =>
+    (await runtime.resources.listCharacters()).filter((c) => !BUILT_IN.has(c.id)).map(slimCharacter),
+  );
   app.get("/app", async (_request, reply) => {
     reply.header("Cache-Control", "no-cache");
     reply.header("Content-Type", "text/html; charset=utf-8");
-    return reply.send(shellPage());
+    return reply.send(shellPage(await shellVersion()));
   });
   app.get("/app/*", async (request, reply) => {
-    const path = shellFile(request.params["*"]);
+    const raw = String(request.params["*"] ?? "");
+    const versioned = /^v\/([0-9a-f]{12})\/(.*)$/.exec(raw);
+    const path = shellFile(versioned ? versioned[2] : raw);
     if (!path) return reply.status(404).send({ error: "Not found" });
     let file;
     try {
@@ -69,10 +143,15 @@ export async function shellRoutes(app) {
     } catch {
       return reply.status(404).send({ error: "Not found" });
     }
-    reply.header("Cache-Control", "no-cache");
+    // An old page asking with an earlier version gets today's file, but must not keep it forever.
+    const current = versioned && versioned[1] === (await shellVersion());
+    reply.header("Cache-Control", current ? "public, max-age=31536000, immutable" : "no-cache");
     reply.header("ETag", file.etag);
+    reply.header("Vary", "Accept-Encoding");
     if (request.headers["if-none-match"] === file.etag) return reply.status(304).send();
     reply.header("Content-Type", TYPES[path.split(".").pop().toLowerCase()]);
-    return reply.send(file.data);
+    const encoding = pickEncoding(request.headers["accept-encoding"]);
+    if (encoding) reply.header("Content-Encoding", encoding);
+    return reply.send(encoding ? file[encoding] : file.data);
   });
 }

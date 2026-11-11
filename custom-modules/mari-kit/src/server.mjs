@@ -125,7 +125,7 @@ async function routes(app) {
   app.get("/settings", async () => (await readSettings()).settings);
   app.patch("/settings", async (request) => writeSettings(parseFeaturePatch(request.body)));
   for (const feature of features) feature.routes?.(app, { runtime: host(), httpError });
-  await shellRoutes(app);
+  await shellRoutes(app, { runtime: host() });
   fontRoutes(app, { runtime: host(), httpError });
 }
 

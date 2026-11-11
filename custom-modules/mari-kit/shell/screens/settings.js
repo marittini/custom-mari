@@ -102,6 +102,10 @@ export function settingsScreen({ mount, args, go }) {
       const css = draft.trim();
       const found = parseFamilies(css);
       if (!css || !found.length) return toast("글꼴 이름을 찾지 못했어요");
+      if (String(p.fontCss || "").includes(css)) {
+        setPrefs({ families: [...new Set([...families, ...found])], font: found[0] });
+        return draw();
+      }
       const next = [p.fontCss, css].filter(Boolean).join("\n");
       try {
         await api.put("/mari-kit/fonts", { css: next });

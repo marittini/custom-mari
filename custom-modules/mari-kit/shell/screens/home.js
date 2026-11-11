@@ -9,7 +9,7 @@ import {
   shortTime,
   chatMeta,
 } from "../lib/data.js";
-import { pageHead, avatar, errorBox } from "../lib/ui.js";
+import { pageHead, avatar, errorBox, lazyBg } from "../lib/ui.js";
 import { modelStatus } from "../lib/status.js";
 
 export function homeScreen({ mount, go }) {
@@ -53,18 +53,13 @@ export function homeScreen({ mount, go }) {
                 padding: "16px",
               },
             },
-            h(
-              "span",
-              {
-                class: "ph",
-                style: {
-                  width: "56px",
-                  height: "76px",
-                  fontSize: "18px",
-                  ...(cover?.avatar ? { backgroundImage: `url("${cover.avatar}")` } : {}),
-                },
-              },
-              cover?.avatar ? "" : firstLetter(title),
+            lazyBg(
+              h(
+                "span",
+                { class: "ph", style: { width: "56px", height: "76px", fontSize: "18px" } },
+                cover?.avatar ? "" : firstLetter(title),
+              ),
+              cover?.avatar,
             ),
             h(
               "span",

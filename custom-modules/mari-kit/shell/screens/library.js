@@ -1,6 +1,6 @@
 import { h, icon, I, setChildren } from "../lib/h.js";
 import { data, byLastActivity, characterIndex, chatTitle, firstLetter, shortTime } from "../lib/data.js";
-import { pageHead, errorBox } from "../lib/ui.js";
+import { pageHead, errorBox, lazyBg } from "../lib/ui.js";
 import { openNewChat } from "../lib/newchat.js";
 
 let lastSeg = "works";
@@ -41,14 +41,7 @@ export function libraryScreen({ mount, go }) {
     return h(
       "a",
       { class: "book", href },
-      h(
-        "span",
-        {
-          class: "ph",
-          style: { aspectRatio: "3 / 4", fontSize: "20px", ...(img ? { backgroundImage: `url("${img}")` } : {}) },
-        },
-        img ? "" : letter,
-      ),
+      lazyBg(h("span", { class: "ph", style: { aspectRatio: "3 / 4", fontSize: "20px" } }, img ? "" : letter), img),
       h(
         "span",
         { style: { display: "flex", flexDirection: "column", gap: "2px", minWidth: "0" } },

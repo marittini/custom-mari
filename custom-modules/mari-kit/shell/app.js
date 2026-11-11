@@ -4,18 +4,6 @@
 
 import { h, icon, I, setChildren } from "./lib/h.js";
 import { applyPrefs, onPrefs } from "./lib/prefs.js";
-import { homeScreen } from "./screens/home.js";
-import { libraryScreen } from "./screens/library.js";
-import { convosScreen } from "./screens/convos.js";
-import { settingsScreen } from "./screens/settings.js";
-import { rpScreen } from "./screens/rp.js";
-import { convoScreen } from "./screens/convo.js";
-import { characterScreen } from "./screens/character.js";
-import { readerScreen } from "./screens/reader.js";
-import { memoryScreen } from "./screens/memory.js";
-import { chatSettingsScreen } from "./screens/chat-settings.js";
-import { translationScreen } from "./screens/translation.js";
-
 const root = document.getElementById("app");
 const TABS = [
   { id: "home", label: "홈", icon: I.home },
@@ -23,18 +11,20 @@ const TABS = [
   { id: "library", label: "서재", icon: I.book },
   { id: "settings", label: "설정", icon: I.gear },
 ];
+// Each screen's module is fetched the first time it is opened, so a visit to Home does not download the
+// memory library or the editors.
 const SCREENS = {
-  home: homeScreen,
-  library: libraryScreen,
-  convos: convosScreen,
-  settings: settingsScreen,
-  rp: rpScreen,
-  convo: convoScreen,
-  character: characterScreen,
-  reader: readerScreen,
-  memory: memoryScreen,
-  "chat-settings": chatSettingsScreen,
-  translation: translationScreen,
+  home: () => import("./screens/home.js").then((m) => m.homeScreen),
+  library: () => import("./screens/library.js").then((m) => m.libraryScreen),
+  convos: () => import("./screens/convos.js").then((m) => m.convosScreen),
+  settings: () => import("./screens/settings.js").then((m) => m.settingsScreen),
+  rp: () => import("./screens/rp.js").then((m) => m.rpScreen),
+  convo: () => import("./screens/convo.js").then((m) => m.convoScreen),
+  character: () => import("./screens/character.js").then((m) => m.characterScreen),
+  reader: () => import("./screens/reader.js").then((m) => m.readerScreen),
+  memory: () => import("./screens/memory.js").then((m) => m.memoryScreen),
+  "chat-settings": () => import("./screens/chat-settings.js").then((m) => m.chatSettingsScreen),
+  translation: () => import("./screens/translation.js").then((m) => m.translationScreen),
 };
 
 export function go(path) {
@@ -69,9 +59,25 @@ function dock(active) {
   );
 }
 
-function render() {
+let renderSeq = 0;
+
+async function render() {
   current?.dispose?.();
+  current = null;
+  const seq = (renderSeq += 1);
   const route = parseRoute();
+  let screen;
+  try {
+    screen = await SCREENS[route.name]();
+  } catch (error) {
+    if (seq !== renderSeq) return;
+    setChildren(
+      root,
+      h("div", { class: "err", role: "alert" }, `화면을 불러오지 못했어요: ${error?.message || error}`),
+    );
+    return;
+  }
+  if (seq !== renderSeq) return;
   const frame = h("div", { class: "app" });
   const body = h("div", {
     style: { flex: "1", minHeight: "0", display: "flex", flexDirection: "column", position: "relative" },
@@ -80,7 +86,7 @@ function render() {
   const isTab = TABS.some((t) => t.id === route.name);
   if (isTab) frame.append(dock(route.name));
   setChildren(root, frame);
-  current = SCREENS[route.name]({ mount: body, args: route.args, go });
+  current = screen({ mount: body, args: route.args, go });
 }
 
 addEventListener("hashchange", render);
