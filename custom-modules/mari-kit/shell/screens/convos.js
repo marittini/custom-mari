@@ -1,0 +1,57 @@
+import { h, setChildren } from "../lib/h.js";
+import { data, byLastActivity, characterIndex, chatTitle, firstLetter, messageText, shortTime } from "../lib/data.js";
+import { pageHead, avatar, errorBox } from "../lib/ui.js";
+
+export function convosScreen({ mount }) {
+  let alive = true;
+  const body = h(
+    "div",
+    { class: "scroll", style: { paddingTop: "8px" } },
+    h("div", { class: "empty" }, "불러오는 중…"),
+  );
+  mount.append(pageHead("대화"), body);
+  (async () => {
+    try {
+      const [chats, chars] = await Promise.all([data.chats(true), data.characters()]);
+      const index = characterIndex(chars);
+      const rows = chats.filter((c) => c.mode === "conversation").sort(byLastActivity);
+      const lasts = await Promise.all(rows.map((c) => data.messages(c.id, 1).catch(() => [])));
+      if (!alive) return;
+      if (!rows.length) return setChildren(body, h("div", { class: "empty" }, "Convo 대화가 아직 없어요."));
+      setChildren(
+        body,
+        h(
+          "div",
+          { style: { borderBottom: "1px solid var(--line)" } },
+          rows.map((c, i) => {
+            const who = index.get(c.characterIds?.[0]);
+            const title = chatTitle(c, index);
+            const last = lasts[i]?.[lasts[i].length - 1];
+            return h(
+              "a",
+              { class: "row", href: `#/convo/${encodeURIComponent(c.id)}` },
+              avatar(who?.avatar, firstLetter(title), 40),
+              h(
+                "span",
+                { style: { display: "flex", flexDirection: "column", gap: "3px", minWidth: "0" } },
+                h("span", { style: { fontSize: "14px", fontWeight: "500" } }, title),
+                h(
+                  "span",
+                  {
+                    class: "hint",
+                    style: { fontSize: "13px", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" },
+                  },
+                  last ? messageText(last) : "",
+                ),
+              ),
+              h("span", { class: "label" }, shortTime(c.lastMessageAt || c.updatedAt)),
+            );
+          }),
+        ),
+      );
+    } catch (error) {
+      if (alive) setChildren(body, errorBox(error));
+    }
+  })();
+  return { dispose: () => (alive = false) };
+}

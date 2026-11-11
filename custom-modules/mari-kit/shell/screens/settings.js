@@ -1,0 +1,274 @@
+import { h, icon, I, setChildren } from "../lib/h.js";
+import { api } from "../lib/api.js";
+import { prefs, setPrefs, isDark, TOOL_DEFS, toolPlace, parseFamilies } from "../lib/prefs.js";
+import { pageHead, toast } from "../lib/ui.js";
+
+const sw = (on) => h("span", { class: on ? "sw on" : "sw" }, h("span"));
+
+export function settingsScreen({ mount, args, go }) {
+  const page = args[0] || "";
+  const titles = { "": "설정", font: "글꼴", brand: "앱 이름 · 아이콘", tools: "메시지 도구" };
+  const head = pageHead(titles[page] || "설정", page ? { back: () => go("settings") } : {});
+  const body = h("div", { class: "scroll", style: { padding: "8px 0 28px" } });
+  mount.append(head, body);
+  const draw = () =>
+    setChildren(
+      body,
+      ...(page === "font" ? fontPage() : page === "brand" ? brandPage() : page === "tools" ? toolsPage() : listPage()),
+    );
+
+  function row(path, label, value, onClick, extra = {}) {
+    return h(
+      "button",
+      { type: "button", class: "r", onClick, ...extra },
+      h("span", { class: "ic" }, icon(path)),
+      h("span", null, label),
+      value,
+    );
+  }
+
+  function listPage() {
+    const p = prefs();
+    const shown = TOOL_DEFS.filter((t) => toolPlace(t) === "show").length;
+    const more = TOOL_DEFS.filter((t) => toolPlace(t) === "more").length;
+    return [
+      h(
+        "div",
+        { class: "list" },
+        row(I.contrast, "다크 모드", sw(isDark()), () => setPrefs({ theme: isDark() ? "light" : "dark" }), {
+          role: "switch",
+          "aria-checked": isDark() ? "true" : "false",
+        }),
+        row(I.font, "글꼴", h("span", { class: "val" }, `${p.font || "기본"} ›`), () => go("settings/font")),
+        row(I.reader, "읽기", h("span", { class: "val" }, "›"), () => go("reader")),
+        row(I.list, "메시지 도구", h("span", { class: "val" }, `표시 ${shown} · 더보기 ${more} ›`), () =>
+          go("settings/tools"),
+        ),
+        row(I.square, "앱 이름 · 아이콘", h("span", { class: "val" }, `${p.appName || "기본"} ›`), () =>
+          go("settings/brand"),
+        ),
+      ),
+      h("div", { class: "gap" }),
+      h(
+        "div",
+        { class: "list" },
+        h(
+          "a",
+          { class: "r", href: "/" },
+          h("span", { class: "ic" }, icon(I.link)),
+          h("span", null, "연결 · 프리셋 · 음성"),
+          h("span", { class: "val" }, "엔진 화면 ›"),
+        ),
+      ),
+    ];
+  }
+
+  function fontPage() {
+    const p = prefs();
+    const families = Array.isArray(p.families) ? p.families : [];
+    const select = h(
+      "select",
+      { class: "inp", onChange: (e) => setPrefs({ font: e.target.value }) },
+      [["", "기본"], ...families.map((f) => [f, f])].map(([value, label]) =>
+        h("option", { value, selected: (p.font || "") === value }, label),
+      ),
+    );
+    let draft = "";
+    const area = h("textarea", {
+      class: "inp",
+      rows: 5,
+      placeholder: "@import url(…); 또는 @font-face { … }",
+      style: { resize: "vertical", fontSize: "13px" },
+      onInput: (e) => (draft = e.target.value),
+    });
+    const register = async () => {
+      const css = draft.trim();
+      const found = parseFamilies(css);
+      if (!css || !found.length) return toast("글꼴 이름을 찾지 못했어요");
+      const next = [p.fontCss, css].filter(Boolean).join("\n");
+      try {
+        await api.put("/mari-kit/fonts", { css: next });
+      } catch (error) {
+        return toast(`저장하지 못했어요: ${error.message}`);
+      }
+      setPrefs({ fontCss: next, families: [...new Set([...families, ...found])], font: found[0] });
+      toast(`${found.join(", ")} 등록`);
+      draw();
+    };
+    const remove = async (family) => {
+      const css = String(p.fontCss || "")
+        .split(/(?=@import|@font-face)/)
+        .filter((part) => !parseFamilies(part).includes(family))
+        .join("")
+        .trim();
+      try {
+        await api.put("/mari-kit/fonts", { css });
+      } catch (error) {
+        return toast(`저장하지 못했어요: ${error.message}`);
+      }
+      setPrefs({ fontCss: css, families: families.filter((f) => f !== family), font: p.font === family ? "" : p.font });
+      draw();
+    };
+    return [
+      h(
+        "div",
+        { style: { display: "flex", flexDirection: "column", gap: "24px", paddingTop: "8px" } },
+        h("label", { class: "fld" }, "사용할 글꼴", select),
+        families.length
+          ? h(
+              "div",
+              { class: "list" },
+              families.map((f) =>
+                h(
+                  "div",
+                  { class: "r two static" },
+                  h("span", { style: { fontFamily: `"${f}", system-ui, sans-serif` } }, f),
+                  h(
+                    "button",
+                    { type: "button", class: "ib", "aria-label": `${f} 삭제`, onClick: () => remove(f) },
+                    icon(I.close, 16),
+                  ),
+                ),
+              ),
+            )
+          : null,
+        h("label", { class: "fld" }, "웹폰트 CSS", area),
+        h(
+          "div",
+          { style: { padding: "0 20px" } },
+          h("button", { type: "button", class: "pill", onClick: register }, "등록"),
+        ),
+      ),
+    ];
+  }
+
+  function brandPage() {
+    const p = prefs();
+    let name = p.appName || "";
+    const file = h("input", {
+      type: "file",
+      accept: "image/png,image/jpeg,image/webp",
+      class: "sr",
+      onChange: (e) => {
+        const f = e.target.files?.[0];
+        if (!f) return;
+        if (f.size > 512 * 1024) return toast("512KB 이하 이미지만 쓸 수 있어요");
+        const reader = new FileReader();
+        reader.onload = () => {
+          setPrefs({ icon: String(reader.result) });
+          draw();
+        };
+        reader.readAsDataURL(f);
+      },
+    });
+    return [
+      h(
+        "div",
+        { style: { display: "flex", flexDirection: "column", gap: "24px", paddingTop: "8px" } },
+        h(
+          "div",
+          { style: { display: "flex", alignItems: "center", gap: "16px", padding: "0 20px" } },
+          h(
+            "span",
+            {
+              class: "ph",
+              style: {
+                width: "64px",
+                height: "64px",
+                borderRadius: "16px",
+                ...(p.icon ? { backgroundImage: `url("${p.icon}")` } : {}),
+              },
+            },
+            p.icon ? "" : icon(I.square, 22),
+          ),
+          h("label", { class: "pill", style: { display: "inline-flex", alignItems: "center" } }, "아이콘 선택", file),
+          p.icon
+            ? h(
+                "button",
+                {
+                  type: "button",
+                  class: "ib",
+                  "aria-label": "기본 아이콘으로",
+                  onClick: () => {
+                    setPrefs({ icon: "" });
+                    draw();
+                  },
+                },
+                icon(I.close, 18),
+              )
+            : null,
+        ),
+        h(
+          "label",
+          { class: "fld" },
+          "앱 이름",
+          h("input", {
+            class: "inp",
+            type: "text",
+            value: name,
+            placeholder: "Marinara",
+            onInput: (e) => (name = e.target.value),
+          }),
+        ),
+        h(
+          "div",
+          { style: { padding: "0 20px" } },
+          h(
+            "button",
+            {
+              type: "button",
+              class: "pill",
+              onClick: () => {
+                setPrefs({ appName: name.trim() });
+                toast("저장했어요");
+              },
+            },
+            "저장",
+          ),
+        ),
+      ),
+    ];
+  }
+
+  function toolsPage() {
+    return [
+      h(
+        "div",
+        { class: "list" },
+        TOOL_DEFS.map((t) =>
+          h(
+            "div",
+            { class: "r static" },
+            h("span", { class: "ic" }, icon(t.icon, 18)),
+            h("span", null, t.convoOnly ? `${t.label} (Convo)` : t.label),
+            h(
+              "span",
+              { class: "seg3" },
+              [
+                ["show", "표시"],
+                ["more", "더보기"],
+                ["hidden", "숨김"],
+              ].map(([k, label]) =>
+                h(
+                  "button",
+                  {
+                    type: "button",
+                    "aria-pressed": toolPlace(t) === k ? "true" : "false",
+                    onClick: () => {
+                      setPrefs({ tools: { ...prefs().tools, [t.id]: k } });
+                      draw();
+                    },
+                  },
+                  label,
+                ),
+              ),
+            ),
+          ),
+        ),
+      ),
+    ];
+  }
+
+  draw();
+  return { onPrefs: draw };
+}
