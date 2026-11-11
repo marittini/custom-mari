@@ -1,15 +1,32 @@
-import { h, setChildren } from "../lib/h.js";
+import { h, icon, I, setChildren } from "../lib/h.js";
+import { openNewChat } from "../lib/newchat.js";
 import { data, byLastActivity, characterIndex, chatTitle, firstLetter, messageText, shortTime } from "../lib/data.js";
 import { pageHead, avatar, errorBox } from "../lib/ui.js";
 
-export function convosScreen({ mount }) {
+export function convosScreen({ mount, go }) {
   let alive = true;
   const body = h(
     "div",
     { class: "scroll", style: { paddingTop: "8px" } },
     h("div", { class: "empty" }, "불러오는 중…"),
   );
-  mount.append(pageHead("대화"), body);
+  mount.append(
+    pageHead("대화", {
+      actions: [
+        h(
+          "button",
+          {
+            type: "button",
+            class: "ib",
+            "aria-label": "새 대화",
+            onClick: () => openNewChat({ mode: "conversation", go }),
+          },
+          icon(I.plus),
+        ),
+      ],
+    }),
+    body,
+  );
   (async () => {
     try {
       const [chats, chars] = await Promise.all([data.chats(true), data.characters()]);

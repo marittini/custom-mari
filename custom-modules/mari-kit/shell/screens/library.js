@@ -1,10 +1,11 @@
 import { h, icon, I, setChildren } from "../lib/h.js";
 import { data, byLastActivity, characterIndex, chatTitle, firstLetter, shortTime } from "../lib/data.js";
 import { pageHead, errorBox } from "../lib/ui.js";
+import { openNewChat } from "../lib/newchat.js";
 
 let lastSeg = "works";
 
-export function libraryScreen({ mount }) {
+export function libraryScreen({ mount, go }) {
   let alive = true;
   let seg = lastSeg;
   let query = "";
@@ -29,7 +30,12 @@ export function libraryScreen({ mount }) {
     },
     icon(I.search),
   );
-  mount.append(pageHead("서재", { actions: [searchBtn] }), body);
+  const addBtn = h(
+    "button",
+    { type: "button", class: "ib", "aria-label": "새 채팅", onClick: () => openNewChat({ mode: "roleplay", go }) },
+    icon(I.plus),
+  );
+  mount.append(pageHead("서재", { actions: [searchBtn, addBtn] }), body);
 
   function card(href, letter, img, name, meta) {
     return h(

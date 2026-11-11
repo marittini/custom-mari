@@ -2,6 +2,7 @@ import { h, icon, I, setChildren } from "../lib/h.js";
 import { api } from "../lib/api.js";
 import { data, characterIndex, firstLetter, chatTitle, byLastActivity } from "../lib/data.js";
 import { topBar, errorBox, toast } from "../lib/ui.js";
+import { openNewChat } from "../lib/newchat.js";
 
 const FIELDS = [
   ["description", "설명"],
@@ -144,7 +145,27 @@ export function characterScreen({ mount, args, go }) {
               ),
             )
           : null,
-        h("div", { style: { height: "24px" } }),
+        h(
+          "div",
+          {
+            style: {
+              position: "sticky",
+              bottom: "0",
+              padding: "20px 0 16px",
+              background: "linear-gradient(to bottom, transparent, var(--paper) 40%)",
+            },
+          },
+          h(
+            "button",
+            {
+              type: "button",
+              class: "pill main",
+              style: { width: "100%", minHeight: "44px" },
+              onClick: () => openNewChat({ mode: "roleplay", characterId: id, go }),
+            },
+            "새 채팅",
+          ),
+        ),
       );
     } catch (error) {
       if (alive) setChildren(body, errorBox(error));

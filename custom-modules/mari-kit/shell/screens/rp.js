@@ -9,6 +9,7 @@ import { TOOL_DEFS, toolPlace, prefs } from "../lib/prefs.js";
 import { topBar, toast, errorBox } from "../lib/ui.js";
 import { parseMessage, inline, buildPronunciations, applyPronunciations, pickVoice } from "../lib/render.js";
 import * as tts from "../lib/tts.js";
+import { runSlash } from "../lib/slash.js";
 import { GUIDE, quickReplies, runTool as sharedTool, streamGenerate } from "../lib/actions.js";
 
 export function rpScreen({ mount, args, go }) {
@@ -556,7 +557,26 @@ export function rpScreen({ mount, args, go }) {
     if (!text || busy) return;
     input.value = "";
     grow();
+    if (text.startsWith("/")) return slash(text);
     generate({ userMessage: text });
+  }
+
+  async function slash(text) {
+    try {
+      const note = await runSlash(text, {
+        chatId,
+        chat,
+        messages,
+        characters: (chat?.characterIds || [])
+          .map((id) => ({ id, name: index.get(id)?.name || "" }))
+          .filter((c) => c.name),
+        generate,
+        reload: load,
+      });
+      if (note) toast(note);
+    } catch (error) {
+      toast(error.message);
+    }
   }
 
   function runQuick(q) {
@@ -572,7 +592,7 @@ export function rpScreen({ mount, args, go }) {
         generationGuideSource: "guide",
       });
     }
-    if (q.content.startsWith("/")) return toast("슬래시 명령은 엔진 화면에서 써 주세요");
+    if (q.content.startsWith("/")) return slash(q.content);
     generate({ userMessage: q.content });
   }
 

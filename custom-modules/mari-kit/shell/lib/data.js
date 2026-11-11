@@ -18,7 +18,11 @@ export const data = {
     uiP ||
     (uiP = api
       .get("/app-settings/ui")
-      .then((res) => (res && typeof res.value === "object" && res.value) || localUi())
+      .then((res) => {
+        // The Engine stores its synced UI settings as one JSON string.
+        const value = typeof res?.value === "string" ? JSON.parse(res.value) : res?.value;
+        return value && typeof value === "object" ? value : localUi();
+      })
       .catch(() => localUi())),
   messages: (chatId, limit) =>
     api.get(`/chats/${encodeURIComponent(chatId)}/messages${limit ? `?limit=${limit}` : ""}`),
