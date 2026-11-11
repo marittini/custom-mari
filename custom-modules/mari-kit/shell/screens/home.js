@@ -1,5 +1,6 @@
 import { h, icon, I, setChildren } from "../lib/h.js";
 import {
+  previewLine,
   data,
   byLastActivity,
   characterIndex,
@@ -36,7 +37,7 @@ export function homeScreen({ mount, go }) {
       const convos = sorted.filter((c) => c.mode === "conversation").slice(0, 3);
       const [rpLast, ...convoLast] = await Promise.all([
         rp ? data.messages(rp.id, 4).catch(() => []) : [],
-        ...convos.map((c) => data.messages(c.id, 1).catch(() => [])),
+        ...convos.map((c) => data.messages(c.id, 4).catch(() => [])),
       ]);
       if (!alive) return;
       const parts = [];
@@ -116,8 +117,17 @@ export function homeScreen({ mount, go }) {
       }
 
       // 내 연결: only connections a chat actually uses (or the default), not every saved endpoint.
-      const used = new Set(chats.map((c) => c.connectionId).filter(Boolean));
-      const mine = conns.filter((c) => used.has(c.id) || c.isDefault === "true" || c.isDefault === true);
+      // The three most recently used; the rest stay one tap away so 최근 대화 is not pushed off the screen.
+      const lastUse = new Map();
+      for (const c of chats) {
+        if (!c.connectionId) continue;
+        const t = String(c.lastMessageAt || c.updatedAt || "");
+        if (!lastUse.has(c.connectionId) || t > lastUse.get(c.connectionId)) lastUse.set(c.connectionId, t);
+      }
+      const allMine = conns
+        .filter((c) => lastUse.has(c.id) || c.isDefault === "true" || c.isDefault === true)
+        .sort((a, b) => String(lastUse.get(b.id) || "").localeCompare(String(lastUse.get(a.id) || "")));
+      const mine = allMine.slice(0, 3);
       if (mine.length) {
         const statusLine = h("span", null, "");
         const rows = mine.map((c) => {
@@ -156,6 +166,18 @@ export function homeScreen({ mount, go }) {
             "div",
             { class: "gcard" },
             rows.map((r) => r.row),
+            allMine.length > mine.length
+              ? h(
+                  "a",
+                  {
+                    class: "grow",
+                    href: "#/settings/connections",
+                    style: { color: "var(--ink-3)", textDecoration: "none", fontSize: "13px" },
+                  },
+                  h("span", null, `연결 ${allMine.length}개 모두 보기`),
+                  h("span", null, "›"),
+                )
+              : null,
           ),
         );
         modelStatus(mine.map((c) => c.model).filter(Boolean)).then((status) => {
@@ -184,7 +206,6 @@ export function homeScreen({ mount, go }) {
             { class: "gcard" },
             convos.map((c, i) => {
               const who = index.get(c.characterIds?.[0]);
-              const last = convoLast[i]?.[convoLast[i].length - 1];
               const title = chatTitle(c, index);
               return h(
                 "a",
@@ -201,7 +222,7 @@ export function homeScreen({ mount, go }) {
                   h(
                     "span",
                     { class: "hint", style: { whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" } },
-                    last ? messageText(last) : "",
+                    previewLine(convoLast[i]),
                   ),
                 ),
                 h("span", { class: "hint", style: { fontSize: "11px" } }, shortTime(c.lastMessageAt || c.updatedAt)),

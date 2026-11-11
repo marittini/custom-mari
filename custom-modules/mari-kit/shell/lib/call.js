@@ -269,33 +269,6 @@ export function callScreen(ctx) {
     pill.hidden = true;
   }
 
-  function typeSheet() {
-    const input = h("textarea", {
-      class: "cin",
-      rows: 1,
-      placeholder: meta().translateInput === true ? "한국어로 써도 옮겨서 전해요" : "할 말",
-    });
-    const s = sheet(
-      h(
-        "div",
-        { class: "cmp", style: { borderTop: "0" } },
-        input,
-        h(
-          "button",
-          {
-            type: "button",
-            class: "cb send",
-            "aria-label": "보내기",
-            onClick: () => (s.close(), sendText(input.value)),
-          },
-          icon(I.send, 16, 2),
-        ),
-      ),
-      { label: "글로 말하기" },
-    );
-    setTimeout(() => input.focus(), 50);
-  }
-
   async function logSheet(id = session?.id) {
     if (!id) return;
     let rows = [];
@@ -342,116 +315,151 @@ export function callScreen(ctx) {
     );
   }
 
+  // The call screen is built once; draw() only updates the time, the lines and the mic state, so a reply
+  // being typed keeps its text and focus while the clock ticks.
+  const timeEl = h("span", { class: "label", style: { fontVariantNumeric: "tabular-nums" } });
+  const nameEl = h("b");
+  const faceEl = h("span");
+  const linesEl = h("div", { class: "callx-lines", "aria-live": "polite" });
+  const input = h("textarea", {
+    class: "cin",
+    rows: 1,
+    "aria-label": "할 말",
+    onInput: () => {
+      input.style.height = "auto";
+      input.style.height = `${Math.min(input.scrollHeight, 120)}px`;
+    },
+    onKeydown: (e) => {
+      if (e.key === "Enter" && !e.shiftKey && !e.isComposing && matchMedia("(pointer: fine)").matches) {
+        e.preventDefault();
+        submit();
+      }
+    },
+  });
+  const micBtn = h(
+    "button",
+    { type: "button", class: "cb", "aria-label": "말로 하기", onClick: () => toggleMic() },
+    icon(I.mic, 18, 1.6),
+  );
+  const sendBtn = h(
+    "button",
+    { type: "button", class: "cb send", "aria-label": "보내기", onClick: () => submit() },
+    icon(I.send, 16, 2),
+  );
+  const composer = h("div", { class: "cmp callx-cmp" }, micBtn, input, sendBtn);
+  const ringRow = h(
+    "div",
+    { class: "callx-btns" },
+    h(
+      "button",
+      { type: "button", class: "o soft", "aria-label": "거절", onClick: () => decline() },
+      icon("M6 6l12 12M18 6L6 18", 22, 1.8),
+    ),
+    h(
+      "button",
+      { type: "button", class: "o hard", "aria-label": "받기", onClick: () => accept() },
+      icon(I.phone, 22, 1.7),
+    ),
+  );
+  const menuBtn = h(
+    "button",
+    {
+      type: "button",
+      class: "ib",
+      "aria-label": "통화 메뉴",
+      onClick: () =>
+        popMenu([
+          {
+            label: showOriginal ? "번역으로 보기" : "원문으로 보기",
+            onClick: () => ((showOriginal = !showOriginal), draw()),
+          },
+          { label: "지금까지 대사", onClick: () => logSheet() },
+          { label: "통화 설정", sub: "›", onClick: () => ctx.go(`call-settings/${encodeURIComponent(ctx.chatId)}`) },
+        ]),
+    },
+    dots(),
+  );
+  // 종료 sits at the top, away from the keyboard and the send button.
+  const endBtn = h("button", { type: "button", class: "callx-end", onClick: () => end(true) }, "통화 종료");
+  setChildren(
+    layer,
+    h(
+      "div",
+      { class: "callx-top" },
+      h(
+        "button",
+        { type: "button", class: "ib", "aria-label": "대화 보기", onClick: () => ((minimized = true), draw()) },
+        icon(I.down, 22, 1.8),
+      ),
+      h("span", { style: { display: "flex", alignItems: "center", gap: "4px" } }, menuBtn, endBtn),
+    ),
+    h("div", { class: "callx-who" }, faceEl, nameEl, timeEl),
+    linesEl,
+    ringRow,
+    composer,
+  );
+
+  function submit() {
+    const text = input.value.trim();
+    if (!text || busy) return;
+    input.value = "";
+    input.style.height = "auto";
+    sendText(text);
+  }
+
   let drawSeq = 0;
+  let faceFor = null;
   async function draw() {
     if (!session) return;
     const seq = ++drawSeq;
     const who = lead();
     const ringing = session.status === "ringing";
     const started = Date.parse(session.startedAt || session.createdAt || "") || Date.now();
-    const time = ringing
+    timeEl.textContent = ringing
       ? "음성 통화"
-      : `${fmt(Date.now() - started)}${rec ? " · 듣는 중 · 다시 누르면 보내요" : busy ? " · …" : ""}`;
+      : `${fmt(Date.now() - started)}${rec ? " · 듣는 중 · 마이크를 다시 누르면 보내요" : busy ? " · …" : ""}`;
     pill.textContent = `${who?.name || "통화"} · ${fmt(Date.now() - started)}`;
     pill.hidden = !minimized || ringing;
     layer.hidden = minimized;
     if (minimized) return;
-    const last = [...messages].reverse().find((m) => m.participantKind === "character");
-    const cap = last ? await shown(last) : null;
+    if (faceFor !== who?.id) {
+      faceFor = who?.id;
+      setChildren(faceEl, avatar(who?.avatar, who?.name?.[0] || "·", 72));
+      nameEl.textContent = who?.name || "통화";
+    }
+    ringRow.hidden = !ringing;
+    composer.hidden = ringing;
+    menuBtn.hidden = ringing;
+    endBtn.hidden = ringing;
+    micBtn.setAttribute("aria-pressed", rec ? "true" : "false");
+    micBtn.setAttribute("aria-label", rec ? "말한 것 보내기" : "말로 하기");
+    sendBtn.disabled = busy;
+    input.placeholder = meta().translateInput === true ? "한국어로 써도 옮겨서 전해요" : "할 말";
+    if (ringing) return setChildren(linesEl);
+    const recent = messages.slice(-6);
+    const rows = await Promise.all(recent.map(async (m) => ({ m, ...(await shown(m)) })));
     if (seq !== drawSeq || !session) return;
+    const key = rows.map((r) => r.m.id + r.top).join("|") + showOriginal;
+    if (linesEl.dataset.key === key) return;
+    linesEl.dataset.key = key;
     setChildren(
-      layer,
-      h(
-        "div",
-        { class: "callx-top" },
-        h(
-          "button",
-          { type: "button", class: "ib", "aria-label": "대화 보기", onClick: () => ((minimized = true), draw()) },
-          icon(I.down, 22, 1.8),
-        ),
-        ringing
-          ? null
-          : h(
+      linesEl,
+      rows.length
+        ? rows.map(({ m, top, bottom }) =>
+            h(
               "button",
               {
                 type: "button",
-                class: "ib",
-                "aria-label": "통화 메뉴",
-                onClick: () =>
-                  popMenu([
-                    { label: "글로 말하기", onClick: typeSheet },
-                    {
-                      label: showOriginal ? "번역으로 보기" : "원문으로 보기",
-                      onClick: () => ((showOriginal = !showOriginal), draw()),
-                    },
-                    { label: "지금까지 대사", onClick: () => logSheet() },
-                    {
-                      label: "통화 설정",
-                      sub: "›",
-                      onClick: () => ctx.go(`call-settings/${encodeURIComponent(ctx.chatId)}`),
-                    },
-                  ]),
-              },
-              dots(),
-            ),
-      ),
-      h(
-        "div",
-        { class: "callx-mid" },
-        avatar(who?.avatar, who?.name?.[0] || "·", 104),
-        h("b", null, who?.name || "통화"),
-        h("span", { class: "label", style: { fontVariantNumeric: "tabular-nums" } }, time),
-        ringing
-          ? null
-          : h(
-              "button",
-              {
-                type: "button",
-                class: "callx-cap",
-                "aria-label": "원문과 번역 바꾸기",
+                class: m.participantKind === "user" ? "cl me" : "cl",
                 onClick: () => ((showOriginal = !showOriginal), draw()),
               },
-              h("span", null, cap?.top || ""),
-              cap?.bottom ? h("small", null, cap.bottom) : null,
-            ),
-      ),
-      ringing
-        ? h(
-            "div",
-            { class: "callx-btns", style: { gap: "88px" } },
-            h(
-              "button",
-              { type: "button", class: "o soft", "aria-label": "거절", onClick: decline },
-              icon("M6 6l12 12M18 6L6 18", 22, 1.8),
-            ),
-            h(
-              "button",
-              { type: "button", class: "o hard", "aria-label": "받기", onClick: accept },
-              icon(I.phone, 22, 1.7),
+              h("span", null, top),
+              bottom ? h("small", null, bottom) : null,
             ),
           )
-        : h(
-            "div",
-            { class: "callx-btns" },
-            h(
-              "button",
-              {
-                type: "button",
-                class: "o soft",
-                "aria-label": rec ? "보내기" : "말하기",
-                "aria-pressed": rec ? "true" : "false",
-                disabled: busy && !rec,
-                onClick: toggleMic,
-              },
-              icon(I.mic, 22, 1.6),
-            ),
-            h(
-              "button",
-              { type: "button", class: "o hard", "aria-label": "통화 종료", onClick: () => end(true) },
-              icon(I.hangup, 24, 1.8),
-            ),
-          ),
+        : h("p", { class: "label", style: { textAlign: "center" } }, "연결됐어요 · 아래에 할 말을 쓰세요"),
     );
+    linesEl.scrollTop = linesEl.scrollHeight;
   }
 
   return {

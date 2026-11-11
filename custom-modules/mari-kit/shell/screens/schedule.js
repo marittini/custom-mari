@@ -284,8 +284,22 @@ export function scheduleScreen({ mount, args, go }) {
   }
 
   // ── 주간 ─────────────────────────────
+  /** Rows to show: neighbouring blocks with the same activity (split only by a real-life status) read as one. */
+  function groups(blocks) {
+    const out = [];
+    blocks.forEach((b, i) => {
+      const last = out[out.length - 1];
+      if (last && last.block.activity === b.activity && last.block.time.split("-")[1] === b.time.split("-")[0]) {
+        last.block = { ...last.block, time: `${last.block.time.split("-")[0]}-${b.time.split("-")[1]}` };
+        last.idx.push(i);
+      } else out.push({ block: b, idx: [i] });
+    });
+    return out;
+  }
+
   function weekView() {
     const blocks = state.profile.days[day] || [];
+    const rows = groups(blocks);
     return [
       h(
         "div",
@@ -307,7 +321,7 @@ export function scheduleScreen({ mount, args, go }) {
         ? h(
             "div",
             { class: "gcard" },
-            blocks.map((b, i) =>
+            rows.map(({ block: b }, i) =>
               h(
                 "button",
                 { type: "button", class: "blk", onClick: () => blockSheet(i) },
@@ -343,7 +357,11 @@ export function scheduleScreen({ mount, args, go }) {
     await call("post", "/generate", { day, action: "rewrite", chatId }, "다시 만들었어요");
   }
   function blockSheet(index) {
-    const blocks = [...(state.profile.days[day] || [])];
+    const all = [...(state.profile.days[day] || [])];
+    const group = groups(all)[index];
+    // The blocks this row stands for are replaced together.
+    const blocks = all.filter((_, i) => !group?.idx.includes(i)).concat(group ? [group.block] : []);
+    index = group ? blocks.length - 1 : -1;
     const cur = blocks[index] || { time: "12:00-13:00", activity: "", status: "online" };
     const [a, z] = cur.time.split("-");
     let status = cur.status;

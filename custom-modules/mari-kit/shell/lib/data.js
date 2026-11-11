@@ -133,6 +133,17 @@ export function messageText(message) {
     : String(message?.content ?? "");
 }
 
+/** One line for a conversation list: the newest real message; a call shows as 음성 통화, other system text never. */
+export function previewLine(rows) {
+  for (const m of [...(rows || [])].reverse()) {
+    if (m.role !== "system") return stripTags(messageText(m));
+    const extra = parseJson(m.extra, {}) || {};
+    if (extra.conversationCallEvent?.callId) return "음성 통화";
+  }
+  return "";
+}
+const stripTags = (t) => String(t).replace(/\[[a-z][a-z ,.'-]{0,40}\]\s?/g, "");
+
 export function firstLetter(name) {
   const s = String(name || "").trim();
   return s ? Array.from(s)[0] : "·";

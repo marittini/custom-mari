@@ -522,13 +522,6 @@ export function radioScreen({ mount, args, go }) {
           ),
         ),
         hbox("라디오 네임", name),
-        h(
-          "div",
-          { class: "gsec" },
-          h("span", null, "사연을 가져올 방"),
-          h("span", null, s.rooms.length ? `${s.rooms.length}곳` : "비우면 캐릭터 카드만"),
-        ),
-        rooms,
         h("div", { class: "gsec" }, h("span", null, "진행 지침")),
         hbox("DJ는 보낸 사람을 몰라요", guideBox),
         h(
@@ -608,6 +601,14 @@ export function radioScreen({ mount, args, go }) {
         s.presets.length
           ? h("p", { class: "label", style: { paddingTop: "8px" } }, "저장한 지침을 길게 누르면 지울 수 있어요")
           : null,
+        // The room list can be long, so it comes last.
+        h(
+          "div",
+          { class: "gsec" },
+          h("span", null, "사연을 가져올 방"),
+          h("span", null, s.rooms.length ? `${s.rooms.length}곳` : "비우면 캐릭터 카드만"),
+        ),
+        rooms,
       ),
     ];
   }
