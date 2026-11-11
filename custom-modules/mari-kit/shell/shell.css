@@ -76,7 +76,7 @@ a {
 .app {
   position: relative;
   max-width: 560px;
-  height: 100dvh;
+  height: var(--app-h, 100dvh);
   margin: 0 auto;
   display: flex;
   flex-direction: column;

@@ -108,14 +108,37 @@ export function callScreen(ctx) {
     draw();
   }
 
+  // Quiet for a while → the package's silence check-in (the character may ask whether the user is still there).
+  const QUIET_MS = 150_000;
+  let lastActivity = Date.now();
+  async function checkIn() {
+    if (!session || busy || rec || session.status !== "active") return;
+    busy = true;
+    lastActivity = Date.now();
+    try {
+      const res = await api.post(`${BASE}/${encodeURIComponent(session.id)}/idle`, { quietMs: QUIET_MS });
+      if (res?.session) session = res.session;
+      await refresh();
+      await speakTurns(res?.assistantMessages || []);
+    } catch {
+      // A failed check-in just waits for the next quiet stretch.
+    } finally {
+      busy = false;
+      draw();
+    }
+  }
+
   function open(s) {
     session = s;
     minimized = false;
+    lastActivity = Date.now();
     clearInterval(timer);
     timer = setInterval(() => {
-      if (session?.status === "active") draw();
+      if (session?.status !== "active") return;
+      draw();
+      if (Date.now() - lastActivity > QUIET_MS && document.visibilityState === "visible") checkIn();
     }, 1000);
-    refresh();
+    return refresh();
   }
 
   async function shown(m) {
@@ -158,6 +181,7 @@ export function callScreen(ctx) {
   async function sendText(text, inputMode = "typed") {
     if (!session || busy || !text.trim()) return;
     busy = true;
+    lastActivity = Date.now();
     draw();
     try {
       let content = text.trim();
@@ -168,6 +192,7 @@ export function callScreen(ctx) {
       if (res?.session) session = res.session;
       await refresh();
       await speakTurns(res?.assistantMessages || []);
+      lastActivity = Date.now();
       if (session?.status !== "active") end(false);
     } catch (error) {
       toast(`보내지 못했어요: ${error.message}`);
@@ -233,9 +258,9 @@ export function callScreen(ctx) {
 
   async function accept() {
     try {
-      open(await api.post(`${BASE}/${encodeURIComponent(session.id)}/accept`));
-      const rows = messages.filter((m) => m.participantKind === "character");
-      speakTurns(rows.slice(-1));
+      await open(await api.post(`${BASE}/${encodeURIComponent(session.id)}/accept`));
+      // The caller's opening line, when their call carried one.
+      speakTurns(messages.filter((m) => m.extra?.conversationCallAutoplay === true));
     } catch (error) {
       toast(error.message);
     }
