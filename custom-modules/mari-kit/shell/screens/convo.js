@@ -187,7 +187,7 @@ export function convoScreen({ mount, args, go }) {
         .map((p) => p.trim())
         .filter(Boolean);
       (parts.length ? parts : [""]).forEach((text, k, all) =>
-        bubbles.push({ m, text, me: m.role === "user", last: k === all.length - 1 }),
+        bubbles.push({ m, text, me: m.role === "user", first: k === 0, last: k === all.length - 1 }),
       );
     }
     const lastMine = messages.map((m) => m.role === "user").lastIndexOf(true);
@@ -208,7 +208,7 @@ export function convoScreen({ mount, args, go }) {
             display: "flex",
             flexDirection: "column",
             alignItems: me ? "flex-end" : "flex-start",
-            marginTop: i === 0 ? "0" : firstOfRun ? "20px" : "4px",
+            marginTop: i === 0 ? "0" : firstOfRun ? "24px" : bub.first ? "14px" : "10px",
           },
         },
         h(
@@ -321,7 +321,7 @@ export function convoScreen({ mount, args, go }) {
         items.push(
           h(
             "div",
-            { style: { display: "flex", marginTop: k === 0 ? "20px" : "4px" } },
+            { style: { display: "flex", marginTop: k === 0 ? "24px" : "10px" } },
             h("span", { class: "bub them", style: { cursor: "default" } }, text),
           ),
         ),
