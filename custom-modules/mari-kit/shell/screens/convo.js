@@ -179,13 +179,24 @@ export function convoScreen({ mount, args, go }) {
           shortTime(first.createdAt),
         ),
       );
+    // Like the Engine's Convo, a blank line starts a new bubble.
+    const bubbles = [];
+    for (const m of messages) {
+      const parts = messageText(m)
+        .split(/\n{2,}/)
+        .map((p) => p.trim())
+        .filter(Boolean);
+      (parts.length ? parts : [""]).forEach((text, k, all) =>
+        bubbles.push({ m, text, me: m.role === "user", last: k === all.length - 1 }),
+      );
+    }
     const lastMine = messages.map((m) => m.role === "user").lastIndexOf(true);
-    messages.forEach((m, i) => {
-      const me = m.role === "user";
-      const prev = messages[i - 1];
-      const next = messages[i + 1];
-      const firstOfRun = !prev || (prev.role === "user") !== me;
-      const lastOfRun = !next || (next.role === "user") !== me;
+    bubbles.forEach((bub, i) => {
+      const { m, me } = bub;
+      const prev = bubbles[i - 1];
+      const next = bubbles[i + 1];
+      const firstOfRun = !prev || prev.me !== me;
+      const lastOfRun = !next || next.me !== me;
       const radius = me
         ? `18px ${firstOfRun ? "18px" : "6px"} ${lastOfRun ? "18px" : "6px"} 18px`
         : `${firstOfRun ? "18px" : "6px"} 18px 18px ${lastOfRun ? "18px" : "6px"}`;
@@ -214,10 +225,10 @@ export function convoScreen({ mount, args, go }) {
               draw();
             },
           },
-          messageText(m),
+          bub.text,
         ),
       );
-      if (on) {
+      if (on && bub.last) {
         const { shown, more } = toolsFor(m);
         wrap.append(
           h(
@@ -291,7 +302,7 @@ export function convoScreen({ mount, args, go }) {
           ),
         );
       }
-      if (i === lastMine && !busy)
+      if (bub.last && messages.indexOf(m) === lastMine && !busy)
         wrap.append(
           h(
             "span",
@@ -301,14 +312,21 @@ export function convoScreen({ mount, args, go }) {
         );
       items.push(wrap);
     });
-    if (busy)
-      items.push(
-        h(
-          "div",
-          { style: { display: "flex", marginTop: "20px" } },
-          h("span", { class: "bub them", style: { cursor: "default" } }, live || "…"),
+    if (busy) {
+      const parts = String(live || "")
+        .split(/\n{2,}/)
+        .map((p) => p.trim())
+        .filter(Boolean);
+      (parts.length ? parts : ["…"]).forEach((text, k) =>
+        items.push(
+          h(
+            "div",
+            { style: { display: "flex", marginTop: k === 0 ? "20px" : "4px" } },
+            h("span", { class: "bub them", style: { cursor: "default" } }, text),
+          ),
         ),
       );
+    }
     if (!messages.length && !busy) items.push(h("div", { class: "empty" }, "첫 메시지를 보내 보세요."));
     setChildren(list, items);
     setChildren(sendBtn, icon(busy ? I.stop : I.send, busy ? 14 : 16, 2));
