@@ -38,7 +38,7 @@ export function characterScreen({ mount, args, go }) {
       const card = c.card;
       const ext = card.extensions || {};
       const voice = ext.ttsVoice || ext.voice || "";
-      const pron = ext.marikitPronunciation || "";
+      const pron = ext.phoneticName || "";
       const sub = [pron, voice].filter(Boolean).join(" · ");
       const intro = String(card.summary || card.creator_notes || "").trim();
       const rows = FIELDS.map(([path, label]) => [label, String(pick(card, path) ?? "").trim()]).filter(([, v]) => v);

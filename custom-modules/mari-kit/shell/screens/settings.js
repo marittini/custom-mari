@@ -2,20 +2,41 @@ import { h, icon, I, setChildren } from "../lib/h.js";
 import { api } from "../lib/api.js";
 import { prefs, setPrefs, isDark, TOOL_DEFS, toolPlace, parseFamilies } from "../lib/prefs.js";
 import { pageHead, toast } from "../lib/ui.js";
+import { connectionsPage, connectionPage, presetsPage, presetPage, voicePage } from "./manage.js";
 
 const sw = (on) => h("span", { class: on ? "sw on" : "sw" }, h("span"));
 
 export function settingsScreen({ mount, args, go }) {
   const page = args[0] || "";
-  const titles = { "": "설정", font: "글꼴", brand: "앱 이름 · 아이콘", tools: "메시지 도구" };
-  const head = pageHead(titles[page] || "설정", page ? { back: () => go("settings") } : {});
+  const titles = {
+    "": "설정",
+    font: "글꼴",
+    brand: "앱 이름 · 아이콘",
+    tools: "메시지 도구",
+    connections: "연결",
+    connection: "연결",
+    presets: "프리셋",
+    preset: "프리셋",
+    voice: "음성 · 읽는 법",
+  };
+  const parent = { connection: "settings/connections", preset: "settings/presets" }[page] || "settings";
+  const head = pageHead(titles[page] || "설정", page ? { back: () => go(parent) } : {});
   const body = h("div", { class: "scroll", style: { padding: "8px 0 28px" } });
   mount.append(head, body);
-  const draw = () =>
+  const manage = {
+    connections: () => connectionsPage(body, go),
+    connection: () => connectionPage(body, go, args[1]),
+    presets: () => presetsPage(body, go),
+    preset: () => presetPage(body, go, args[1]),
+    voice: () => voicePage(body),
+  };
+  const draw = () => {
+    if (manage[page]) return manage[page]();
     setChildren(
       body,
       ...(page === "font" ? fontPage() : page === "brand" ? brandPage() : page === "tools" ? toolsPage() : listPage()),
     );
+  };
 
   function row(path, label, value, onClick, extra = {}) {
     return h(
@@ -52,13 +73,9 @@ export function settingsScreen({ mount, args, go }) {
       h(
         "div",
         { class: "list" },
-        h(
-          "a",
-          { class: "r", href: "/" },
-          h("span", { class: "ic" }, icon(I.link)),
-          h("span", null, "연결 · 프리셋 · 음성"),
-          h("span", { class: "val" }, "엔진 화면 ›"),
-        ),
+        row(I.link, "연결", h("span", { class: "val" }, "›"), () => go("settings/connections")),
+        row(I.list, "프리셋", h("span", { class: "val" }, "›"), () => go("settings/presets")),
+        row(I.voice, "음성 · 읽는 법", h("span", { class: "val" }, "›"), () => go("settings/voice")),
       ),
     ];
   }

@@ -14,6 +14,7 @@ import { characterScreen } from "./screens/character.js";
 import { readerScreen } from "./screens/reader.js";
 import { memoryScreen } from "./screens/memory.js";
 import { chatSettingsScreen } from "./screens/chat-settings.js";
+import { translationScreen } from "./screens/translation.js";
 
 const root = document.getElementById("app");
 const TABS = [
@@ -33,6 +34,7 @@ const SCREENS = {
   reader: readerScreen,
   memory: memoryScreen,
   "chat-settings": chatSettingsScreen,
+  translation: translationScreen,
 };
 
 export function go(path) {

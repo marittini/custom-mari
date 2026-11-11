@@ -194,6 +194,11 @@ export function chatSettingsScreen({ mount, args, go }) {
                   () => setFeature("translation", !features.translation),
                   "모든 방 공통",
                 ),
+                features.translation
+                  ? linkRow(I.glossary, "번역 프리셋 · 단어장", "", () =>
+                      go(`translation/${encodeURIComponent(chatId)}`),
+                    )
+                  : null,
                 switchRow(
                   I.memory,
                   "기억",
@@ -207,11 +212,6 @@ export function chatSettingsScreen({ mount, args, go }) {
               ),
             ]
           : null,
-        h(
-          "p",
-          { class: "hint", style: { padding: "12px 20px 0", margin: "0" } },
-          "번역 프리셋·단어장은 엔진 화면의 Mari Kit 칸에서 고쳐요.",
-        ),
       ];
     } else {
       const shown = TOOL_DEFS.filter((t) => toolPlace(t) === "show").length;
