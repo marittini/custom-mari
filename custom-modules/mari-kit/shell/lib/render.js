@@ -62,7 +62,9 @@ export function parseMessage(content, fallbackSpeakerId) {
   for (const seg of segments) {
     if (seg.kind === "line") {
       seg.index = lines.length;
-      seg.spoken = stripMarkup(seg.text)
+      const raw = seg.text;
+      seg.text = stripCues(raw);
+      seg.spoken = stripMarkup(raw)
         .replace(/^["“”「『]+|["“”」』]+$/g, "")
         .trim();
       lines.push(seg);
@@ -76,6 +78,12 @@ export function parseMessage(content, fallbackSpeakerId) {
     });
   }
   return { paragraphs: paragraphs.filter((p) => p.some((s) => s.kind === "line" || s.text.trim())), lines };
+}
+
+// ElevenLabs-style audio tags ([sighs], [short pause]) are read aloud by the TTS but not shown.
+const CUE = /\[[a-z][a-z ,.'-]{0,40}\]\s?/g;
+export function stripCues(text) {
+  return String(text ?? "").replace(CUE, "");
 }
 
 /** Inline markdown (*em*, **strong**) and line breaks as DOM nodes; other markup is shown as text. */

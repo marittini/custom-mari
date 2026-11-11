@@ -9,6 +9,7 @@ import { TOOL_DEFS, toolPlace, prefs } from "../lib/prefs.js";
 import { olderButton, topBar, toast, errorBox } from "../lib/ui.js";
 import { parseMessage, inline, buildPronunciations, applyPronunciations, pickVoice } from "../lib/render.js";
 import * as tts from "../lib/tts.js";
+import { syncVoiceSettings } from "../lib/voice.js";
 import { runSlash } from "../lib/slash.js";
 import { GUIDE, quickReplies, runTool as sharedTool, streamGenerate } from "../lib/actions.js";
 
@@ -22,6 +23,7 @@ export function rpScreen({ mount, args, go }) {
   let total = null; // whole-chat message count, for the header
   let participants = [];
   let ttsConfig = null;
+  let voiceSet = null; // Mari Kit voice settings (cue form, autoplay)
   let memory = null; // { waiting, busy } when Mari Kit memory is on for this chat
   let busy = false;
   let live = null; // streaming assistant text
@@ -135,6 +137,7 @@ export function rpScreen({ mount, args, go }) {
       api.get("/tts/config").catch(() => null),
     ]);
     ttsConfig = config?.enabled ? config : null;
+    voiceSet = ttsConfig ? await syncVoiceSettings(config) : null;
     const usesKit = meta.enableAgents === true && (meta.activeAgentIds || []).includes("mari-kit");
     if (ttsConfig && settings?.features?.tts && usesKit) {
       participants =
@@ -205,12 +208,14 @@ export function rpScreen({ mount, args, go }) {
     const voice = pickVoice(ttsConfig, speakerId);
     const spoken = applyPronunciations(line.spoken, buildPronunciations(participants));
     const speaker = participants.find((p) => p.id === speakerId)?.name || index.get(speakerId)?.name;
+    // Tag-capable voices read the cue inline; others get it as a tone.
+    const inlineCue = voiceSet?.cueResolved === "tags" && line.cue;
     return {
       key: tts.hashKey([spoken, line.cue, voice, ttsConfig?.source, ttsConfig?.model]),
       body: {
-        text: spoken,
+        text: inlineCue ? `[${line.cue}] ${spoken}` : spoken,
         ...(speaker ? { speaker } : {}),
-        ...(line.cue ? { tone: line.cue } : {}),
+        ...(line.cue && !inlineCue ? { tone: line.cue } : {}),
         ...(voice ? { voice } : {}),
       },
     };
@@ -550,8 +555,20 @@ export function rpScreen({ mount, args, go }) {
         await load();
         refreshMemory();
         scroller.scrollTop = scroller.scrollHeight;
+        autoplay();
       }
     }
+  }
+
+  /** Reads the new reply aloud when 자동 재생 is on: characters only, or the persona's lines too. */
+  function autoplay() {
+    if (!ttsConfig || !voiceSet || voiceSet.autoplay === "off" || !voiceSet.rp) return;
+    const last = [...messages].reverse().find((m) => m.role === "assistant");
+    if (!last) return;
+    const lines = parseMessage(messageText(last), last.characterId).lines.filter(
+      (l) => l.spoken && (voiceSet.autoplay === "all" || l.speakerKind !== "persona"),
+    );
+    tts.speakSequence(lines.map((l) => speakRequest(l)));
   }
 
   async function stopGenerating() {

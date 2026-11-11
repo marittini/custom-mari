@@ -7,8 +7,9 @@ import { api } from "../lib/api.js";
 import { data, characterIndex, chatTitle, messageText, firstLetter, shortTime, messageWindow } from "../lib/data.js";
 import { TOOL_DEFS, toolPlace } from "../lib/prefs.js";
 import { toast, errorBox, avatar, olderButton } from "../lib/ui.js";
-import { pickVoice } from "../lib/render.js";
+import { pickVoice, stripCues } from "../lib/render.js";
 import * as tts from "../lib/tts.js";
+import { syncVoiceSettings } from "../lib/voice.js";
 import { runSlash } from "../lib/slash.js";
 import { GUIDE, quickReplies, runTool, streamGenerate } from "../lib/actions.js";
 
@@ -26,6 +27,7 @@ export function convoScreen({ mount, args, go }) {
   let quick = [];
   let qrOpen = false;
   let ttsConfig = null;
+  let voiceSet = null;
   let abort = null;
   let me = null; // the persona's schedule state (Mari Kit 내 일정), when there is one
 
@@ -131,6 +133,7 @@ export function convoScreen({ mount, args, go }) {
         quick = quickReplies(ui, I.guide);
         qrBtn.hidden = !quick.length;
         ttsConfig = config?.enabled ? config : null;
+        voiceSet = ttsConfig ? await syncVoiceSettings(config) : null;
         const lead = index.get(chat.characterIds?.[0]);
         const title = chatTitle(chat, index);
         setChildren(
@@ -227,7 +230,7 @@ export function convoScreen({ mount, args, go }) {
     // Like the Engine's Convo, a blank line starts a new bubble.
     const bubbles = [];
     for (const m of messages) {
-      const parts = messageText(m)
+      const parts = (m.role === "assistant" ? stripCues(messageText(m)) : messageText(m))
         .split(/\n{2,}/)
         .map((p) => p.trim())
         .filter(Boolean);
@@ -431,12 +434,29 @@ export function convoScreen({ mount, args, go }) {
     );
   }
 
-  async function speakMessage(m) {
-    const key = tts.hashKey([m.id, m.activeSwipeIndex ?? 0, messageText(m), ttsConfig?.voice]);
-    if (tts.activeLine() === key) return tts.stop();
+  /** One message as a speak request: tag-capable voices read the cues inline, others get the first as a tone. */
+  function messageRequest(m) {
+    const raw = messageText(m);
     const voice = pickVoice(ttsConfig, m.characterId);
     const speaker = index.get(m.characterId)?.name;
-    await tts.speak(key, { text: messageText(m), ...(speaker ? { speaker } : {}), ...(voice ? { voice } : {}) });
+    const tags = voiceSet?.cueResolved === "tags";
+    const lead = /^\s*\[([^\]\n]{1,80})\]\s*/.exec(raw);
+    const text = tags ? raw : stripCues(raw);
+    return {
+      key: tts.hashKey([m.id, m.activeSwipeIndex ?? 0, raw, voice, ttsConfig?.source, ttsConfig?.model]),
+      body: {
+        text,
+        ...(speaker ? { speaker } : {}),
+        ...(voice ? { voice } : {}),
+        ...(!tags && lead ? { tone: lead[1].trim() } : {}),
+      },
+    };
+  }
+
+  async function speakMessage(m) {
+    const req = messageRequest(m);
+    if (tts.activeLine() === req.key) return tts.stop();
+    await tts.speak(req.key, req.body);
   }
 
   function tool(id, m) {
@@ -477,8 +497,12 @@ export function convoScreen({ mount, args, go }) {
       live = null;
       abort = null;
       if (alive) {
+        const before = new Set(messages.map((m) => m.id));
         await load();
         scroller.scrollTop = scroller.scrollHeight;
+        // 자동 재생: the character messages this turn added, in order.
+        if (ttsConfig && voiceSet?.convo && voiceSet.autoplay !== "off")
+          tts.speakSequence(messages.filter((m) => m.role === "assistant" && !before.has(m.id)).map(messageRequest));
       }
     }
   }

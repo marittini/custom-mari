@@ -103,6 +103,21 @@ if (id === "mari-kit") {
   assert.match(guidance, /<audio_character id="ID">/);
   assert.match(guidance, /"id":"c1"/);
   assert.doesNotMatch(guidance, /phoneticName/, "phonetic names are not sent to the model");
+  const tagged = tts.buildTtsGuidance([{ kind: "character", id: "c1", name: "Aya", phoneticName: "" }], "tags");
+  assert.match(tagged, /\[short pause\]/, "tag mode asks for ElevenLabs audio tags");
+  assert.equal(
+    tts.resolveCue(tts.normalizeVoiceSettings({ engine: { source: "elevenlabs", model: "eleven_v3" } })),
+    "tags",
+  );
+  assert.equal(tts.resolveCue(tts.normalizeVoiceSettings({ engine: { source: "openai", model: "tts-1" } })), "free");
+  assert.equal(
+    tts.resolveCue(tts.normalizeVoiceSettings({ cue: "free", engine: { source: "elevenlabs", model: "eleven_v3" } })),
+    "free",
+  );
+  assert.match(tts.buildConvoTtsGuidance("free"), /Start each message/);
+  const pub = tts.publicVoiceSettings(tts.normalizeVoiceSettings({ eleven: { key: "sk_abcdefghijklmnop1234" } }));
+  assert.equal(pub.eleven.key, undefined, "the ElevenLabs key never goes back to the browser");
+  assert.equal(pub.eleven.keyTail, "1234");
 
   // Pronunciation: the reported case — a given name alone must use its own part of the phonetic name.
   const kuga = client.buildPronunciations([{ name: "쿠가 테루노리", phoneticName: "kuga terunori" }]);
@@ -139,6 +154,10 @@ if (id === "mari-kit") {
   }
   assert.equal(shown.match(/<span class="mk-line/g)?.length, lines.length);
   assert.doesNotMatch(shown, /audio_|\[low|\[soft/, "markup and line-start cues are hidden");
+  let convo = "[sighs] 진짜 늦었네. [short pause] 그래도 왔구나. [주의] 비밀";
+  for (const rule of client.DISPLAY_RULES)
+    convo = convo.replace(new RegExp(rule.findRegex, rule.flags), rule.replaceString);
+  assert.equal(convo, "진짜 늦었네. 그래도 왔구나. [주의] 비밀", "inline audio tags hidden, other brackets kept");
 
   // ── Memory ──
   const mem = await import(pathToFileURL(join(outDir, "memory.server.mjs")).href);

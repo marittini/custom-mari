@@ -17,9 +17,10 @@ export function settingsScreen({ mount, args, go }) {
     connection: "연결",
     presets: "프리셋",
     preset: "프리셋",
-    voice: "음성 · 읽는 법",
+    voice: "엔진 TTS 연결",
   };
-  const parent = { connection: "settings/connections", preset: "settings/presets" }[page] || "settings";
+  const parent =
+    { connection: "settings/connections", preset: "settings/presets", voice: "voice/settings" }[page] || "settings";
   const head = pageHead(titles[page] || "설정", page ? { back: () => go(parent) } : {});
   const body = h("div", { class: "scroll", style: { padding: "8px 0 28px" } });
   mount.append(head, body);
@@ -75,7 +76,7 @@ export function settingsScreen({ mount, args, go }) {
         { class: "list" },
         row(I.link, "연결", h("span", { class: "val" }, "›"), () => go("settings/connections")),
         row(I.list, "프리셋", h("span", { class: "val" }, "›"), () => go("settings/presets")),
-        row(I.voice, "음성 · 읽는 법", h("span", { class: "val" }, "›"), () => go("settings/voice")),
+        row(I.voice, "음성 · 읽는 법", h("span", { class: "val" }, "›"), () => go("voice")),
       ),
     ];
   }
