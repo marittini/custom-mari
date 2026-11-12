@@ -3,7 +3,7 @@
 import { h } from "./h.js";
 import { api } from "./api.js";
 import { data, chatMeta, messageText } from "./data.js";
-import { toast, sheet } from "./ui.js";
+import { toast, sheet, openEngine } from "./ui.js";
 import { translate, savedTranslation } from "./translate.js";
 
 export const GUIDE = (text) =>
@@ -13,6 +13,16 @@ export const GUIDE = (text) =>
 export function quickReplies(ui, guideIcon) {
   const list = [];
   if (ui.showQuickReplyGuide !== false) list.push({ id: "guide", label: "방향 지시", icon: guideIcon });
+  // The Engine's composer buttons (continue, impersonate, post without a reply) next to the guide.
+  list.push(
+    { id: "continue", label: "이어쓰기", icon: ["M5 12h11", "M12 6l6 6-6 6"] },
+    {
+      id: "impersonate",
+      label: "대신 써 줘",
+      icon: ["M12 12a4 4 0 1 0 0-8 4 4 0 0 0 0 8z", "M4 21c1-4 4-6 8-6s7 2 8 6"],
+    },
+    { id: "post", label: "답 없이 보내기", icon: ["M4 12l16-8-6 16-2-6z"] },
+  );
   for (const entry of Array.isArray(ui.customQuickReplies) ? ui.customQuickReplies : []) {
     const content = String(entry?.content || "").trim();
     if (!content) continue;
@@ -23,8 +33,56 @@ export function quickReplies(ui, guideIcon) {
       content,
     });
   }
+  // Last: what the Engine's composer has and the shell does not draw (attachments, stickers, emoji, games).
+  list.push({ id: "engine", label: "첨부·스티커 · 엔진에서", icon: ENGINE_TOOL.icon });
   return list;
 }
+
+/**
+ * The fixed quick-reply entries; returns false for the others. ctx: { chatId, input, grow, slash }.
+ * 대신 써 줘 and 답 없이 보내기 use what is typed (impersonate also works with nothing typed).
+ */
+export function composerTool(q, { chatId, input, grow, slash }) {
+  const text = input.value.trim();
+  const take = () => ((input.value = ""), grow());
+  if (q.id === "continue") slash("/continue");
+  else if (q.id === "impersonate") (take(), slash(text ? `/impersonate ${text}` : "/impersonate"));
+  else if (q.id === "post") {
+    if (!text) toast("보낼 메시지를 먼저 적어 주세요");
+    else (take(), slash(`/send ${text}`));
+  } else if (q.id === "engine") openEngine(chatId, { composer: true });
+  else return false;
+  return true;
+}
+
+/** A slash command's note; one the shell cannot run opens the Engine's chat on a tap. */
+export function slashNote(note, chatId) {
+  if (!note) return;
+  if (typeof note === "object" && note.engine) toast(note.text, () => openEngine(chatId, { composer: true }));
+  else toast(note);
+}
+
+/** The Engine's "hide from AI" flag on a message (all characters, or some of them). */
+export function hiddenFromAI(m) {
+  let extra = m?.extra;
+  try {
+    if (typeof extra === "string") extra = JSON.parse(extra);
+  } catch {}
+  return (
+    extra?.hiddenFromAI === true ||
+    (Array.isArray(extra?.hiddenFromAICharacterIds) && extra.hiddenFromAICharacterIds.length > 0)
+  );
+}
+
+/** A tool's label for this message (hide turns into show back). */
+export const toolLabel = (t, m) => (t.id === "hide" && hiddenFromAI(m) ? "AI에게 다시 보이기" : t.label);
+
+/** Last in every message menu: what the shell does not draw (reactions, replies, marks, prompt, thinking, …). */
+export const ENGINE_TOOL = {
+  id: "engine",
+  label: "엔진에서 이 메시지 열기",
+  icon: ["M14 4h6v6", "M20 4l-9 9", "M18 14v5a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V7a1 1 0 0 1 1-1h5"],
+};
 
 export async function runTool(id, { chatId, chat, message, reload, generate, go, speak }) {
   const text = messageText(message);
@@ -52,6 +110,12 @@ export async function runTool(id, { chatId, chat, message, reload, generate, go,
       const created = await api.post(`/chats/${encodeURIComponent(chatId)}/branch`, { upToMessageId: message.id });
       data.chats(true);
       if (created?.id) go(`${chat.mode === "conversation" ? "convo" : "rp"}/${encodeURIComponent(created.id)}`);
+    } else if (id === "hide") {
+      // Like the Engine: hide from every character, or show again (clears a per-character hide too).
+      await api.patch(`${base}/extra`, { hiddenFromAI: !hiddenFromAI(message), hiddenFromAICharacterIds: [] });
+      await reload();
+    } else if (id === "engine") {
+      openEngine(chatId, { message: message.id });
     } else if (id === "del") {
       if (!confirm("이 메시지를 지울까요?")) return;
       await api.delete(base);

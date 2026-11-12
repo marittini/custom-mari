@@ -125,6 +125,7 @@ export function slimCharacter(record) {
     id: record.id,
     name: typeof card.name === "string" ? card.name.trim() : "",
     phoneticName: typeof ext.phoneticName === "string" ? ext.phoneticName : "",
+    fav: ext.fav === true,
   };
 }
 

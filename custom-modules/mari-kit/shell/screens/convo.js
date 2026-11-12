@@ -15,15 +15,25 @@ import {
   messageWindow,
 } from "../lib/data.js";
 import { TOOL_DEFS, toolPlace } from "../lib/prefs.js";
-import { toast, errorBox, avatar, avatarStack, olderButton } from "../lib/ui.js";
-import { pickVoice, stripCues } from "../lib/render.js";
+import { toast, errorBox, avatar, avatarStack, olderButton, fitMenus } from "../lib/ui.js";
+import { pickVoice, stripCues, inline } from "../lib/render.js";
 import * as tts from "../lib/tts.js";
 import { syncVoiceSettings } from "../lib/voice.js";
 import { callsAvailable, callScreen, callPrefs } from "../lib/call.js";
 import { shownText, translate } from "../lib/translate.js";
 import { activeAutonomy, clearUnread } from "../lib/autonomy.js";
 import { runSlash } from "../lib/slash.js";
-import { GUIDE, quickReplies, runTool, streamGenerate } from "../lib/actions.js";
+import {
+  GUIDE,
+  quickReplies,
+  runTool,
+  streamGenerate,
+  ENGINE_TOOL,
+  hiddenFromAI,
+  toolLabel,
+  composerTool,
+  slashNote,
+} from "../lib/actions.js";
 
 export function convoScreen({ mount, args, go, back }) {
   const chatId = args[0];
@@ -276,7 +286,7 @@ export function convoScreen({ mount, args, go, back }) {
     );
     return {
       shown: usable.filter((t) => toolPlace(t) === "show"),
-      more: usable.filter((t) => toolPlace(t) === "more"),
+      more: [...usable.filter((t) => toolPlace(t) === "more"), ENGINE_TOOL],
     };
   }
 
@@ -292,7 +302,8 @@ export function convoScreen({ mount, args, go, back }) {
   }
   function shown() {
     const keepCalls = callPrefs().log;
-    return win.list.filter((m) => m.role !== "system" || (keepCalls && callEvent(m)));
+    // System lines (dice, notices, other call states) show like the Engine's; an ended call only when kept.
+    return win.list.filter((m) => m.role !== "system" || (callEvent(m) ? keepCalls : !!messageText(m).trim()));
   }
 
   async function setupCalls() {
@@ -371,6 +382,11 @@ export function convoScreen({ mount, args, go, back }) {
         bubbles.push({ m, ev, me: null, first: true, last: true });
         continue;
       }
+      // System and narrator lines (dice, notices) sit in the middle like the Engine's cards.
+      if (m.role === "system" || m.role === "narrator") {
+        bubbles.push({ m, sys: true, text: messageText(m).trim(), me: null, first: true, last: true });
+        continue;
+      }
       const original = m.role === "assistant" ? stripCues(messageText(m)) : messageText(m);
       const { main, sub } = shownText(m, meta, original);
       const parts = main
@@ -406,22 +422,24 @@ export function convoScreen({ mount, args, go, back }) {
       const prev = bubbles[i - 1];
       const next = bubbles[i + 1];
       // A run is one speaker's bubbles in a row: in a group, another character starts a new run.
-      const sameRun = (o) => o && !o.ev && o.me === me && (me || o.m.characterId === m.characterId);
+      const sameRun = (o) =>
+        o && !o.ev && !o.sys && !bub.sys && o.me === me && (me || o.m.characterId === m.characterId);
       const firstOfRun = !sameRun(prev);
       const lastOfRun = !sameRun(next);
       const radius = me
         ? `18px ${firstOfRun ? "18px" : "6px"} ${lastOfRun ? "18px" : "6px"} 18px`
         : `${firstOfRun ? "18px" : "6px"} 18px 18px ${lastOfRun ? "18px" : "6px"}`;
       const on = picked === m.id;
-      const speaker = group && !me ? index.get(m.characterId) : null;
+      const speaker = group && !me && !bub.sys ? index.get(m.characterId) : null;
       const wrap = h(
         "div",
         {
-          class: group && !me ? "who" : null,
+          class: [group && !me && !bub.sys ? "who" : "", hiddenFromAI(m) ? "hid" : ""].join(" ").trim() || null,
+          "data-message-id": bub.first ? m.id : null,
           style: {
             display: "flex",
             flexDirection: "column",
-            alignItems: me ? "flex-end" : "flex-start",
+            alignItems: bub.sys ? "center" : me ? "flex-end" : "flex-start",
             marginTop: i === 0 ? "0" : firstOfRun ? "24px" : bub.first ? "14px" : "10px",
           },
         },
@@ -431,8 +449,8 @@ export function convoScreen({ mount, args, go, back }) {
           "button",
           {
             type: "button",
-            class: `bub ${me ? "me" : "them"}${on ? " on" : ""}`,
-            style: { borderRadius: radius },
+            class: bub.sys ? `sysmsg${on ? " on" : ""}` : `bub ${me ? "me" : "them"}${on ? " on" : ""}`,
+            style: bub.sys ? null : { borderRadius: radius },
             "aria-expanded": on ? "true" : "false",
             onClick: (e) => {
               e.stopPropagation();
@@ -441,10 +459,11 @@ export function convoScreen({ mount, args, go, back }) {
               draw();
             },
           },
-          bub.text,
+          bub.sys ? inline(bub.text) : bub.text,
         ),
         bub.sub ? h("span", { class: "bub-tr" }, bub.sub) : null,
       );
+      if (on && bub.last && (m.swipeCount || 1) > 1) wrap.append(swipeNav(m));
       if (on && bub.last) {
         const { shown, more } = toolsFor(m);
         wrap.append(
@@ -467,8 +486,8 @@ export function convoScreen({ mount, args, go, back }) {
                 {
                   type: "button",
                   class: "ma",
-                  "aria-label": t.label,
-                  title: t.label,
+                  "aria-label": toolLabel(t, m),
+                  title: toolLabel(t, m),
                   onClick: (e) => {
                     e.stopPropagation();
                     tool(t.id, m);
@@ -511,7 +530,7 @@ export function convoScreen({ mount, args, go, back }) {
                         },
                       },
                       h("span", { style: { display: "flex", color: "var(--ink-2)" } }, icon(t.icon, 16, 1.6)),
-                      t.label,
+                      toolLabel(t, m),
                     ),
                   ),
                 )
@@ -548,6 +567,7 @@ export function convoScreen({ mount, args, go, back }) {
     setChildren(list, items);
     setChildren(sendBtn, icon(busy ? I.stop : I.send, busy ? 14 : 16, 2));
     sendBtn.setAttribute("aria-label", busy ? "멈춤" : "보내기");
+    fitMenus(list);
   }
 
   function drawQuick() {
@@ -626,6 +646,38 @@ export function convoScreen({ mount, args, go, back }) {
     const req = messageRequest(m);
     if (tts.activeLine() === req.key) return tts.stop();
     await tts.speak(req.key, req.body);
+  }
+
+  // Other replies to the same turn (the Engine's swipes): shown under a tapped message that has them.
+  function swipeNav(m) {
+    const i = m.activeSwipeIndex ?? 0;
+    const n = m.swipeCount || 1;
+    const set = async (to) => {
+      try {
+        await api.put(`/chats/${encodeURIComponent(chatId)}/messages/${encodeURIComponent(m.id)}/active-swipe`, {
+          index: to,
+        });
+        await load();
+      } catch (error) {
+        toast(error.message);
+      }
+    };
+    const stop = (fn) => (e) => (e.stopPropagation(), fn());
+    return h(
+      "div",
+      { class: "hint", style: { display: "flex", alignItems: "center", gap: "4px", marginTop: "6px" } },
+      h(
+        "button",
+        { type: "button", class: "ma", "aria-label": "이전 답", disabled: i <= 0, onClick: stop(() => set(i - 1)) },
+        icon(I.back, 14),
+      ),
+      h("span", { style: { fontVariantNumeric: "tabular-nums" } }, `${i + 1} / ${n}`),
+      h(
+        "button",
+        { type: "button", class: "ma", "aria-label": "다음 답", disabled: i >= n - 1, onClick: stop(() => set(i + 1)) },
+        icon("M9 5l7 7-7 7", 14),
+      ),
+    );
   }
 
   function tool(id, m) {
@@ -716,7 +768,7 @@ export function convoScreen({ mount, args, go, back }) {
         generate,
         reload: load,
       });
-      if (note) toast(note);
+      slashNote(note, chatId);
     } catch (error) {
       toast(error.message);
     }
@@ -735,6 +787,7 @@ export function convoScreen({ mount, args, go, back }) {
         generationGuideSource: "guide",
       });
     }
+    if (composerTool(q, { chatId, input, grow, slash })) return;
     if (q.content.startsWith("/")) return slash(q.content);
     generate({ userMessage: q.content });
   }

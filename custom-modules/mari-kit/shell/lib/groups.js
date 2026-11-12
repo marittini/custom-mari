@@ -4,6 +4,7 @@
 //   lorebooks    library folders (/library-folders/lorebooks)
 //   characters   character groups (/characters/groups/list; characterIds)
 //   personas     persona groups (/characters/persona-groups/list; personaIds)
+//   chats        chat folders (/chat-folders, one mode each; each chat has folderId)
 // Read once per page load and only where a grouped list is shown. An item in several groups shows in the first.
 
 import { api } from "./api.js";
@@ -29,6 +30,11 @@ const SOURCES = {
   lorebooks: async () => folders(await api.get("/library-folders/lorebooks")),
   characters: async () =>
     (await api.get("/characters/groups/list")).map((g) => ({ id: g.id, name: g.name, items: ids(g.characterIds) })),
+  // Chat folders belong to one mode each; a chat carries its folderId.
+  chats: async () =>
+    (await api.get("/chat-folders"))
+      .sort((a, b) => (a.sortOrder ?? 0) - (b.sortOrder ?? 0))
+      .map((f) => ({ id: f.id, name: f.name, mode: f.mode, items: null })),
   personas: async () =>
     (await api.get("/characters/persona-groups/list")).map((g) => ({
       id: g.id,
@@ -87,21 +93,40 @@ export function groupedOptions(h, value, plain, parts, toOption) {
   ];
 }
 
-/** A list split by group: a small heading over each group (none when nothing is grouped), rows from `render`. */
-export function sectioned(h, parts, render) {
-  const grouped = parts.length > 1 || (parts.length === 1 && parts[0].label);
-  return parts.map((p) =>
-    h(
-      "div",
-      null,
-      grouped
-        ? h(
-            "div",
-            { class: "sec", style: { padding: "14px 20px 6px" } },
-            h("span", { class: "hint" }, p.label || "그룹 없음"),
-          )
-        : null,
-      h("div", { class: "list" }, p.items.map(render)),
-    ),
+/**
+ * One group that folds: its name and count on a tappable heading. The fold is remembered per list in this
+ * browser (`key`, e.g. "presets"), so a closed group stays closed next time.
+ */
+export function foldGroup(h, key, label, count, content) {
+  const id = `${key}:${label}`;
+  let closed = false;
+  try {
+    closed = (JSON.parse(localStorage.getItem("mari-kit:folds") || "[]") || []).includes(id);
+  } catch {}
+  const el = h(
+    "details",
+    {
+      class: "fgroup",
+      open: !closed,
+      onToggle: () => {
+        try {
+          const set = new Set(JSON.parse(localStorage.getItem("mari-kit:folds") || "[]") || []);
+          el.open ? set.delete(id) : set.add(id);
+          localStorage.setItem("mari-kit:folds", JSON.stringify([...set]));
+        } catch {}
+      },
+    },
+    h("summary", null, h("span", null, label || "그룹 없음"), h("span", { class: "hint" }, String(count))),
+    content,
   );
+  return el;
+}
+
+/** A list split by group: a folding heading over each group (none when nothing is grouped), rows from `render`. */
+export function sectioned(h, parts, render, key = "list") {
+  const grouped = parts.length > 1 || (parts.length === 1 && parts[0].label);
+  return parts.map((p) => {
+    const rows = h("div", { class: "list" }, p.items.map(render));
+    return grouped ? foldGroup(h, key, p.label, p.items.length, rows) : rows;
+  });
 }

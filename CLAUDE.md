@@ -46,6 +46,9 @@ Lessons from earlier sessions. They are the owner's standing expectations.
 - When porting an extension or redrawing an Engine screen, list everything the original showed and did, and check
   each item off (the schedule port lost next block, tomorrow and the daily summary).
 - Assume many: several characters per chat, several personas, group chats and group calls.
+- The owner likes grouping. Wherever the Engine has groups or folders (connection folders, preset and lorebook
+  folders, character and persona groups, chat folders, branches of one chat), lists and dropdowns show them, as
+  folding sections (`foldGroup` in `shell/lib/groups.js`) that remember what was folded.
 
 ### Design
 

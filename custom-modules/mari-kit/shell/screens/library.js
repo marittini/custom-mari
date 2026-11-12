@@ -1,10 +1,31 @@
 import { h, icon, I, setChildren } from "../lib/h.js";
-import { data, byLastActivity, characterIndex, chatTitle, firstLetter, shortTime, coverOf } from "../lib/data.js";
-import { pageHead, errorBox, lazyBg } from "../lib/ui.js";
+import {
+  data,
+  byLastActivity,
+  characterIndex,
+  chatTitle,
+  firstLetter,
+  shortTime,
+  coverOf,
+  byBranchGroup,
+} from "../lib/data.js";
+import { pageHead, errorBox, lazyBg, openEngine } from "../lib/ui.js";
 import { openNewChat } from "../lib/newchat.js";
-import { groupsOf, splitByGroup } from "../lib/groups.js";
+import { groupsOf, splitByGroup, foldGroup } from "../lib/groups.js";
 
 let lastSeg = "works";
+const SORTS = [
+  ["recent", "최근 대화"],
+  ["name", "이름"],
+  ["fav", "즐겨찾기"],
+];
+let charSort = (() => {
+  try {
+    return localStorage.getItem("mari-kit:char-sort") || "recent";
+  } catch {
+    return "recent";
+  }
+})();
 
 export function libraryScreen({ mount, go, args = [] }) {
   let alive = true;
@@ -83,7 +104,7 @@ export function libraryScreen({ mount, go, args = [] }) {
       const input = h("input", {
         class: "inp",
         type: "search",
-        placeholder: seg === "works" ? "작품 이름" : "캐릭터 이름",
+        placeholder: seg === "works" ? "작품이나 캐릭터 이름" : "캐릭터 이름",
         value: query,
         onInput: (e) => {
           query = e.target.value;
@@ -98,37 +119,63 @@ export function libraryScreen({ mount, go, args = [] }) {
     function drawList() {
       const ql = query.trim().toLowerCase();
       if (seg === "works") {
-        const rows = chats
-          .filter((c) => c.mode === "roleplay")
-          .sort(byLastActivity)
-          .filter((c) => !ql || chatTitle(c, index).toLowerCase().includes(ql));
+        // Split by the Engine's RP chat folders; branches of one story show as one book (the newest branch).
+        const rows = byBranchGroup(
+          chats
+            .filter((c) => c.mode === "roleplay")
+            .filter(
+              (c) =>
+                !ql ||
+                chatTitle(c, index).toLowerCase().includes(ql) ||
+                (c.characterIds || []).some((id) => (index.get(id)?.name || "").toLowerCase().includes(ql)),
+            ),
+        );
+        const parts = splitByGroup(
+          rows,
+          (model.folders || []).filter((f) => f.mode === "roleplay"),
+          { folderOf: (c) => c.folderId },
+        );
+        const grouped = parts.length > 1 || parts[0]?.label;
+        const engineLine = h(
+          "button",
+          {
+            type: "button",
+            class: "grow linkline",
+            style: { marginTop: "16px" },
+            onClick: () => openEngine(null, { chats: true }),
+          },
+          h("span", null, "폴더 만들기·옮기기 · 분기 · 가져오기·내보내기"),
+          h("span", null, "엔진 ›"),
+        );
+        const book = (c) => {
+          const who = index.get(c.characterIds?.[0]);
+          const title = chatTitle(c, index);
+          return card(
+            `#/rp/${encodeURIComponent(c.id)}`,
+            firstLetter(title),
+            coverOf(c) || who?.avatar,
+            title,
+            [
+              (c.characterIds || [])
+                .map((id) => index.get(id)?.name)
+                .filter(Boolean)
+                .join(", "),
+              c.branches.length > 1 ? `분기 ${c.branches.length}` : "",
+              shortTime(c.lastMessageAt || c.updatedAt),
+            ]
+              .filter(Boolean)
+              .join(" · "),
+          );
+        };
         setChildren(
           list,
           rows.length
-            ? h(
-                "div",
-                { class: "grid" },
-                rows.map((c) => {
-                  const who = index.get(c.characterIds?.[0]);
-                  const title = chatTitle(c, index);
-                  return card(
-                    `#/rp/${encodeURIComponent(c.id)}`,
-                    firstLetter(title),
-                    coverOf(c) || who?.avatar,
-                    title,
-                    [
-                      (c.characterIds || [])
-                        .map((id) => index.get(id)?.name)
-                        .filter(Boolean)
-                        .join(", "),
-                      shortTime(c.lastMessageAt || c.updatedAt),
-                    ]
-                      .filter(Boolean)
-                      .join(" · "),
-                  );
-                }),
-              )
+            ? parts.map((p) => {
+                const grid = h("div", { class: "grid" }, p.items.map(book));
+                return grouped ? foldGroup(h, "chat-folders", p.label || "폴더 없음", p.items.length, grid) : grid;
+              })
             : h("div", { class: "empty" }, ql ? "찾는 작품이 없어요." : "RP 채팅이 아직 없어요."),
+          engineLine,
         );
       } else {
         const lastUse = new Map();
@@ -137,23 +184,45 @@ export function libraryScreen({ mount, go, args = [] }) {
             const t = c.lastMessageAt || c.updatedAt || "";
             if (!lastUse.has(id) || t > lastUse.get(id)) lastUse.set(id, t);
           }
-        const rows = [...index.values()]
-          .sort((a, b) => String(lastUse.get(b.id) || "").localeCompare(String(lastUse.get(a.id) || "")))
-          .filter((c) => !ql || c.name.toLowerCase().includes(ql));
+        const recent = (a, b) => String(lastUse.get(b.id) || "").localeCompare(String(lastUse.get(a.id) || ""));
+        const order =
+          {
+            recent,
+            name: (a, b) => a.name.localeCompare(b.name),
+            // The Engine's favorite star (card extensions.fav) first, then recent.
+            fav: (a, b) => Number(!!b.row?.fav) - Number(!!a.row?.fav) || recent(a, b),
+          }[charSort] || recent;
+        const rows = [...index.values()].sort(order).filter((c) => !ql || c.name.toLowerCase().includes(ql));
+        const sorts = h(
+          "div",
+          { class: "chips", style: { padding: "0 20px 14px" } },
+          SORTS.map(([id, label]) =>
+            h(
+              "button",
+              {
+                type: "button",
+                class: "chip",
+                "aria-pressed": charSort === id ? "true" : "false",
+                onClick: () => {
+                  charSort = id;
+                  try {
+                    localStorage.setItem("mari-kit:char-sort", id);
+                  } catch {}
+                  drawList();
+                },
+              },
+              label,
+            ),
+          ),
+        );
         setChildren(
           list,
+          sorts,
           rows.length
             ? splitByGroup(rows, model.charGroups || []).map((part, i, all) =>
-                h(
-                  "div",
-                  null,
-                  all.length > 1 || part.label
-                    ? h(
-                        "div",
-                        { class: "label", style: { margin: i ? "20px 0 10px" : "0 0 10px", padding: "0 20px" } },
-                        part.label || "그룹 없음",
-                      )
-                    : null,
+                (all.length > 1 || part.label
+                  ? (grid) => foldGroup(h, "characters", part.label, part.items.length, grid)
+                  : (grid) => grid)(
                   h(
                     "div",
                     { class: "grid" },
@@ -180,13 +249,14 @@ export function libraryScreen({ mount, go, args = [] }) {
 
   (async () => {
     try {
-      const [chats, chars, charGroups] = await Promise.all([
+      const [chats, chars, charGroups, folders] = await Promise.all([
         data.chats(true),
         data.characters(true),
         groupsOf("characters"),
+        groupsOf("chats"),
       ]);
       if (!alive) return;
-      model = { chats, index: characterIndex(chars), charGroups };
+      model = { chats, index: characterIndex(chars), charGroups, folders };
       draw();
     } catch (error) {
       if (alive) setChildren(body, errorBox(error));

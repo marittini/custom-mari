@@ -16,13 +16,15 @@ function greetingsOf(card) {
 }
 
 export async function openNewChat({ mode = "roleplay", characterId = null, go }) {
-  const [chars, allConns, personas, gChars, gConns, gPersonas] = await Promise.all([
+  const [chars, allConns, personas, gChars, gConns, gPersonas, presets, gPresets] = await Promise.all([
     data.characters(),
     data.connections(),
     data.personas(),
     groupsOf("characters"),
     groupsOf("connections"),
     groupsOf("personas"),
+    api.get("/prompts").catch(() => []),
+    groupsOf("presets"),
   ]);
   // Chat models only, like the Engine's chat connection picker.
   const conns = allConns.filter(
@@ -39,6 +41,7 @@ export async function openNewChat({ mode = "roleplay", characterId = null, go })
   let greeting = 0;
   let connectionId = (conns.find((c) => c.isDefault === true || c.isDefault === "true") || {}).id || "";
   let personaId = "";
+  let presetId = "";
 
   // The list carries names only; the greetings come with the picked character's own card.
   async function withCard(c) {
@@ -154,6 +157,22 @@ export async function openNewChat({ mode = "roleplay", characterId = null, go })
         ),
       ),
       h("div", { class: "gap" }),
+      conns.length
+        ? null
+        : h(
+            "button",
+            {
+              type: "button",
+              class: "r two",
+              style: { marginBottom: "8px" },
+              onClick: () => {
+                s.close();
+                go("settings/connections");
+              },
+            },
+            h("span", null, "채팅에 쓸 연결이 아직 없어요"),
+            h("span", { class: "val" }, "연결 추가 ›"),
+          ),
       h(
         "div",
         { class: "list" },
@@ -168,6 +187,12 @@ export async function openNewChat({ mode = "roleplay", characterId = null, go })
             (c) => [c.id, c.name],
           ),
           (v) => (connectionId = v),
+        ),
+        sel(
+          "프리셋",
+          presetId,
+          groupedOptions(h, presetId, [["", "기본"]], splitByGroup(presets, gPresets), (p) => [p.id, p.name]),
+          (v) => (presetId = v),
         ),
         sel(
           "페르소나",
@@ -252,6 +277,7 @@ export async function openNewChat({ mode = "roleplay", characterId = null, go })
         characterIds: [pickedChar.id, ...extra.map((c) => c.id)],
         connectionId: connectionId || null,
         personaId: personaId || null,
+        promptPresetId: presetId || null,
       });
       const greetings = greetingsOf(pickedChar.card);
       if (kind === "roleplay" && greeting >= 0 && greetings[greeting]) {

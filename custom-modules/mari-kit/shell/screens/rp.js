@@ -6,12 +6,22 @@ import { h, icon, dots, I, setChildren } from "../lib/h.js";
 import { api } from "../lib/api.js";
 import { data, characterIndex, chatTitle, chatMeta, messageText, messageWindow } from "../lib/data.js";
 import { TOOL_DEFS, toolPlace, prefs } from "../lib/prefs.js";
-import { olderButton, topBar, toast, errorBox } from "../lib/ui.js";
+import { olderButton, topBar, toast, errorBox, fitMenus } from "../lib/ui.js";
 import { parseMessage, inline, buildPronunciations, applyPronunciations, pickVoice } from "../lib/render.js";
 import * as tts from "../lib/tts.js";
 import { syncVoiceSettings } from "../lib/voice.js";
 import { runSlash } from "../lib/slash.js";
-import { GUIDE, quickReplies, runTool as sharedTool, streamGenerate } from "../lib/actions.js";
+import {
+  GUIDE,
+  quickReplies,
+  runTool as sharedTool,
+  streamGenerate,
+  ENGINE_TOOL,
+  composerTool,
+  slashNote,
+  hiddenFromAI,
+  toolLabel,
+} from "../lib/actions.js";
 import { savedTranslation, shownText, translate } from "../lib/translate.js";
 
 export function rpScreen({ mount, args, go, back }) {
@@ -337,7 +347,7 @@ export function rpScreen({ mount, args, go, back }) {
     const only = translation && chatMeta(chat).translationDisplayOnly === true;
     return h(
       "div",
-      { class: "read", "data-message-id": m.id },
+      { class: hiddenFromAI(m) ? "read hid" : "read", "data-message-id": m.id },
       only
         ? translation
             .split(/\n{2,}/)
@@ -360,7 +370,7 @@ export function rpScreen({ mount, args, go, back }) {
           )
         : null,
       (m.swipeCount || 1) > 1 ? swipeNav(m) : null,
-      isLast && !busy ? tools(m) : null,
+      busy ? null : tools(m, !isLast),
     );
   }
 
@@ -394,18 +404,27 @@ export function rpScreen({ mount, args, go, back }) {
     );
   }
 
-  function tools(m) {
-    const usable = TOOL_DEFS.filter((t) => !t.convoOnly && !(t.assistantOnly && m.role !== "assistant"));
-    const shown = usable.filter((t) => toolPlace(t) === "show");
-    const more = usable.filter((t) => toolPlace(t) === "more");
+  // The last reply shows its tools in a row; every other message keeps them behind one small ⋯ (compact).
+  function tools(m, compact = false) {
+    const usable = TOOL_DEFS.filter(
+      (t) => !t.convoOnly && !(t.assistantOnly && m.role !== "assistant") && !(compact && t.id === "regen"),
+    );
+    const shown = compact ? [] : usable.filter((t) => toolPlace(t) === "show");
+    const more = [...(compact ? usable : usable.filter((t) => toolPlace(t) === "more")), ENGINE_TOOL];
     const open = moreFor === m.id;
     return h(
       "div",
-      { class: "tools" },
+      { class: compact ? "tools compact" : "tools" },
       shown.map((t) =>
         h(
           "button",
-          { type: "button", class: "ma", "aria-label": t.label, title: t.label, onClick: () => runTool(t.id, m) },
+          {
+            type: "button",
+            class: "ma",
+            "aria-label": toolLabel(t, m),
+            title: toolLabel(t, m),
+            onClick: () => runTool(t.id, m),
+          },
           icon(t.icon, 16, 1.6),
         ),
       ),
@@ -415,7 +434,7 @@ export function rpScreen({ mount, args, go, back }) {
             {
               type: "button",
               class: "ma",
-              "aria-label": "더보기",
+              "aria-label": compact ? "메시지 도구" : "더보기",
               "aria-expanded": open ? "true" : "false",
               onClick: (e) => {
                 e.stopPropagation();
@@ -442,7 +461,7 @@ export function rpScreen({ mount, args, go, back }) {
                   },
                 },
                 h("span", { style: { display: "flex", color: "var(--ink-2)" } }, icon(t.icon, 16, 1.6)),
-                t.label,
+                toolLabel(t, m),
               ),
             ),
           )
@@ -460,7 +479,15 @@ export function rpScreen({ mount, args, go, back }) {
     visible.forEach((m, i) => {
       if (m.role === "user") {
         const { main, sub } = shownText(m, chatMeta(chat), messageText(m));
-        return blocks.push(h("div", { class: "umsg" }, main, sub ? h("small", { class: "umsg-tr" }, sub) : null));
+        return blocks.push(
+          h(
+            "div",
+            { class: hiddenFromAI(m) ? "umsg hid" : "umsg", "data-message-id": m.id },
+            main,
+            sub ? h("small", { class: "umsg-tr" }, sub) : null,
+            busy ? null : tools(m, true),
+          ),
+        );
       }
       const before = visible[i - 1];
       const speaker = group && m.characterId ? index.get(m.characterId) : null;
@@ -478,6 +505,7 @@ export function rpScreen({ mount, args, go, back }) {
     sendBtn.setAttribute("aria-label", busy ? "멈춤" : "보내기");
     setChildren(sendBtn, icon(busy ? I.stop : I.send, busy ? 14 : 16, 2));
     clampPopover();
+    fitMenus(page);
     refreshCached(visible);
   }
 
@@ -648,7 +676,7 @@ export function rpScreen({ mount, args, go, back }) {
         generate,
         reload: load,
       });
-      if (note) toast(note);
+      slashNote(note, chatId);
     } catch (error) {
       toast(error.message);
     }
@@ -667,6 +695,7 @@ export function rpScreen({ mount, args, go, back }) {
         generationGuideSource: "guide",
       });
     }
+    if (composerTool(q, { chatId, input, grow, slash })) return;
     if (q.content.startsWith("/")) return slash(q.content);
     generate({ userMessage: q.content });
   }

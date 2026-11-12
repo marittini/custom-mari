@@ -548,7 +548,16 @@ async function openFromShell() {
     const toggle = el.querySelector('[aria-expanded="false"]');
     if (toggle) toggle.click();
     setTimeout(() => el.scrollIntoView({ block: "start", behavior: "smooth" }), 150);
-  } else if (target.character)
+  } else if (target.message) {
+    // One message: the Engine's chat scrolls to it (reactions, replies, marks, prompt, thinking live there).
+    const el = await waitFor(() => document.querySelector(`[data-message-id="${CSS.escape(target.message)}"]`));
+    if (!el) return;
+    el.scrollIntoView({ block: "center" });
+    el.animate?.([{ opacity: 0.35 }, { opacity: 1 }], { duration: 900, iterations: 2 });
+  } else if (target.chats) ui().setSidebarOpen?.(true);
+  else if (target.persona)
+    ui().openPersonaDetail?.(target.persona, target.tab ? { initialTab: target.tab } : undefined);
+  else if (target.character)
     ui().openCharacterDetail(target.character, target.tab ? { initialTab: target.tab } : undefined);
   else if (target.preset) ui().openPresetDetail(target.preset, target.tab ? { initialTab: target.tab } : undefined);
   else if (target.lorebook) ui().openLorebookDetail(target.lorebook);

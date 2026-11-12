@@ -542,7 +542,35 @@ export function chatSettingsScreen({ mount, args, go, back }) {
         { class: "list" },
         linkRow(I.list, "모든 채팅 설정", "채팅 · 컨텍스트 · 기억 · 기타", () => go(here("all"))),
       ),
+      gap(),
+      h(
+        "div",
+        { class: "list" },
+        h(
+          "button",
+          { type: "button", class: "r two danger", onClick: removeChat },
+          h("span", null, "이 채팅 지우기"),
+          h("span", { class: "val" }, chat.groupId ? "이 분기만" : ""),
+        ),
+      ),
     ];
+  }
+
+  // Deletes this chat (this branch only, like the Engine's single-chat delete) and its shell cover.
+  async function removeChat() {
+    const { chat, index } = state;
+    if (!confirm(`'${chatTitle(chat, index)}' 채팅을 지울까요? 메시지도 함께 지워지고 되돌릴 수 없어요.`)) return;
+    try {
+      const cover = coverOf(chat);
+      if (cover)
+        await api.delete(`/mari-kit/shell/cover/${encodeURIComponent(cover.split("/").pop())}`).catch(() => {});
+      await api.delete(`/chats/${encodeURIComponent(chatId)}`);
+      await data.chats(true);
+      toast("채팅을 지웠어요");
+      location.replace(`#/${chat.mode === "conversation" ? "convos" : "library"}`);
+    } catch (error) {
+      toast(`지우지 못했어요: ${error.message}`);
+    }
   }
 
   function allView() {
