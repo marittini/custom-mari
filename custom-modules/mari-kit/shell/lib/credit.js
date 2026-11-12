@@ -24,13 +24,42 @@ export async function loadCredit({ refresh = false } = {}) {
         .get(`/connection-accounts/${encodeURIComponent(a.id)}/balance${refresh ? "?refresh=true" : ""}`)
         .catch((error) => ({ error }));
       const b = res?.balance;
+      // LinkAPI: with only an sk- key the Engine reads that key's own allowance (none for an unlimited key);
+      // the account balance needs the dashboard access token (profile:read) and user id on the Engine connection.
+      const linkKeyOnly = a.balanceSource === "linkapi" && b?.scope === "key";
       return {
         id: a.id,
         name: a.name,
+        source: a.balanceSource,
+        scope: b?.scope || null,
         left: b && Number.isFinite(b.left) ? b.left : null,
         unit: b?.unit || "USD",
-        total: b && Number.isFinite(b.left) && Number.isFinite(b.used) && b.scope === "key" ? b.left + b.used : null,
-        note: res?.error ? "읽지 못했어요" : !b ? "잔액 읽기 꺼짐" : b.left === null ? "한도 없음" : "",
+        total:
+          !b || !Number.isFinite(b.left)
+            ? null
+            : Number.isFinite(b.granted)
+              ? b.granted
+              : Number.isFinite(b.used) && b.scope === "key"
+                ? b.left + b.used
+                : null,
+        note: res?.error
+          ? "읽지 못했어요"
+          : !b
+            ? "잔액 읽기 꺼짐"
+            : b.left === null
+              ? linkKeyOnly
+                ? "키 한도 없음 · 계정 잔액은 토큰 필요"
+                : "한도 없음"
+              : "",
+        // Why the account balance is not shown (the Engine's notice), for 설정.
+        notice:
+          res?.notice === "linkapi_missing_profile_read"
+            ? "대시보드 토큰에 profile:read 권한이 없어요"
+            : res?.notice === "linkapi_token_rejected"
+              ? "대시보드 토큰이 거절됐어요"
+              : linkKeyOnly
+                ? "키의 남은 한도예요. 계정 전체 잔액은 대시보드 토큰과 사용자 ID를 넣으면 보여요"
+                : "",
       };
     }),
   );
