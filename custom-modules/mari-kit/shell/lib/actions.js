@@ -4,6 +4,7 @@ import { h } from "./h.js";
 import { api } from "./api.js";
 import { data, chatMeta, messageText } from "./data.js";
 import { toast, sheet } from "./ui.js";
+import { translate, savedTranslation } from "./translate.js";
 
 export const GUIDE = (text) =>
   `[Guided generation instruction — do not include a reply from {{user}}. Instead, write the next generated message steering it toward the following: ${text.trim()}]`;
@@ -37,22 +38,13 @@ export async function runTool(id, { chatId, chat, message, reload, generate, go,
     } else if (id === "voice") {
       await speak?.(message);
     } else if (id === "translate") {
-      const meta = chatMeta(chat);
-      const res = await api.post("/translate", {
-        chatId,
-        text,
-        provider: meta.translationProvider || "google",
-        targetLanguage: meta.translationOutputTargetLang || meta.translationTargetLang || "ko",
-        ...(meta.translationConnectionId ? { connectionId: meta.translationConnectionId } : {}),
-        ...(typeof meta.translationOutputPrompt === "string" && meta.translationOutputPrompt
-          ? { systemPrompt: meta.translationOutputPrompt }
-          : {}),
-      });
-      await api.patch(`${base}/extra`, {
-        translation: res.translatedText,
-        translationSource: text,
-        translationHidden: false,
-      });
+      // Like the Engine: translate, or hide a translation that is already showing.
+      if (savedTranslation(message)) {
+        await api.patch(`${base}/extra`, { translationHidden: true });
+      } else {
+        const translation = await translate(text, "output", chatMeta(chat), chatId);
+        await api.patch(`${base}/extra`, { translation, translationSource: message.content, translationHidden: false });
+      }
       await reload();
     } else if (id === "edit") {
       editMessage(message, base, reload);

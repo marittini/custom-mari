@@ -20,6 +20,7 @@ import { pickVoice, stripCues } from "../lib/render.js";
 import * as tts from "../lib/tts.js";
 import { syncVoiceSettings } from "../lib/voice.js";
 import { callsAvailable, callScreen, callPrefs } from "../lib/call.js";
+import { shownText, translate } from "../lib/translate.js";
 import { runSlash } from "../lib/slash.js";
 import { GUIDE, quickReplies, runTool, streamGenerate } from "../lib/actions.js";
 
@@ -124,6 +125,30 @@ export function convoScreen({ mount, args, go }) {
     },
     dots(),
   );
+  // The Engine's 보내기 옆 번역 버튼 (chat setting): translates the draft in place.
+  const trBtn = h(
+    "button",
+    {
+      type: "button",
+      class: "cb",
+      "aria-label": "입력 번역",
+      hidden: true,
+      onClick: async () => {
+        const text = input.value.trim();
+        if (!text) return;
+        trBtn.disabled = true;
+        try {
+          input.value = await translate(text, "input", chatMeta(chat), chatId);
+          grow();
+        } catch (error) {
+          toast(`번역하지 못했어요: ${error.message}`);
+        } finally {
+          trBtn.disabled = false;
+        }
+      },
+    },
+    icon(I.translate, 16, 1.6),
+  );
   const sendBtn = h(
     "button",
     { type: "button", class: "cb send", "aria-label": "보내기", onClick: () => (busy ? stopGenerating() : send()) },
@@ -134,7 +159,7 @@ export function convoScreen({ mount, args, go }) {
     head,
     scroller,
     quickLayer,
-    h("div", { class: "cmp", style: { background: "var(--paper)" } }, input, qrBtn, sendBtn),
+    h("div", { class: "cmp", style: { background: "var(--paper)" } }, input, trBtn, qrBtn, sendBtn),
   );
 
   function grow() {
@@ -147,6 +172,7 @@ export function convoScreen({ mount, args, go }) {
       const [c, chars] = await Promise.all([data.chat(chatId), data.characters(), win.reload()]);
       if (!alive) return;
       chat = c;
+      trBtn.hidden = chatMeta(chat).showInputTranslateButton !== true;
       index = characterIndex(chars);
       group = (chat.characterIds || []).length > 1;
       messages = shown();
@@ -325,6 +351,7 @@ export function convoScreen({ mount, args, go }) {
         ),
       );
     // Like the Engine's Convo, a blank line starts a new bubble.
+    const meta = chatMeta(chat);
     const bubbles = [];
     for (const m of messages) {
       const ev = callEvent(m);
@@ -332,12 +359,21 @@ export function convoScreen({ mount, args, go }) {
         bubbles.push({ m, ev, me: null, first: true, last: true });
         continue;
       }
-      const parts = (m.role === "assistant" ? stripCues(messageText(m)) : messageText(m))
+      const original = m.role === "assistant" ? stripCues(messageText(m)) : messageText(m);
+      const { main, sub } = shownText(m, meta, original);
+      const parts = main
         .split(/\n{2,}/)
         .map((p) => p.trim())
         .filter(Boolean);
       (parts.length ? parts : [""]).forEach((text, k, all) =>
-        bubbles.push({ m, text, me: m.role === "user", first: k === 0, last: k === all.length - 1 }),
+        bubbles.push({
+          m,
+          text,
+          me: m.role === "user",
+          first: k === 0,
+          last: k === all.length - 1,
+          sub: k === all.length - 1 ? sub : "",
+        }),
       );
     }
     const lastMine = messages.map((m) => m.role === "user").lastIndexOf(true);
@@ -395,6 +431,7 @@ export function convoScreen({ mount, args, go }) {
           },
           bub.text,
         ),
+        bub.sub ? h("span", { class: "bub-tr" }, bub.sub) : null,
       );
       if (on && bub.last) {
         const { shown, more } = toolsFor(m);
@@ -634,12 +671,18 @@ export function convoScreen({ mount, args, go }) {
     abort?.abort();
   }
 
-  function send() {
-    const text = input.value.trim();
+  async function send() {
+    let text = input.value.trim();
     if (!text || busy) return;
     input.value = "";
     grow();
     if (text.startsWith("/")) return slash(text);
+    // The Engine's 내 메시지 번역: the message goes out translated; if that fails, it goes out as written.
+    if (chatMeta(chat).translateInput === true)
+      text = await translate(text, "input", chatMeta(chat), chatId).catch(() => {
+        toast("번역하지 못해서 원문으로 보냈어요");
+        return text;
+      });
     generate({ userMessage: text });
   }
 

@@ -3,7 +3,7 @@
 // (guide reply + the Engine's own custom quick replies).
 
 import { h, icon, dots, I, setChildren } from "../lib/h.js";
-import { api, parseJson } from "../lib/api.js";
+import { api } from "../lib/api.js";
 import { data, characterIndex, chatTitle, chatMeta, messageText, messageWindow } from "../lib/data.js";
 import { TOOL_DEFS, toolPlace, prefs } from "../lib/prefs.js";
 import { olderButton, topBar, toast, errorBox } from "../lib/ui.js";
@@ -12,6 +12,7 @@ import * as tts from "../lib/tts.js";
 import { syncVoiceSettings } from "../lib/voice.js";
 import { runSlash } from "../lib/slash.js";
 import { GUIDE, quickReplies, runTool as sharedTool, streamGenerate } from "../lib/actions.js";
+import { savedTranslation, shownText, translate } from "../lib/translate.js";
 
 export function rpScreen({ mount, args, go }) {
   const chatId = args[0];
@@ -83,13 +84,37 @@ export function rpScreen({ mount, args, go }) {
     },
     dots(),
   );
+  // The Engine's 보내기 옆 번역 버튼 (chat setting): translates the draft in place.
+  const trBtn = h(
+    "button",
+    {
+      type: "button",
+      class: "cb",
+      "aria-label": "입력 번역",
+      hidden: true,
+      onClick: async () => {
+        const text = input.value.trim();
+        if (!text) return;
+        trBtn.disabled = true;
+        try {
+          input.value = await translate(text, "input", chatMeta(chat), chatId);
+          grow();
+        } catch (error) {
+          toast(`번역하지 못했어요: ${error.message}`);
+        } finally {
+          trBtn.disabled = false;
+        }
+      },
+    },
+    icon(I.translate, 16, 1.6),
+  );
   const sendBtn = h(
     "button",
     { type: "button", class: "cb send", "aria-label": "보내기", onClick: () => (busy ? stopGenerating() : send()) },
     icon(I.send, 16, 2),
   );
   const quickLayer = h("div");
-  const composer = h("div", { class: "cmp" }, input, qrBtn, sendBtn);
+  const composer = h("div", { class: "cmp" }, input, trBtn, qrBtn, sendBtn);
   mount.append(head, scroller, quickLayer, composer);
 
   function grow() {
@@ -108,6 +133,7 @@ export function rpScreen({ mount, args, go }) {
       ]);
       if (!alive) return;
       chat = c;
+      trBtn.hidden = chatMeta(chat).showInputTranslateButton !== true;
       index = characterIndex(chars);
       messages = win.list;
       total = Number.isFinite(count?.count) ? count.count : null;
@@ -306,13 +332,19 @@ export function rpScreen({ mount, args, go }) {
         }),
       ),
     );
-    const extra = parseJson(m.extra, {}) || {};
-    const translation = typeof extra.translation === "string" && !extra.translationHidden ? extra.translation : "";
+    const translation = savedTranslation(m);
+    // 원문 대신 번역: the translation takes the original's place (its spoken lines then have no voice buttons).
+    const only = translation && chatMeta(chat).translationDisplayOnly === true;
     return h(
       "div",
       { class: "read", "data-message-id": m.id },
-      paragraphs,
-      translation
+      only
+        ? translation
+            .split(/\n{2,}/)
+            .filter((t) => t.trim())
+            .map((t) => h("p", { style: { textAlign: prefs().align } }, inline(t.trim())))
+        : paragraphs,
+      translation && !only
         ? h(
             "div",
             {
@@ -426,7 +458,10 @@ export function rpScreen({ mount, args, go }) {
     const group = (chat.characterIds || []).length > 1;
     const blocks = [];
     visible.forEach((m, i) => {
-      if (m.role === "user") return blocks.push(h("div", { class: "umsg" }, messageText(m)));
+      if (m.role === "user") {
+        const { main, sub } = shownText(m, chatMeta(chat), messageText(m));
+        return blocks.push(h("div", { class: "umsg" }, main, sub ? h("small", { class: "umsg-tr" }, sub) : null));
+      }
       const before = visible[i - 1];
       const speaker = group && m.characterId ? index.get(m.characterId) : null;
       if (speaker && !(before?.role === "assistant" && before.characterId === m.characterId))
@@ -586,12 +621,18 @@ export function rpScreen({ mount, args, go }) {
     abort?.abort();
   }
 
-  function send() {
-    const text = input.value.trim();
+  async function send() {
+    let text = input.value.trim();
     if (!text || busy) return;
     input.value = "";
     grow();
     if (text.startsWith("/")) return slash(text);
+    // The Engine's 내 메시지 번역: the message goes out translated; if that fails, it goes out as written.
+    if (chatMeta(chat).translateInput === true)
+      text = await translate(text, "input", chatMeta(chat), chatId).catch(() => {
+        toast("번역하지 못해서 원문으로 보냈어요");
+        return text;
+      });
     generate({ userMessage: text });
   }
 

@@ -1685,3 +1685,17 @@ label.grow {
   letter-spacing: 0.02em;
   color: var(--ink-3);
 }
+/* A Convo message's translation under its last bubble (the Engine's 자동 번역). */
+.bub-tr {
+  max-width: 78%;
+  margin: 4px 6px 0;
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--ink-3);
+  white-space: pre-wrap;
+}
+.umsg-tr {
+  display: block;
+  margin-top: 6px;
+  color: var(--ink-3);
+}

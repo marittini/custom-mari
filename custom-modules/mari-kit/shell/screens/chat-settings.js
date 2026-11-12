@@ -76,6 +76,77 @@ export function chatSettingsScreen({ mount, args, go }) {
     }
   }
 
+  /** The Engine's own translation settings for this chat (same fields as its Chat Settings → Translation). */
+  function translationList(chat, conns) {
+    const meta = chatMeta(chat);
+    const provider = ["google", "deepl", "deeplx", "ai"].includes(meta.translationProvider)
+      ? meta.translationProvider
+      : "google";
+    const legacy = meta.translationTargetLang || "en";
+    const langs = (current) => {
+      const list = [
+        ["ko", "한국어"],
+        ["en", "영어"],
+        ["ja", "일본어"],
+        ["zh-CN", "중국어 간체"],
+        ["zh-TW", "중국어 번체"],
+        ["es", "스페인어"],
+        ["fr", "프랑스어"],
+        ["de", "독일어"],
+        ["ru", "러시아어"],
+        ["vi", "베트남어"],
+        ["th", "태국어"],
+        ["id", "인도네시아어"],
+      ];
+      return list.some(([v]) => v === current) ? list : [[current, current], ...list];
+    };
+    const input = meta.translationInputTargetLang || legacy;
+    const output = meta.translationOutputTargetLang || legacy;
+    return h(
+      "div",
+      { class: "list" },
+      selectRow(
+        I.translate,
+        "번역",
+        provider,
+        [
+          ["google", "Google 번역"],
+          ["deepl", "DeepL"],
+          ["deeplx", "DeepLX"],
+          ["ai", "AI (연결)"],
+        ],
+        (v) => patchMeta({ translationProvider: v }),
+      ),
+      provider === "ai"
+        ? selectRow(
+            I.link,
+            meta.translationConnectionId ? "번역 연결" : "번역 연결 · 골라야 번역돼요",
+            meta.translationConnectionId || "",
+            [["", "고르세요"], ...conns.map((c) => [c.id, c.name])],
+            (v) => patchMeta({ translationConnectionId: v || null }),
+          )
+        : null,
+      selectRow(I.translate, "보낼 말을", input, langs(input), (v) => patchMeta({ translationInputTargetLang: v })),
+      selectRow(I.translate, "받은 말을", output, langs(output), (v) => patchMeta({ translationOutputTargetLang: v })),
+      switchRow(I.translate, "답장 자동 번역", meta.autoTranslate === true, () =>
+        patchMeta({ autoTranslate: meta.autoTranslate !== true }),
+      ),
+      switchRow(I.translate, "내 메시지 번역해서 보내기", meta.translateInput === true, () =>
+        patchMeta({ translateInput: meta.translateInput !== true }),
+      ),
+      switchRow(I.translate, "보내기 옆 번역 버튼", meta.showInputTranslateButton === true, () =>
+        patchMeta({ showInputTranslateButton: meta.showInputTranslateButton !== true }),
+      ),
+      switchRow(
+        I.translate,
+        "원문 대신 번역만 보기",
+        meta.translationDisplayOnly === true,
+        () => patchMeta({ translationDisplayOnly: meta.translationDisplayOnly !== true }),
+        "번역된 메시지는 번역문만 보여요",
+      ),
+    );
+  }
+
   /** Who is in the room: add or take out characters (at least one stays). */
   function editCast(chat, index) {
     let ids = [...(chat.characterIds || [])];
@@ -208,6 +279,8 @@ export function chatSettingsScreen({ mount, args, go }) {
             (v) => patchChat({ personaId: v || null }),
           ),
         ),
+        h("div", { class: "gap" }),
+        translationList(chat, conns),
         h("div", { class: "gap" }),
         h(
           "div",

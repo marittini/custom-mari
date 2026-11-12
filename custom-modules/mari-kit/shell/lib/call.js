@@ -9,6 +9,7 @@
 import { h, icon, I, setChildren, dots } from "./h.js";
 import { api } from "./api.js";
 import { chatMeta } from "./data.js";
+import { translate } from "./translate.js";
 import { pickVoice } from "./render.js";
 import { prefs, setPrefs } from "./prefs.js";
 import { toast, sheet, popMenu, avatar, thumb } from "./ui.js";
@@ -22,51 +23,6 @@ export async function callsAvailable(chatId) {
     return (await api.get(`${BASE}/chat/${encodeURIComponent(chatId)}/status`)) || {};
   } catch {
     return null;
-  }
-}
-
-/** Engine translation request for one direction ("input": my words → theirs; "output": theirs → mine). */
-export function translationBody(text, direction, meta, chatId) {
-  const input = direction === "input";
-  const target = input ? meta.translationInputTargetLang : meta.translationOutputTargetLang;
-  const prompt = input ? meta.translationInputPrompt : meta.translationOutputPrompt;
-  const provider = ["ai", "deepl", "deeplx", "google"].includes(meta.translationProvider)
-    ? meta.translationProvider
-    : "google";
-  const body = {
-    chatId,
-    text,
-    provider,
-    targetLanguage:
-      String(target || "").trim() || String(meta.translationTargetLang || "").trim() || (input ? "en" : "ko"),
-  };
-  if (provider === "ai") {
-    if (meta.translationConnectionId) body.connectionId = meta.translationConnectionId;
-    const effective = prompt === undefined ? meta.translationPrompt : prompt;
-    if (typeof effective === "string") body.systemPrompt = effective;
-  } else if (provider === "deepl" && meta.translationDeeplApiKey) body.deeplApiKey = meta.translationDeeplApiKey;
-  else if (provider === "deeplx" && meta.translationDeeplxUrl) body.deeplxUrl = meta.translationDeeplxUrl;
-  return body;
-}
-
-const translated = new Map();
-async function translate(text, direction, meta, chatId) {
-  const body = translationBody(text, direction, meta, chatId);
-  const key = JSON.stringify(body);
-  if (!translated.has(key))
-    translated.set(
-      key,
-      api.post("/translate", body).then((r) => {
-        const out = String(r?.translatedText || "").trim();
-        if (!out) throw new Error("번역 결과가 비어 있어요");
-        return out;
-      }),
-    );
-  try {
-    return await translated.get(key);
-  } catch (error) {
-    translated.delete(key);
-    throw error;
   }
 }
 
