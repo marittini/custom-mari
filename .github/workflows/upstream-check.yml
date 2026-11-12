@@ -1,0 +1,93 @@
+name: Upstream Check
+
+# The Engine updates itself straight from Pasta-Devs/Marinara-Engine (its install's `origin`), and Mari Kit lives
+# in the data folder, so nothing here is merged. Every day this puts Mari Kit on the latest upstream `main` and
+# runs its checks; when they fail, it opens an issue so the shell can be fixed before or right after the update.
+
+on:
+  schedule:
+    - cron: "17 21 * * *"
+  workflow_dispatch:
+
+concurrency:
+  group: upstream-check
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+  issues: write
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    env:
+      ONNXRUNTIME_NODE_INSTALL: skip
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - name: Checkout upstream Engine
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: Pasta-Devs/Marinara-Engine
+          ref: main
+          persist-credentials: false
+
+      - name: Checkout Mari Kit
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          path: fork
+          persist-credentials: false
+
+      - name: Put Mari Kit on the upstream Engine
+        id: upstream
+        run: |
+          rm -rf custom-modules && mv fork/custom-modules custom-modules
+          echo "sha=$(git rev-parse --short=9 HEAD)" >> "$GITHUB_OUTPUT"
+
+      - name: Set up pnpm
+        uses: pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413 # v6.1.0
+        with:
+          run_install: false
+
+      - name: Set up Node.js
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 24
+          cache: pnpm
+
+      - name: Check Mari Kit on the upstream Engine
+        id: checks
+        run: |
+          pnpm install --frozen-lockfile
+          pnpm build:shared
+          pnpm build:server
+          kit=fail; api=fail
+          node custom-modules/scripts/check.mjs > kit.log 2>&1 && kit=pass
+          data=$(mktemp -d)
+          DATA_DIR="$data" PORT=7860 HOST=127.0.0.1 NODE_ENV=production node packages/server/dist/index.js > server.log 2>&1 &
+          server=$!
+          for i in $(seq 1 60); do curl -sf -o /dev/null http://127.0.0.1:7860/api/chats && break; sleep 2; done
+          node custom-modules/scripts/check-engine-api.mjs http://127.0.0.1:7860 > api.log 2>&1 && api=pass
+          kill "$server" || true
+          echo "kit=$kit" >> "$GITHUB_OUTPUT"
+          echo "api=$api" >> "$GITHUB_OUTPUT"
+          cat kit.log api.log
+
+      - name: Report a break
+        if: steps.checks.outputs.kit != 'pass' || steps.checks.outputs.api != 'pass'
+        run: |
+          title="Mari Kit breaks on Marinara Engine ${{ steps.upstream.outputs.sha }}"
+          if gh issue list --repo "$GITHUB_REPOSITORY" --state open --search "\"$title\" in:title" --json number --jq '.[0].number' | grep -q .; then
+            echo "Already reported"; exit 1
+          fi
+          {
+            echo "Upstream \`main\` at \`${{ steps.upstream.outputs.sha }}\` fails the Mari Kit checks."
+            echo
+            echo "- Package checks (\`check.mjs\`): **${{ steps.checks.outputs.kit }}**"
+            echo "- Engine routes the Mari shell calls (\`check-engine-api.mjs\`): **${{ steps.checks.outputs.api }}**"
+            echo
+            echo '```'
+            tail -n 30 kit.log api.log
+            echo '```'
+          } > body.md
+          gh issue create --repo "$GITHUB_REPOSITORY" --title "$title" --body-file body.md
+          exit 1

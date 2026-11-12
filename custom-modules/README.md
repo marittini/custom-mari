@@ -211,14 +211,13 @@ RP 채팅의 채팅 설정 → 에이전트 → Mari Kit에서 정합니다. (�
 
 ## 원본 업데이트 받기
 
-엔진 소스는 원본(Pasta-Devs/Marinara-Engine) 그대로라서, 원본 업데이트는 충돌 없이 들어옵니다.
+엔진 소스는 원본(Pasta-Devs/Marinara-Engine) 그대로라서, 엔진이 원본에서 직접 업데이트합니다. 병합할 일은 없습니다.
 
-1. `.github/workflows/upstream-sync.yml`이 매일 원본 `main`을 확인합니다. 새 커밋이 있으면 `upstream-sync/<커밋>`
-   브랜치에 병합하고, Mari Kit 검사 결과를 붙여 PR을 엽니다. 직접 돌리려면 Actions에서 **Run workflow**를 누릅니다.
-   - 원본이 워크플로 파일을 바꾸면 기본 토큰으로는 푸시가 막힙니다. 이 저장소의 Contents · Pull requests ·
-     Workflows 읽기/쓰기 권한이 있는 토큰을 `UPSTREAM_SYNC_TOKEN` 시크릿으로 넣어 두세요.
-2. 그 PR을 `main`에 병합하면, 엔진 앱의 업데이트 버튼(`origin/main`을 받습니다)으로 업데이트됩니다. 데이터 폴더에
-   설치된 Mari Kit은 그대로 남습니다.
+1. 설치 폴더에서 한 번만: `git remote set-url origin https://github.com/Pasta-Devs/Marinara-Engine.git`
+   이후에는 엔진 앱의 업데이트 버튼이 원본 `main`을 그대로 받습니다. 그때 설치 폴더의 `custom-modules/`는
+   사라지지만, 데이터 폴더에 설치된 Mari Kit과 쉘은 그대로 남습니다.
+2. `.github/workflows/upstream-check.yml`이 매일 최신 원본 위에 Mari Kit을 올려 검사합니다. 깨지면 이 저장소에
+   이슈를 엽니다. 아무것도 병합하지 않습니다.
 3. 쉘이 쓰는 엔진 API는 `mari-kit/shell/engine-api.json`에 있습니다.
    - `node custom-modules/scripts/check-engine-api.mjs <엔진 주소>`: 업데이트된 엔진에 그 API가 아직 있는지 확인합니다.
      요청에 가짜 id와 빈 본문을 보내므로, 버려도 되는 데이터 폴더의 엔진에 돌립니다.
