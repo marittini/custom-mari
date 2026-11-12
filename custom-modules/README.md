@@ -208,3 +208,20 @@ RP 채팅의 채팅 설정 → 에이전트 → Mari Kit에서 정합니다. (�
 
 한계: 슬래시 명령은 `/guided /continue /impersonate /send /sys /as /roll`만 쉘에서 실행합니다(나머지는 엔진 화면).
 글꼴·읽기·메시지 도구·앱 이름 설정은 브라우저마다 저장됩니다.
+
+## 원본 업데이트 받기
+
+엔진 소스는 원본(Pasta-Devs/Marinara-Engine) 그대로라서, 원본 업데이트는 충돌 없이 들어옵니다.
+
+1. `.github/workflows/upstream-sync.yml`이 매일 원본 `main`을 확인합니다. 새 커밋이 있으면 `upstream-sync/<커밋>`
+   브랜치에 병합하고, Mari Kit 검사 결과를 붙여 PR을 엽니다. 직접 돌리려면 Actions에서 **Run workflow**를 누릅니다.
+   - 원본이 워크플로 파일을 바꾸면 기본 토큰으로는 푸시가 막힙니다. 이 저장소의 Contents · Pull requests ·
+     Workflows 읽기/쓰기 권한이 있는 토큰을 `UPSTREAM_SYNC_TOKEN` 시크릿으로 넣어 두세요.
+2. 그 PR을 `main`에 병합하면, 엔진 앱의 업데이트 버튼(`origin/main`을 받습니다)으로 업데이트됩니다. 데이터 폴더에
+   설치된 Mari Kit은 그대로 남습니다.
+3. 쉘이 쓰는 엔진 API는 `mari-kit/shell/engine-api.json`에 있습니다.
+   - `node custom-modules/scripts/check-engine-api.mjs <엔진 주소>`: 업데이트된 엔진에 그 API가 아직 있는지 확인합니다.
+     요청에 가짜 id와 빈 본문을 보내므로, 버려도 되는 데이터 폴더의 엔진에 돌립니다.
+   - `check.mjs`: 쉘 코드에 새 엔진 호출이 생겼는데 목록에 빠져 있으면 실패합니다.
+4. 원본에 새로 생긴 기능은 쉘에 들어오기 전에도 **설정 → 엔진 화면**이나 **채팅 설정 → 엔진 화면에서 열기**로 바로
+   씁니다. 엔진 화면이 같은 채팅으로 열립니다.

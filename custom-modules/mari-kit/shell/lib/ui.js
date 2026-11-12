@@ -188,3 +188,12 @@ export function popMenu(items) {
 export function hbox(label, ...children) {
   return h("div", { class: "hbox" }, h("span", { class: "htag" }, label), ...children);
 }
+
+/** The Engine's own screen, for anything the shell does not show yet (new upstream features included); with a chat id
+ *  it opens on that chat, through the same last-chat key the Engine restores on start. */
+export function openEngine(chatId) {
+  try {
+    if (chatId) localStorage.setItem("marinara-active-chat-id", chatId);
+  } catch {}
+  location.href = "/";
+}

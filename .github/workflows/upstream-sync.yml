@@ -1,0 +1,125 @@
+name: Upstream Sync
+
+# Brings Pasta-Devs/Marinara-Engine `main` into this fork as a pull request, with the Mari Kit checks on the
+# merged code: the Engine is untouched here, so the merge should apply cleanly, and the checks show whether the
+# Mari shell still fits the updated Engine. Merging the PR is the owner's call; once it is on `main`, the Engine's
+# own in-app updater (which pulls `origin/main`) delivers it.
+#
+# Upstream changes often touch .github/workflows, and the default token may not push those. Add a fine-grained
+# token with Contents, Pull requests and Workflows (read/write) on this repository as the UPSTREAM_SYNC_TOKEN
+# secret; without it the run still reports, but pushing a merge that changes workflows fails.
+
+on:
+  schedule:
+    - cron: "17 21 * * *"
+  workflow_dispatch:
+
+concurrency:
+  group: upstream-sync
+  cancel-in-progress: false
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    env:
+      ONNXRUNTIME_NODE_INSTALL: skip
+      GH_TOKEN: ${{ secrets.UPSTREAM_SYNC_TOKEN || github.token }}
+    steps:
+      - name: Checkout main
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: main
+          fetch-depth: 0
+          token: ${{ secrets.UPSTREAM_SYNC_TOKEN || github.token }}
+
+      - name: Fetch upstream
+        id: upstream
+        run: |
+          git fetch --no-tags https://github.com/Pasta-Devs/Marinara-Engine.git main:refs/remotes/upstream/main
+          sha=$(git rev-parse --short=9 upstream/main)
+          echo "sha=$sha" >> "$GITHUB_OUTPUT"
+          if git merge-base --is-ancestor upstream/main HEAD; then
+            echo "new=false" >> "$GITHUB_OUTPUT"
+            echo "main already has upstream $sha"
+          else
+            echo "new=true" >> "$GITHUB_OUTPUT"
+            echo "branch=upstream-sync/$sha" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Skip when a PR for this upstream commit exists
+        id: existing
+        if: steps.upstream.outputs.new == 'true'
+        run: |
+          if git ls-remote --exit-code origin "refs/heads/${{ steps.upstream.outputs.branch }}" >/dev/null; then
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+            echo "Branch ${{ steps.upstream.outputs.branch }} already pushed"
+          fi
+
+      - name: Merge upstream
+        if: steps.upstream.outputs.new == 'true' && steps.existing.outputs.skip != 'true'
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git switch -c "${{ steps.upstream.outputs.branch }}"
+          if ! git merge --no-edit upstream/main; then
+            git merge --abort
+            echo "::error::Upstream does not merge cleanly into main; merge it by hand."
+            exit 1
+          fi
+
+      - name: Set up pnpm
+        if: steps.upstream.outputs.new == 'true' && steps.existing.outputs.skip != 'true'
+        uses: pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413 # v6.1.0
+        with:
+          run_install: false
+
+      - name: Set up Node.js
+        if: steps.upstream.outputs.new == 'true' && steps.existing.outputs.skip != 'true'
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 24
+          cache: pnpm
+
+      - name: Check Mari Kit on the updated Engine
+        id: checks
+        if: steps.upstream.outputs.new == 'true' && steps.existing.outputs.skip != 'true'
+        run: |
+          pnpm install --frozen-lockfile
+          pnpm build:shared
+          pnpm build:server
+          kit=fail; api=fail
+          node custom-modules/scripts/check.mjs > kit.log 2>&1 && kit=pass
+          data=$(mktemp -d)
+          DATA_DIR="$data" PORT=7860 HOST=127.0.0.1 NODE_ENV=production node packages/server/dist/index.js > server.log 2>&1 &
+          server=$!
+          for i in $(seq 1 60); do curl -sf -o /dev/null http://127.0.0.1:7860/api/chats && break; sleep 2; done
+          node custom-modules/scripts/check-engine-api.mjs http://127.0.0.1:7860 > api.log 2>&1 && api=pass
+          kill "$server" || true
+          echo "kit=$kit" >> "$GITHUB_OUTPUT"
+          echo "api=$api" >> "$GITHUB_OUTPUT"
+          cat kit.log api.log
+
+      - name: Open the pull request
+        if: steps.upstream.outputs.new == 'true' && steps.existing.outputs.skip != 'true'
+        run: |
+          git push origin "${{ steps.upstream.outputs.branch }}"
+          {
+            echo "Merges Pasta-Devs/Marinara-Engine \`main\` at \`${{ steps.upstream.outputs.sha }}\` into this fork."
+            echo
+            echo "## Mari Kit on the updated Engine"
+            echo
+            echo "- Package checks (\`custom-modules/scripts/check.mjs\`): **${{ steps.checks.outputs.kit }}**"
+            echo "- Engine routes the Mari shell calls (\`check-engine-api.mjs\`): **${{ steps.checks.outputs.api }}**"
+            echo
+            echo '```'
+            tail -n 20 kit.log api.log
+            echo '```'
+            echo
+            echo "A failing check means the shell needs a fix before or with this merge. Once merged, the Engine's in-app updater delivers it."
+          } > body.md
+          gh pr create --base main --head "${{ steps.upstream.outputs.branch }}" \
+            --title "Upstream sync: Marinara Engine ${{ steps.upstream.outputs.sha }}" --body-file body.md

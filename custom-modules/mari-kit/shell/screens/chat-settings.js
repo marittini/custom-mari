@@ -5,7 +5,7 @@ import { h, icon, I, setChildren } from "../lib/h.js";
 import { api } from "../lib/api.js";
 import { data, characterIndex, chatMeta, chatTitle } from "../lib/data.js";
 import { setPrefs, isDark, TOOL_DEFS, toolPlace } from "../lib/prefs.js";
-import { topBar, toast, errorBox } from "../lib/ui.js";
+import { topBar, toast, errorBox, openEngine } from "../lib/ui.js";
 
 let lastTab = "chat";
 
@@ -159,6 +159,12 @@ export function chatSettingsScreen({ mount, args, go }) {
           (chat.characterIds || []).map((id) =>
             linkRow(I.person, "캐릭터", index.get(id)?.name || "?", () => go(`character/${encodeURIComponent(id)}`)),
           ),
+        ),
+        h("div", { class: "gap" }),
+        h(
+          "div",
+          { class: "list" },
+          linkRow(I.square, "엔진 화면에서 열기", "전체 기능", () => openEngine(chat.id)),
         ),
       ];
     } else if (tab === "ext") {
