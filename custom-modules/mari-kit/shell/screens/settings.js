@@ -5,6 +5,13 @@ import { pageHead, toast, openEngine } from "../lib/ui.js";
 import { data, byLastActivity } from "../lib/data.js";
 import { connectionsPage, connectionPage, presetsPage, presetPage, voicePage } from "./manage.js";
 
+const startsInShell = () => {
+  try {
+    return localStorage.getItem("mari-kit:start") !== "engine";
+  } catch {
+    return true;
+  }
+};
 const sw = (on) => h("span", { class: on ? "sw on" : "sw" }, h("span"));
 
 export function settingsScreen({ mount, args, go }) {
@@ -91,6 +98,19 @@ export function settingsScreen({ mount, args, go }) {
         "div",
         { class: "list" },
         row(I.square, "엔진 화면", h("span", { class: "val" }, "전체 기능 ›"), () => openEngine()),
+        row(
+          I.square,
+          "엔진 주소로 열면 Mari 화면",
+          sw(startsInShell()),
+          () => {
+            try {
+              if (startsInShell()) localStorage.setItem("mari-kit:start", "engine");
+              else localStorage.removeItem("mari-kit:start");
+            } catch {}
+            draw();
+          },
+          { role: "switch", "aria-checked": startsInShell() ? "true" : "false" },
+        ),
       ),
     ];
   }
