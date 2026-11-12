@@ -26,6 +26,15 @@ Lessons from earlier sessions. They are the owner's standing expectations.
 - Before changing UI, show the flow first (principles, structure map, screen mockups, tap paths) as an artifact,
   then build what was agreed.
 
+### Spending tokens well
+
+- Do not do everything yourself. Hand self-contained parts (reading and summarizing Engine code, mechanical edits,
+  focused checks, screenshots) to subagents on a lower model tier, with a precise brief and the exact output wanted;
+  keep design decisions, integration and the final verification with the main session.
+- Verify only the connection points the change directly touches. Re-run the flows that use the changed code and
+  the places that call it; skip unrelated flows, which only burn tokens. Run the broad regression set before a
+  release-sized merge, not after every small step.
+
 ### Features
 
 - Never drop an Engine feature. What the shell does not draw itself opens the Engine at that exact place (chat
