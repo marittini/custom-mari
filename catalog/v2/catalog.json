@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "generatedAt": "2026-11-12T04:55:08.630Z",
+  "generatedAt": "2026-11-12T05:16:25.975Z",
   "packages": [
     {
       "manifest": {
@@ -4677,7 +4677,7 @@
         },
         "id": "mari-kit",
         "name": "Mari Kit",
-        "version": "0.5.5",
+        "version": "0.5.6",
         "description": "개인 기능 모음(TTS·번역·날씨·기억)을 엔진 소스 수정 없이 붙이는 패키지입니다.",
         "engine": {
           "min": "2.5.2",
@@ -4715,7 +4715,7 @@
         "restartRequired": true,
         "builtAgainst": {
           "engineVersion": "2.5.2",
-          "engineCommit": "90f6ace775eb8964ca80b790fedd4aed4c450d7b"
+          "engineCommit": "f1d3e04c6c37ca404a3dde98f5148e62cb2da021"
         },
         "files": [
           {
@@ -4790,8 +4790,8 @@
           },
           {
             "path": "shell/app.js",
-            "sha256": "d7954e7b32f0625135828dd22ebb53c6ac0d1fbaf966521702ed7b483ae46083",
-            "bytes": 4346
+            "sha256": "2bc93e78d9380b580a26a9afd83a8e02cf08059228c493d41417d08d815c7840",
+            "bytes": 5622
           },
           {
             "path": "shell/lib/actions.js",
@@ -4865,23 +4865,23 @@
           },
           {
             "path": "shell/screens/call-settings.js",
-            "sha256": "9733546c9828ac3a844cd17f97bbf376f504bde32708eec1624df7421213ce40",
-            "bytes": 5357
+            "sha256": "a217c70f1b28e610d94f081bb1ad32277306f5bade2f80fbc2379c378a22b4bb",
+            "bytes": 5363
           },
           {
             "path": "shell/screens/character.js",
-            "sha256": "3b2ca633bfa4613e16d52d46c88dc2122affec673b0a4368d0db0bc6dce02eb2",
-            "bytes": 6165
+            "sha256": "f0f6f1da38c351f6144e2d949776b72b27af9cf025e0e4ea69d68392a6cb50cf",
+            "bytes": 6172
           },
           {
             "path": "shell/screens/chat-settings.js",
-            "sha256": "c1142c78ab6d5ac47bd3b708eb8536e8e5c7b684ef7d274a4a8a4fbf05e00475",
-            "bytes": 14896
+            "sha256": "b4640c28bec36b216e7f9d59850cd3e659bd2ea8cb4df389880f532a14c64ee7",
+            "bytes": 14902
           },
           {
             "path": "shell/screens/convo.js",
-            "sha256": "5b4b090a20154625f13dcab47fa16d705e47b794f6d3ea031cf011bbab62e3dd",
-            "bytes": 23727
+            "sha256": "7ce66e0299cbd6159dbb5bf36d0402e844179f33bb12a8bec0e71e471cbd94c2",
+            "bytes": 23695
           },
           {
             "path": "shell/screens/convos.js",
@@ -4905,43 +4905,43 @@
           },
           {
             "path": "shell/screens/memory.js",
-            "sha256": "d4ef0bdf1a8dca0c4bb6aa0081d5e58d9c3bbbaf8ac090d6034474936f5eed42",
-            "bytes": 55142
+            "sha256": "9e1f22181095dfbafd87f7ca803cfa2eaeb2aa647b9c0f422aec5cfbcf75ca4f",
+            "bytes": 55146
           },
           {
             "path": "shell/screens/radio.js",
-            "sha256": "4f7137a4acf9ef25dd518206b7b749f75a0ceb23de5cf71272e7dfc7d208c159",
-            "bytes": 22772
+            "sha256": "cc548f98d6094836de11c00d7e874998764041c83884a865fb4f836e3eaf1dda",
+            "bytes": 22786
           },
           {
             "path": "shell/screens/reader.js",
-            "sha256": "7c2332b16ba5c1f0408f89e9e09ba1a5753d31c01752e190ac6a74cf23d3fb12",
-            "bytes": 3857
+            "sha256": "1c472c437329b8cd2e7b4bc86a0a2e004754c4295c19fd8724199ccc88f573b2",
+            "bytes": 3865
           },
           {
             "path": "shell/screens/rp.js",
-            "sha256": "44496b7db27db28bca3ad7492c02e2797d7f6c9d49177f5f4d9d1d595a21e42c",
-            "bytes": 22943
+            "sha256": "aa10eb9bdd5e0b27fdab99f4b50793fca18cb469820bcb2560fb133023c64573",
+            "bytes": 22911
           },
           {
             "path": "shell/screens/schedule.js",
-            "sha256": "3171994c250611ecb55e325ca89b7a219b876271759dbb03fca51937c65c0b5e",
-            "bytes": 21124
+            "sha256": "1df6747048dffa2b623a4d62667f50ee201b1a56ad8cffdb1f71988270bd7014",
+            "bytes": 21136
           },
           {
             "path": "shell/screens/settings.js",
-            "sha256": "acd3f7fe1d3dd52a5d29708d08a71e7f7c8965098e70da17d3956491ff924b27",
-            "bytes": 11431
+            "sha256": "9cf10554b2cc57608c53d95a0c1d7f7e47cec61a9de7a72af973307f8a4db4ac",
+            "bytes": 11439
           },
           {
             "path": "shell/screens/translation.js",
-            "sha256": "89126c8efc634b64bf8a788f09f826edcfa686dc4ab4613b2807e859488ac47c",
-            "bytes": 6599
+            "sha256": "1169a342c51dc0f289ff855f8750264ecf59c7f979089f0521c8a46bdc0c77b1",
+            "bytes": 6605
           },
           {
             "path": "shell/screens/voice.js",
-            "sha256": "0f293275486bd5a69fb99de8379d17638e84bf0bec97b55af9754b9e1493349e",
-            "bytes": 15528
+            "sha256": "c5571fb2b733a64a48d44c19827b8ed6c24bc704e6ac497dfd778f13532431b0",
+            "bytes": 15540
           },
           {
             "path": "shell/shell.css",
@@ -4952,9 +4952,9 @@
       },
       "category": "misc",
       "artifact": {
-        "url": "https://raw.githubusercontent.com/marittini/custom-mari/mari-catalog/artifacts/mari-kit-0.5.5.zip",
-        "sha256": "2a01b88d41c640770f5cb4f735de9d81088a5a047efbd65a7df036a827e88b86",
-        "bytes": 203501
+        "url": "https://raw.githubusercontent.com/marittini/custom-mari/mari-catalog/artifacts/mari-kit-0.5.6.zip",
+        "sha256": "9e1cca5f6ecab49e900684aecea77803bc952b4b32708e686b3e5c714eff367d",
+        "bytes": 204003
       },
       "documentationUrl": "https://github.com/marittini/custom-mari/tree/main/custom-modules"
     }
