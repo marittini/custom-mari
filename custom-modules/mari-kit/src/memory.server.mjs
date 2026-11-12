@@ -1127,6 +1127,16 @@ export const memoryFeature = {
     });
 
     // What the next turn would get, for checking in Chat Settings. No model call.
+    // The character a preview writes for: the only one, or in a group the one who spoke last.
+    const previewSpeakers = (chat, idToName, records) => {
+      const ids = chat.characterIds || [];
+      const id =
+        ids.length === 1
+          ? ids[0]
+          : [...records].reverse().find((m) => m.role === "assistant" && m.characterId)?.characterId;
+      return [idToName.get(id)].filter(Boolean);
+    };
+
     app.get("/memory/:chatId/preview", async (request) => {
       const chat = await chatOf(request);
       const { memory } = await readMemory(runtime, chat.id);
@@ -1136,7 +1146,7 @@ export const memoryFeature = {
         .slice(-8)
         .map((m) => m.agentContent ?? m.content ?? "")
         .join("\n");
-      const speakers = chat.characterIds.length === 1 ? [idToName.get(chat.characterIds[0])].filter(Boolean) : [];
+      const speakers = previewSpeakers(chat, idToName, records);
       return { ...buildRecall(memory, { recentText, speakers }), budget: TOKEN_BUDGET };
     });
 
@@ -1370,7 +1380,7 @@ export const memoryFeature = {
       const text = str(request.body?.text, 2000);
       const { memory } = await readMemory(runtime, chat.id);
       const { idToName } = await chatNames(runtime, chat);
-      const speakers = chat.characterIds.length === 1 ? [idToName.get(chat.characterIds[0])].filter(Boolean) : [];
+      const speakers = previewSpeakers(chat, idToName, await runtime.persistence.listMessages(chat.id));
       let nearIds = [];
       if (memory.settings.embedding && text) {
         try {

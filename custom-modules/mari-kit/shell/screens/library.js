@@ -114,7 +114,15 @@ export function libraryScreen({ mount, go }) {
                     firstLetter(title),
                     who?.avatar,
                     title,
-                    [who?.name, shortTime(c.lastMessageAt || c.updatedAt)].filter(Boolean).join(" · "),
+                    [
+                      (c.characterIds || [])
+                        .map((id) => index.get(id)?.name)
+                        .filter(Boolean)
+                        .join(", "),
+                      shortTime(c.lastMessageAt || c.updatedAt),
+                    ]
+                      .filter(Boolean)
+                      .join(" · "),
                   );
                 }),
               )

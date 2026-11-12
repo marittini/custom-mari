@@ -15,7 +15,7 @@ import {
   messageWindow,
 } from "../lib/data.js";
 import { TOOL_DEFS, toolPlace } from "../lib/prefs.js";
-import { toast, errorBox, avatar, olderButton } from "../lib/ui.js";
+import { toast, errorBox, avatar, avatarStack, olderButton } from "../lib/ui.js";
 import { pickVoice, stripCues } from "../lib/render.js";
 import * as tts from "../lib/tts.js";
 import { syncVoiceSettings } from "../lib/voice.js";
@@ -28,6 +28,7 @@ export function convoScreen({ mount, args, go }) {
   let alive = true;
   let chat = null;
   let index = new Map();
+  let group = false; // more than one character in the room
   let messages = [];
   const win = messageWindow(chatId);
   let busy = false;
@@ -147,6 +148,7 @@ export function convoScreen({ mount, args, go }) {
       if (!alive) return;
       chat = c;
       index = characterIndex(chars);
+      group = (chat.characterIds || []).length > 1;
       messages = shown();
       if (first) {
         const [ui, config] = await Promise.all([data.engineUi(), api.get("/tts/config").catch(() => null)]);
@@ -155,11 +157,12 @@ export function convoScreen({ mount, args, go }) {
         ttsConfig = config?.enabled ? config : null;
         callAudio = config?.callAudioEnabled === true;
         voiceSet = ttsConfig ? await syncVoiceSettings(config) : null;
-        const lead = index.get(chat.characterIds?.[0]);
+        const cast = (chat.characterIds || []).map((id) => index.get(id)).filter(Boolean);
+        const lead = cast[0];
         const title = chatTitle(chat, index);
         setChildren(
           who,
-          avatar(lead?.avatar, firstLetter(title), 40),
+          cast.length > 1 ? avatarStack(cast, 40) : avatar(lead?.avatar, firstLetter(title), 40),
           h(
             "span",
             {
@@ -175,7 +178,14 @@ export function convoScreen({ mount, args, go }) {
           ),
         );
         who.style.cursor = lead ? "pointer" : "";
-        if (lead) who.onclick = () => go(`character/${encodeURIComponent(lead.id)}`);
+        // One character: their profile. A group: the room's cast in chat settings.
+        if (lead)
+          who.onclick = () =>
+            go(
+              cast.length > 1
+                ? `chat-settings/${encodeURIComponent(chatId)}`
+                : `character/${encodeURIComponent(lead.id)}`,
+            );
         loadMe();
         setupCalls();
       }
@@ -286,8 +296,12 @@ export function convoScreen({ mount, args, go }) {
   }
   async function dial() {
     if (!call) return;
-    if (chatMeta(chat).conversationCallsEnabled !== true) {
-      toast("이 방은 통화가 꺼져 있어요 · 통화 설정에서 켜 주세요");
+    if (chatMeta(chat).conversationCallsEnabled !== true || !callAudio) {
+      toast(
+        callAudio
+          ? "이 방은 통화가 꺼져 있어요 · 통화 설정에서 켜 주세요"
+          : "통화 음성이 꺼져 있어요 · 통화 설정에서 켜 주세요",
+      );
       return go(`call-settings/${encodeURIComponent(chatId)}`);
     }
     try {
@@ -343,15 +357,19 @@ export function convoScreen({ mount, args, go }) {
       }
       const prev = bubbles[i - 1];
       const next = bubbles[i + 1];
-      const firstOfRun = !prev || prev.me !== me;
-      const lastOfRun = !next || next.me !== me;
+      // A run is one speaker's bubbles in a row: in a group, another character starts a new run.
+      const sameRun = (o) => o && !o.ev && o.me === me && (me || o.m.characterId === m.characterId);
+      const firstOfRun = !sameRun(prev);
+      const lastOfRun = !sameRun(next);
       const radius = me
         ? `18px ${firstOfRun ? "18px" : "6px"} ${lastOfRun ? "18px" : "6px"} 18px`
         : `${firstOfRun ? "18px" : "6px"} 18px 18px ${lastOfRun ? "18px" : "6px"}`;
       const on = picked === m.id;
+      const speaker = group && !me ? index.get(m.characterId) : null;
       const wrap = h(
         "div",
         {
+          class: group && !me ? "who" : null,
           style: {
             display: "flex",
             flexDirection: "column",
@@ -359,6 +377,8 @@ export function convoScreen({ mount, args, go }) {
             marginTop: i === 0 ? "0" : firstOfRun ? "24px" : bub.first ? "14px" : "10px",
           },
         },
+        speaker && firstOfRun ? avatar(speaker.avatar, speaker.name?.[0] || "·", 28) : null,
+        speaker && firstOfRun ? h("span", { class: "who-name" }, speaker.name) : null,
         h(
           "button",
           {

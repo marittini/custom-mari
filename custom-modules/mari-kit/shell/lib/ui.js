@@ -83,6 +83,20 @@ export function avatar(src, letter, size, round = true) {
   );
 }
 
+/** Faces of a chat's cast: one avatar, or the first two overlapped (a third and more show as "+n"). */
+export function avatarStack(people, size) {
+  const list = people.filter(Boolean);
+  if (list.length <= 1) return avatar(list[0]?.avatar, list[0]?.name?.[0] || "·", size);
+  const small = Math.round(size * 0.72);
+  return h(
+    "span",
+    { class: "avs", style: { width: `${size}px`, height: `${size}px` }, "aria-hidden": "true" },
+    avatar(list[1].avatar, list[1].name?.[0] || "·", small),
+    avatar(list[0].avatar, list[0].name?.[0] || "·", small),
+    list.length > 2 ? h("span", { class: "avs-n" }, `+${list.length - 2}`) : null,
+  );
+}
+
 /** "이전 메시지" at the top of a story: reads the page before, keeping the reader's place on screen. */
 export function olderButton(win, scroller, redraw) {
   const btn = h(
