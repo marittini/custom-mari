@@ -6,6 +6,7 @@ import { api, characterCard } from "./api.js";
 import { data, characterIndex, firstLetter } from "./data.js";
 import { sheet, toast, avatar } from "./ui.js";
 import { groupsOf, splitByGroup, groupedOptions, sectioned } from "./groups.js";
+import { pickPerson } from "./picker.js";
 
 function greetingsOf(card) {
   const list = [];
@@ -194,14 +195,37 @@ export async function openNewChat({ mode = "roleplay", characterId = null, go })
           groupedOptions(h, presetId, [["", "기본"]], splitByGroup(presets, gPresets), (p) => [p.id, p.name]),
           (v) => (presetId = v),
         ),
-        sel(
-          "페르소나",
-          personaId,
-          groupedOptions(h, personaId, [["", "없음"]], splitByGroup(personas, gPersonas), (p) => [
-            p.id,
-            p.name || "이름 없음",
-          ]),
-          (v) => (personaId = v),
+        h(
+          "button",
+          {
+            type: "button",
+            class: "r two",
+            onClick: () =>
+              pickPerson({
+                title: "페르소나",
+                key: "pick-personas",
+                items: personas.map((p) => ({ id: p.id, name: p.name || "이름 없음", avatar: p.avatarPath })),
+                groups: gPersonas,
+                selected: personaId || null,
+                onPick: (v) => {
+                  personaId = v || "";
+                  options();
+                },
+              }),
+          },
+          h("span", null, "페르소나"),
+          h(
+            "span",
+            { class: "val", style: { display: "flex", alignItems: "center", gap: "8px" } },
+            personaId
+              ? avatar(
+                  personas.find((p) => p.id === personaId)?.avatarPath,
+                  firstLetter(personas.find((p) => p.id === personaId)?.name),
+                  24,
+                )
+              : null,
+            `${personas.find((p) => p.id === personaId)?.name || "없음"} ›`,
+          ),
         ),
       ),
       greetings.length && kind === "roleplay"

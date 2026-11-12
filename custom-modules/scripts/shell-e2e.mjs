@@ -87,7 +87,7 @@ const flows = {
     if (await page.getByText("이어 읽기").count()) throw new Error("홈 still shows 이어 읽기");
     await page
       .locator(".rc")
-      .getByRole("button", { name: /설정|계정 추가/ })
+      .getByRole("button", { name: /크레딧|계정 추가/ })
       .click();
     await until(async () => (await hash(page)) === "#/credit", 5000, "credit settings open");
     await page.getByRole("button", { name: "뒤로" }).first().click();

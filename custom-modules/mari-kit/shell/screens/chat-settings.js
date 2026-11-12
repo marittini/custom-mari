@@ -11,6 +11,7 @@ import { setPrefs, isDark, TOOL_DEFS, toolPlace } from "../lib/prefs.js";
 import { topBar, toast, errorBox, openEngine, sheet, avatar, thumb } from "../lib/ui.js";
 import { lorebookViews, REASON_LABEL } from "../lib/lorebooks.js";
 import { ENGINE_SECTIONS } from "../lib/engine-sections.js";
+import { pickPerson } from "../lib/picker.js";
 import { groupsOf, splitByGroup, groupedOptions, sectioned, forgetGroups } from "../lib/groups.js";
 
 const NOT_CHAT = ["image_generation", "video_generation", "audio_generation", "audio", "decision"];
@@ -505,18 +506,15 @@ export function chatSettingsScreen({ mount, args, go, back }) {
         chat.mode === "roleplay" && chat.promptPresetId
           ? linkRow(I.list, "프리셋 선택지", choiceSummary(meta), () => presetChoices(chat))
           : null,
-        selectRow(
-          I.person,
-          "페르소나",
-          chat.personaId,
-          groupedOptions(
-            h,
-            chat.personaId,
-            [["", "없음"]],
-            splitByGroup(personas, state.groups.personas || []),
-            (p) => [p.id, p.name || "이름 없음"],
-          ),
-          (v) => patchChat({ personaId: v || null }),
+        linkRow(I.person, "페르소나", personas.find((p) => p.id === chat.personaId)?.name || "없음", () =>
+          pickPerson({
+            title: "페르소나",
+            key: "pick-personas",
+            items: personas.map((p) => ({ id: p.id, name: p.name || "이름 없음", avatar: p.avatarPath })),
+            groups: state.groups.personas || [],
+            selected: chat.personaId || null,
+            onPick: (v) => patchChat({ personaId: v }),
+          }),
         ),
       ),
       gap(),
