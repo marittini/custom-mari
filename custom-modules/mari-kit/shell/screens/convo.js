@@ -179,9 +179,9 @@ export function convoScreen({ mount, args, go, back }) {
     input.style.height = `${Math.min(input.scrollHeight, 160)}px`;
   }
 
-  async function load(first) {
+  async function load(first, tail = false) {
     try {
-      const [c, chars] = await Promise.all([data.chat(chatId), data.characters(), win.reload()]);
+      const [c, chars] = await Promise.all([data.chat(chatId), data.characters(), win.reload(tail)]);
       if (!alive) return;
       chat = c;
       trBtn.hidden = chatMeta(chat).showInputTranslateButton !== true;
@@ -723,7 +723,7 @@ export function convoScreen({ mount, args, go, back }) {
       abort = null;
       if (alive) {
         const before = new Set(messages.map((m) => m.id));
-        await load();
+        await load(false, true);
         scroller.scrollTop = scroller.scrollHeight;
         // 자동 재생: the character messages this turn added, in order.
         if (ttsConfig && voiceSet?.convo && voiceSet.autoplay !== "off")

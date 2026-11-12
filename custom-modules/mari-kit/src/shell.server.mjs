@@ -226,7 +226,68 @@ async function avatarPreview(file, width, crop = "") {
   }
 }
 
+// ── chat list previews ───────────────────────
+// A list row needs one line per chat. The Engine's message route also returns the whole prompt it sent
+// (`cachedPrompt`, often 100KB+) on the last two replies, so reading previews through it costs that much per chat.
+// This reads the transcript on the server and sends only the lines, recomputed only when the chat changed.
+
+const PREVIEW_MAX = 160;
+const stripCueTags = (t) => String(t).replace(/\[[a-z][a-z ,.'-]{0,40}\]\s?/g, "");
+const parseExtra = (raw) => {
+  if (raw && typeof raw === "object") return raw;
+  try {
+    return JSON.parse(raw || "{}") || {};
+  } catch {
+    return {};
+  }
+};
+
+/** { line, assistant } for a transcript: the newest shown message (a call reads 음성 통화), the newest reply. */
+export function previewOf(messages) {
+  let line = null;
+  let assistant = "";
+  for (let i = messages.length - 1; i >= 0 && (line === null || !assistant); i -= 1) {
+    const m = messages[i];
+    const extra = parseExtra(m.extra);
+    if (extra.hiddenFromUser === true || extra.commandOnly === true) continue;
+    const text =
+      typeof extra.displayText === "string" && extra.displayText ? extra.displayText : String(m.content ?? "");
+    if (m.role === "system") {
+      if (line === null && extra.conversationCallEvent?.callId) line = "음성 통화";
+      continue;
+    }
+    if (line === null && text.trim()) line = stripCueTags(text).replace(/\s+/g, " ").trim().slice(0, PREVIEW_MAX);
+    if (!assistant && m.role === "assistant" && text.trim()) assistant = text.trim().slice(-600);
+  }
+  return { line: line || "", assistant };
+}
+
+const previewCache = new Map(); // chatId -> { at, value }
+
 export async function shellRoutes(app, { runtime } = {}) {
+  app.get("/shell/previews", async (request, reply) => {
+    const ids = String(request.query?.ids || "")
+      .split(",")
+      .map((x) => x.trim())
+      .filter(Boolean)
+      .slice(0, 80);
+    const chats = new Map((await runtime.persistence.listChats()).map((c) => [c.id, c]));
+    const out = {};
+    for (const id of ids) {
+      const chat = chats.get(id);
+      if (!chat) continue;
+      const at = String(chat.lastMessageAt || chat.updatedAt || "");
+      let hit = previewCache.get(id);
+      if (!hit || hit.at !== at) {
+        hit = { at, value: previewOf(await runtime.persistence.listMessages(id)) };
+        previewCache.set(id, hit);
+      }
+      out[id] = { ...hit.value, at };
+    }
+    reply.header("Cache-Control", "no-cache");
+    return out;
+  });
+
   app.get("/shell/avatar", async (request, reply) => {
     const file = avatarFile(request.query?.f);
     if (!file) return reply.status(400).send({ error: "Invalid avatar" });
