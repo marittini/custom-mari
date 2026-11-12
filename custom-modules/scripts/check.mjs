@@ -488,6 +488,23 @@ if (id === "mari-kit") {
 {
   const { cropRegion } = await import(pathToFileURL(join(outDir, "shell.server.mjs")).href);
   assert.deepEqual(cropRegion("R,0.25,0.1,0.5,0.5", 400, 400), { left: 100, top: 40, width: 200, height: 200 });
+  // List previews: newest shown line (hidden and command-only skipped, a call reads 음성 통화) and newest reply.
+  const { previewOf } = await import(pathToFileURL(join(outDir, "shell.server.mjs")).href);
+  const big = JSON.stringify({ cachedPrompt: "x".repeat(50000) });
+  assert.deepEqual(
+    previewOf([
+      { role: "assistant", content: '[whispers] 안녕\n\n"응."', extra: big },
+      { role: "user", content: "숨김", extra: JSON.stringify({ hiddenFromUser: true }) },
+    ]),
+    { line: '안녕 "응."', assistant: '[whispers] 안녕\n\n"응."' },
+  );
+  assert.equal(
+    previewOf([
+      { role: "user", content: "여보세요" },
+      { role: "system", content: "", extra: { conversationCallEvent: { callId: "c1" } } },
+    ]).line,
+    "음성 통화",
+  );
   assert.deepEqual(cropRegion("R,0,0,0.5,0.25", 400, 800), { left: 0, top: 0, width: 200, height: 200 });
   assert.deepEqual(cropRegion("L,2,0,0", 400, 400), { left: 100, top: 100, width: 200, height: 200 });
   assert.deepEqual(cropRegion("L,2,25,0", 400, 400), { left: 0, top: 100, width: 200, height: 200 });

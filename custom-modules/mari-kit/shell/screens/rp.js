@@ -133,12 +133,12 @@ export function rpScreen({ mount, args, go, back }) {
   }
 
   // ── data ───────────────────────────────
-  async function load(first) {
+  async function load(first, tail = false) {
     try {
       const [c, chars, , count] = await Promise.all([
         data.chat(chatId),
         data.characters(),
-        win.reload(),
+        win.reload(tail),
         api.get(`/chats/${encodeURIComponent(chatId)}/message-count`).catch(() => null),
       ]);
       if (!alive) return;
@@ -623,7 +623,7 @@ export function rpScreen({ mount, args, go, back }) {
       live = null;
       abort = null;
       if (alive) {
-        await load();
+        await load(false, true);
         refreshMemory();
         scroller.scrollTop = scroller.scrollHeight;
         autoplay();

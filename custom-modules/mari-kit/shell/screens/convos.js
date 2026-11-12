@@ -1,15 +1,6 @@
 import { h, icon, I, setChildren } from "../lib/h.js";
 import { openNewChat } from "../lib/newchat.js";
-import {
-  previewLine,
-  data,
-  characterIndex,
-  chatTitle,
-  firstLetter,
-  shortTime,
-  coverOf,
-  byBranchGroup,
-} from "../lib/data.js";
+import { data, characterIndex, chatTitle, firstLetter, shortTime, coverOf, byBranchGroup } from "../lib/data.js";
 import { pageHead, avatar, avatarStack, errorBox, timeAndUnread, openEngine } from "../lib/ui.js";
 import { groupsOf, splitByGroup, foldGroup } from "../lib/groups.js";
 
@@ -96,7 +87,7 @@ export function convosScreen({ mount, go }) {
             class: "hint",
             style: { fontSize: "13px", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" },
           },
-          previewLine(lasts.get(c.id) || []),
+          lasts.get(c.id)?.line || "",
         ),
       ),
       timeAndUnread(c, shortTime(c.lastMessageAt || c.updatedAt)),
@@ -167,11 +158,8 @@ export function convosScreen({ mount, go }) {
     try {
       const [chats, chars, folders] = await Promise.all([data.chats(true), data.characters(), groupsOf("chats")]);
       const convos = chats.filter((c) => c.mode === "conversation");
-      // Previews for the chats on screen: each branch group's newest branch (the others load when opened).
-      const shown = byBranchGroup(convos);
-      const lasts = new Map(
-        await Promise.all(shown.map(async (c) => [c.id, await data.messages(c.id, 4).catch(() => [])])),
-      );
+      // One line per chat, for every branch (folded ones too), in one small request.
+      const lasts = await data.previews(convos).catch(() => new Map());
       if (!alive) return;
       model = { chats, index: characterIndex(chars), folders, lasts };
       draw();

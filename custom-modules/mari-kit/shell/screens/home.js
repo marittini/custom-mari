@@ -1,12 +1,10 @@
 import { h, icon, I, setChildren } from "../lib/h.js";
 import {
-  previewLine,
   data,
   byLastActivity,
   characterIndex,
   chatTitle,
   firstLetter,
-  messageText,
   shortTime,
   chatMeta,
   coverOf,
@@ -36,17 +34,15 @@ export function homeScreen({ mount, go }) {
       const sorted = [...chats].sort(byLastActivity);
       const rp = sorted.find((c) => c.mode === "roleplay");
       const convos = sorted.filter((c) => c.mode === "conversation").slice(0, 3);
-      const [rpLast, ...convoLast] = await Promise.all([
-        rp ? data.messages(rp.id, 4).catch(() => []) : [],
-        ...convos.map((c) => data.messages(c.id, 4).catch(() => [])),
-      ]);
+      // One line per chat from Mari Kit's preview route (never the prompt the Engine keeps on recent replies).
+      const previews = await data.previews([rp, ...convos].filter(Boolean)).catch(() => new Map());
       if (!alive) return;
       const parts = [];
       const hint = installHint();
       if (hint) parts.push(hint);
 
       if (rp) {
-        const lastAssistant = [...rpLast].reverse().find((m) => m.role === "assistant");
+        const lastAssistant = previews.get(rp.id)?.assistant || "";
         const cover = index.get(rp.characterIds?.[0]);
         const title = chatTitle(rp, index);
         parts.push(
@@ -94,7 +90,7 @@ export function homeScreen({ mount, go }) {
                         textOverflow: "ellipsis",
                       },
                     },
-                    lastLine(messageText(lastAssistant)),
+                    lastLine(lastAssistant),
                   )
                 : null,
             ),
@@ -229,7 +225,7 @@ export function homeScreen({ mount, go }) {
                   h(
                     "span",
                     { class: "hint", style: { whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" } },
-                    previewLine(convoLast[i]),
+                    previews.get(c.id)?.line || "",
                   ),
                 ),
                 timeAndUnread(c, shortTime(c.lastMessageAt || c.updatedAt)),

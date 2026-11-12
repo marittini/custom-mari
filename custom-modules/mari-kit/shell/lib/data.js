@@ -66,13 +66,29 @@ export const data = {
   messages: (chatId, limit) =>
     api.get(`/chats/${encodeURIComponent(chatId)}/messages${limit ? `?limit=${limit}` : ""}`),
   chat: (chatId) => api.get(`/chats/${encodeURIComponent(chatId)}`),
+  /**
+   * One line per chat for lists ({ line, assistant }), from Mari Kit's preview route: it never sends the prompt the
+   * Engine keeps on recent replies. Kept per chat until the chat's last activity changes.
+   */
+  previews: async (chats) => {
+    const want = chats.filter((c) => previewMemo.get(c.id)?.key !== activityKey(c));
+    if (want.length) {
+      const got = await api.get(`/mari-kit/shell/previews?ids=${want.map((c) => encodeURIComponent(c.id)).join(",")}`);
+      for (const c of want)
+        previewMemo.set(c.id, { key: activityKey(c), value: got?.[c.id] || { line: "", assistant: "" } });
+    }
+    return new Map(chats.map((c) => [c.id, previewMemo.get(c.id)?.value || { line: "", assistant: "" }]));
+  },
 };
+const previewMemo = new Map();
+const activityKey = (c) => String(c.lastMessageAt || c.updatedAt || "");
 
 /**
  * The latest messages of a chat, read a page at a time: a long story is thousands of messages, and a phone
  * should not download all of them to show the last screen. `reload()` re-reads as many as are on screen, so
  * edits, deletions and new replies show without dropping the older pages the reader opened.
  */
+const TAIL = 8;
 export function messageWindow(chatId, page = 40) {
   let list = [];
   let more = false;
@@ -87,7 +103,19 @@ export function messageWindow(chatId, page = 40) {
     set list(next) {
       list = next;
     },
-    async reload() {
+    /**
+     * Re-reads what is on screen. `tail` (after a reply) reads only the last few messages and merges them: the
+     * Engine keeps its whole prompt on the latest replies, so re-reading 40 messages each turn costs far more.
+     */
+    async reload(tail = false) {
+      if (tail && list.length) {
+        const rows = await api.get(`${base}?limit=${TAIL}`);
+        const got = Array.isArray(rows) ? rows : [];
+        const at = got.length ? list.findIndex((m) => m.id === got[0].id) : -1;
+        if (at >= 0) return (list = [...list.slice(0, at), ...got]);
+        if (got.length < TAIL) return (list = got);
+        // More changed than the tail holds: read the whole window below.
+      }
       // A reply adds messages at the end; ask a few past what is on screen so the oldest one stays.
       const firstId = list[0]?.id;
       const limit = Math.max(page, list.length + 4);
