@@ -1,3 +1,7 @@
+/* The hidden attribute always wins (component rules such as .cb {display:flex} would otherwise override it). */
+[hidden] {
+  display: none !important;
+}
 /* Mari shell — tokens first. No font family is named here: the user's font (or the device default) is used. */
 :root {
   color-scheme: light;

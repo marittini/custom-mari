@@ -42,8 +42,10 @@ let seen = null;
 
 /** A small WebP of an Engine avatar (Mari Kit makes it); other pictures stay as they are. */
 export function thumb(src, width = 96) {
-  const m = /^\/api\/avatars\/file\/([^/?#]+)$/.exec(String(src || ""));
-  return m ? `/api/mari-kit/shell/avatar?f=${m[1]}&w=${width}` : src;
+  // A chat cover (Mari Kit keeps these) has its own small versions.
+  if (/^\/api\/mari-kit\/shell\/cover\/[^/?#]+$/.test(String(src || ""))) return `${src}?w=${width}`;
+  const m = /^\/api\/avatars\/file\/([^/?#]+)(?:\?crop=([RL][-\d.,]+))?$/.exec(String(src || ""));
+  return m ? `/api/mari-kit/shell/avatar?f=${m[1]}&w=${width}${m[2] ? `&c=${m[2]}` : ""}` : src;
 }
 
 export function lazyBg(el, src, width = 240) {

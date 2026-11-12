@@ -5,6 +5,7 @@ import { h, setChildren } from "./h.js";
 import { api, characterCard } from "./api.js";
 import { data, characterIndex, firstLetter } from "./data.js";
 import { sheet, toast, avatar } from "./ui.js";
+import { groupsOf, splitByGroup, groupedOptions, sectioned } from "./groups.js";
 
 function greetingsOf(card) {
   const list = [];
@@ -15,7 +16,18 @@ function greetingsOf(card) {
 }
 
 export async function openNewChat({ mode = "roleplay", characterId = null, go }) {
-  const [chars, conns, personas] = await Promise.all([data.characters(), data.connections(), data.personas()]);
+  const [chars, allConns, personas, gChars, gConns, gPersonas] = await Promise.all([
+    data.characters(),
+    data.connections(),
+    data.personas(),
+    groupsOf("characters"),
+    groupsOf("connections"),
+    groupsOf("personas"),
+  ]);
+  // Chat models only, like the Engine's chat connection picker.
+  const conns = allConns.filter(
+    (c) => !["image_generation", "video_generation", "audio_generation", "audio", "decision"].includes(c.provider),
+  );
   const index = characterIndex(chars);
   const body = h("div", {
     style: { display: "flex", flexDirection: "column", minHeight: "0", overflowY: "auto", padding: "4px 0 24px" },
@@ -49,29 +61,25 @@ export async function openNewChat({ mode = "roleplay", characterId = null, go })
       body,
       title(adding ? "함께할 캐릭터 추가" : "캐릭터 고르기"),
       rows.length
-        ? h(
-            "div",
-            { class: "list" },
-            rows.map((c) =>
-              h(
-                "button",
-                {
-                  type: "button",
-                  class: "r two",
-                  style: { gridTemplateColumns: "36px minmax(0,1fr)" },
-                  onClick: async () => {
-                    if (adding) {
-                      extra = [...extra, c];
-                      return options();
-                    }
-                    pickedChar = await withCard(c);
-                    extra = extra.filter((x) => x.id !== c.id);
-                    if (pickedChar) options();
-                  },
+        ? sectioned(h, splitByGroup(rows, gChars), (c) =>
+            h(
+              "button",
+              {
+                type: "button",
+                class: "r two",
+                style: { gridTemplateColumns: "36px minmax(0,1fr)" },
+                onClick: async () => {
+                  if (adding) {
+                    extra = [...extra, c];
+                    return options();
+                  }
+                  pickedChar = await withCard(c);
+                  extra = extra.filter((x) => x.id !== c.id);
+                  if (pickedChar) options();
                 },
-                avatar(c.avatar, firstLetter(c.name), 36),
-                h("span", null, c.name),
-              ),
+              },
+              avatar(c.avatar, firstLetter(c.name), 36),
+              h("span", null, c.name),
             ),
           )
         : h("div", { class: "empty" }, "캐릭터가 아직 없어요. 엔진 화면에서 만들거나 가져와 주세요."),
@@ -106,11 +114,7 @@ export async function openNewChat({ mode = "roleplay", characterId = null, go })
         "label",
         { class: "r two static" },
         h("span", null, label),
-        h(
-          "select",
-          { class: "sel", style: { width: "170px" }, onChange: (e) => set(e.target.value) },
-          list.map(([v, t]) => h("option", { value: v, selected: value === v }, t)),
-        ),
+        h("select", { class: "sel", style: { width: "170px" }, onChange: (e) => set(e.target.value) }, list),
       );
     const cast = [pickedChar, ...extra];
     setChildren(
@@ -153,11 +157,25 @@ export async function openNewChat({ mode = "roleplay", characterId = null, go })
       h(
         "div",
         { class: "list" },
-        sel("연결", connectionId, [["", "기본"], ...conns.map((c) => [c.id, c.name])], (v) => (connectionId = v)),
+        sel(
+          "연결",
+          connectionId,
+          groupedOptions(
+            h,
+            connectionId,
+            [["", "기본"]],
+            splitByGroup(conns, gConns, { folderOf: (c) => c.folderId }),
+            (c) => [c.id, c.name],
+          ),
+          (v) => (connectionId = v),
+        ),
         sel(
           "페르소나",
           personaId,
-          [["", "없음"], ...personas.map((p) => [p.id, p.name || "이름 없음"])],
+          groupedOptions(h, personaId, [["", "없음"]], splitByGroup(personas, gPersonas), (p) => [
+            p.id,
+            p.name || "이름 없음",
+          ]),
           (v) => (personaId = v),
         ),
       ),

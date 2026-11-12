@@ -484,6 +484,17 @@ if (id === "mari-kit") {
   );
 }
 
+// Avatar crops cut like the Engine draws them: the current source rectangle and the legacy zoom/offset.
+{
+  const { cropRegion } = await import(pathToFileURL(join(outDir, "shell.server.mjs")).href);
+  assert.deepEqual(cropRegion("R,0.25,0.1,0.5,0.5", 400, 400), { left: 100, top: 40, width: 200, height: 200 });
+  assert.deepEqual(cropRegion("R,0,0,0.5,0.25", 400, 800), { left: 0, top: 0, width: 200, height: 200 });
+  assert.deepEqual(cropRegion("L,2,0,0", 400, 400), { left: 100, top: 100, width: 200, height: 200 });
+  assert.deepEqual(cropRegion("L,2,25,0", 400, 400), { left: 0, top: 100, width: 200, height: 200 });
+  assert.equal(cropRegion("L,1,0,0", 400, 400), null, "zoom 1 is no crop");
+  assert.equal(cropRegion("X,1", 400, 400), null);
+}
+
 // The shell's Engine calls all appear in shell/engine-api.json, which check-engine-api.mjs probes after updates.
 {
   const { readdir } = await import("node:fs/promises");

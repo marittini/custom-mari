@@ -9,6 +9,7 @@ import {
   firstLetter,
   messageText,
   shortTime,
+  coverOf,
 } from "../lib/data.js";
 import { pageHead, avatar, avatarStack, errorBox } from "../lib/ui.js";
 
@@ -55,7 +56,11 @@ export function convosScreen({ mount, go }) {
             return h(
               "a",
               { class: "row", href: `#/convo/${encodeURIComponent(c.id)}` },
-              cast.length > 1 ? avatarStack(cast, 40) : avatar(cast[0]?.avatar, firstLetter(title), 40),
+              coverOf(c)
+                ? avatar(coverOf(c), firstLetter(title), 40)
+                : cast.length > 1
+                  ? avatarStack(cast, 40)
+                  : avatar(cast[0]?.avatar, firstLetter(title), 40),
               h(
                 "span",
                 { style: { display: "flex", flexDirection: "column", gap: "3px", minWidth: "0" } },

@@ -20,7 +20,10 @@ export const data = {
         const sums = list.length
           ? await api.post("/characters/summaries", { ids: list.map((c) => c.id) }).catch(() => [])
           : [];
-        const avatars = new Map((Array.isArray(sums) ? sums : []).map((s) => [s.id, s.avatarUrl || null]));
+        // The avatar URL carries the Engine's crop (?crop=…), so every thumbnail shows the cropped picture.
+        const avatars = new Map(
+          (Array.isArray(sums) ? sums : []).map((s) => [s.id, withCrop(s.avatarUrl || null, s.avatarCrop)]),
+        );
         return list.map((c) => ({ ...c, avatarPath: avatars.get(c.id) || null }));
       });
       charsP.catch(() => (charsP = null));
@@ -173,4 +176,37 @@ export function chatTitle(chat, chars) {
   if (chat?.name && chat.name.trim()) return chat.name.trim();
   const names = (chat?.characterIds || []).map((id) => chars.get(id)?.name).filter(Boolean);
   return names.join(", ") || "제목 없는 채팅";
+}
+
+/**
+ * An Engine avatar URL with its crop as `?crop=` for Mari Kit's thumbnailer: "R,x,y,w,h" for the current
+ * source-rectangle crop, "L,zoom,x,y" for the legacy zoom/offset one, nothing when there is no crop.
+ */
+export function cropCode(raw) {
+  let c = raw;
+  if (typeof c === "string") {
+    try {
+      c = JSON.parse(c);
+    } catch {
+      return "";
+    }
+  }
+  if (!c || typeof c !== "object") return "";
+  const n = (v) => Math.round(Number(v) * 10000) / 10000;
+  if (["srcX", "srcY", "srcWidth", "srcHeight"].every((k) => Number.isFinite(Number(c[k]))) && c.srcWidth > 0)
+    return `R,${n(c.srcX)},${n(c.srcY)},${n(c.srcWidth)},${n(c.srcHeight)}`;
+  if (Number.isFinite(Number(c.zoom)) && Number(c.zoom) > 1 && !c.fullImage)
+    return `L,${n(c.zoom)},${n(c.offsetX || 0)},${n(c.offsetY || 0)}`;
+  return "";
+}
+
+export function withCrop(url, crop) {
+  const code = url ? cropCode(crop) : "";
+  return code ? `${url}?crop=${code}` : url;
+}
+
+/** The chat's own cover picture (chosen in 채팅 설정 › 표지), when it has one. */
+export function coverOf(chat) {
+  const url = chatMeta(chat).mariKitCover;
+  return typeof url === "string" && url.startsWith("/api/mari-kit/shell/cover/") ? url : null;
 }

@@ -5,7 +5,8 @@
 import { h, icon, I, setChildren } from "../lib/h.js";
 import { api, characterCard } from "../lib/api.js";
 import { data, characterIndex } from "../lib/data.js";
-import { toast, errorBox } from "../lib/ui.js";
+import { toast, errorBox, openEngine } from "../lib/ui.js";
+import { groupsOf, splitByGroup, sectioned } from "../lib/groups.js";
 
 const PROVIDERS = [
   "openai",
@@ -66,33 +67,42 @@ async function guard(body, fn) {
 }
 
 // ── connections ───────────────────────────
+// Every connection the Engine has, split by its connection folders. Chat models open the shell's editor; image
+// (NovelAI and the rest), video, voice/audio and decision connections open the Engine's own connection editor,
+// which knows their fields.
+const KIND = {
+  image_generation: "이미지",
+  video_generation: "영상",
+  audio_generation: "음성 · 오디오",
+  audio: "음성 · 오디오",
+  decision: "판단",
+};
 export function connectionsPage(body, go) {
   guard(body, async () => {
-    const list = await api.get("/connections");
-    const chat = list.filter(
-      (c) => !["image_generation", "video_generation", "audio_generation", "audio"].includes(c.provider),
-    );
+    const [list, folders] = await Promise.all([api.get("/connections"), groupsOf("connections")]);
+    const parts = splitByGroup(list, folders, { folderOf: (c) => c.folderId });
     setChildren(
       body,
       stack(
-        chat.length
-          ? h(
-              "div",
-              { class: "list" },
-              chat.map((c) =>
-                row(
-                  c.name,
-                  `${c.model || "모델 없음"}${c.isDefault === "true" || c.isDefault === true ? " · 기본" : ""}`,
-                  () => go(`settings/connection/${encodeURIComponent(c.id)}`),
-                ),
-              ),
-            )
+        list.length
+          ? sectioned(h, parts, (c) => {
+              const kind = KIND[c.provider];
+              const def = c.isDefault === "true" || c.isDefault === true ? " · 기본" : "";
+              return row(c.name, kind ? `${kind} · 엔진에서 편집` : `${c.model || "모델 없음"}${def}`, () =>
+                kind ? openEngine(null, { connection: c.id }) : go(`settings/connection/${encodeURIComponent(c.id)}`),
+              );
+            })
           : h("div", { class: "empty" }, "연결이 아직 없어요."),
         actions(
           h(
             "button",
+            { type: "button", class: "pill", onClick: () => openEngine(null, { panel: "connections" }) },
+            "이미지 · 음성 연결 추가",
+          ),
+          h(
+            "button",
             { type: "button", class: "pill main", onClick: () => go("settings/connection/new") },
-            "연결 추가",
+            "대화 연결 추가",
           ),
         ),
       ),
@@ -204,17 +214,13 @@ export function connectionPage(body, go, id) {
 // ── prompt presets ────────────────────────
 export function presetsPage(body, go) {
   guard(body, async () => {
-    const list = await api.get("/prompts");
+    const [list, folders] = await Promise.all([api.get("/prompts"), groupsOf("presets")]);
     setChildren(
       body,
       stack(
-        h(
-          "div",
-          { class: "list" },
-          list.map((p) =>
-            row(p.name, p.isDefault === true || p.isDefault === "true" ? "기본" : "", () =>
-              go(`settings/preset/${encodeURIComponent(p.id)}`),
-            ),
+        sectioned(h, splitByGroup(list, folders), (p) =>
+          row(p.name, p.isDefault === true || p.isDefault === "true" ? "기본" : "", () =>
+            go(`settings/preset/${encodeURIComponent(p.id)}`),
           ),
         ),
       ),
