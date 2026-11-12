@@ -37,12 +37,14 @@ export function convoScreen({ mount, args, go }) {
   let quick = [];
   let qrOpen = false;
   let ttsConfig = null;
+  let callAudio = false;
   let voiceSet = null;
   let abort = null;
   let me = null; // the persona's schedule state (Mari Kit 내 일정), when there is one
   let phoneBtn = null;
   let call = null; // the call screen, when the Calls package is installed
   let callPoll = null;
+  let offVisible = () => {};
 
   const who = h("span", {
     style: { display: "flex", flexDirection: "column", alignItems: "center", gap: "4px", minWidth: "0" },
@@ -151,6 +153,7 @@ export function convoScreen({ mount, args, go }) {
         quick = quickReplies(ui, I.guide);
         qrBtn.hidden = !quick.length;
         ttsConfig = config?.enabled ? config : null;
+        callAudio = config?.callAudioEnabled === true;
         voiceSet = ttsConfig ? await syncVoiceSettings(config) : null;
         const lead = index.get(chat.characterIds?.[0]);
         const title = chatTitle(chat, index);
@@ -245,7 +248,8 @@ export function convoScreen({ mount, args, go }) {
   }
 
   async function setupCalls() {
-    if (!(await callsAvailable(chatId)) || !alive) return;
+    const first = await callsAvailable(chatId);
+    if (!first || !alive) return;
     call = callScreen({
       chatId,
       chat,
@@ -259,16 +263,26 @@ export function convoScreen({ mount, args, go }) {
       },
     });
     phoneBtn.hidden = false;
+    const ring = (st) => {
+      const s = st?.activeCall || st?.ringingCall;
+      if (s && alive && !call.session) call.open(s);
+    };
+    // A character can only ring under the package's own rules (call command on, call audio on); while it cannot,
+    // or the page is in the background, there is nothing to watch for.
+    const canRing = () => {
+      const m = chatMeta(chat);
+      return callAudio && m.characterCommands !== false && m.conversationCommandToggles?.call !== false;
+    };
     const check = async () => {
-      if (!alive || call.session) return;
+      if (!alive || call.session || document.visibilityState !== "visible" || !canRing()) return;
       try {
-        const st = await api.get(`/conversation-calls/chat/${encodeURIComponent(chatId)}/status`);
-        const s = st?.activeCall || st?.ringingCall;
-        if (s && alive && !call.session) call.open(s);
+        ring(await api.get(`/conversation-calls/chat/${encodeURIComponent(chatId)}/status`));
       } catch {}
     };
-    check();
+    ring(first);
     callPoll = setInterval(check, 6000);
+    document.addEventListener("visibilitychange", check);
+    offVisible = () => document.removeEventListener("visibilitychange", check);
   }
   async function dial() {
     if (!call) return;
@@ -660,6 +674,7 @@ export function convoScreen({ mount, args, go }) {
       tts.stop();
       abort?.abort();
       clearInterval(callPoll);
+      offVisible();
       call?.dispose();
     },
     onPrefs: draw,

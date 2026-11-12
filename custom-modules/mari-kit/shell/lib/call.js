@@ -16,13 +16,12 @@ import * as tts from "./tts.js";
 
 const BASE = "/conversation-calls";
 
-/** Is the Calls package installed? (404 when it is not.) */
+/** The chat's call status when the Calls package is installed (404 when it is not), else null. */
 export async function callsAvailable(chatId) {
   try {
-    await api.get(`${BASE}/chat/${encodeURIComponent(chatId)}/status`);
-    return true;
+    return (await api.get(`${BASE}/chat/${encodeURIComponent(chatId)}/status`)) || {};
   } catch {
-    return false;
+    return null;
   }
 }
 

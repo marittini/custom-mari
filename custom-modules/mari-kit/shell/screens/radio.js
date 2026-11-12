@@ -16,6 +16,7 @@ const chip = (label, on, onClick) =>
     label,
   );
 const sw = (on) => h("span", { class: on ? "sw on" : "sw" }, h("span"));
+const marked = new Set(); // episodes already marked seen in this page
 
 /** A station per DJ, so each host keeps their own frequency. */
 function freq(name = "") {
@@ -269,7 +270,10 @@ export function radioScreen({ mount, args, go }) {
             : h("p", { style: { margin: "0", whiteSpace: "pre-wrap" } }, seg.text),
         ),
       );
-      api.post(`/mari-kit/radio/episode/${encodeURIComponent(ep.id)}/seen`).catch(() => {});
+      if (!marked.has(ep.id)) {
+        marked.add(ep.id);
+        api.post(`/mari-kit/radio/episode/${encodeURIComponent(ep.id)}/seen`).catch(() => marked.delete(ep.id));
+      }
     } else if (ep.status === "failed") {
       setChildren(read, h("div", { class: "err" }, `방송을 만들지 못했어요: ${ep.error || ""}`));
     } else {
@@ -286,7 +290,10 @@ export function radioScreen({ mount, args, go }) {
           : null,
       );
       clearTimeout(poll);
-      poll = setTimeout(() => alive && airView(id), 3000);
+      // In the background the broadcast keeps going on the server; look again once the page is back.
+      const again = () =>
+        alive && (document.visibilityState === "visible" ? airView(id) : (poll = setTimeout(again, 3000)));
+      poll = setTimeout(again, 3000);
     }
     setChildren(body, read);
   }
