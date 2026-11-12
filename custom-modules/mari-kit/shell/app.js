@@ -153,6 +153,17 @@ addEventListener("beforeinstallprompt", (e) => {
   e.preventDefault();
   window.__mariInstall = e;
 });
+// Opening the shell fresh (home-screen icon, bookmark, a typed address, a restored browser tab) starts on 홈, like an
+// app. A reload keeps its place, and so does coming back from the Engine (its ‹ Mari로 pill leaves a marker).
+try {
+  const returning = sessionStorage.getItem("mari-kit:returning") === "1";
+  sessionStorage.removeItem("mari-kit:returning");
+  const nav = performance.getEntriesByType("navigation")[0];
+  if (!returning && nav?.type === "navigate" && location.hash && !location.hash.startsWith("#/home")) {
+    location.replace("#/home");
+    trail = [];
+  }
+} catch {}
 applyPrefs();
 track();
 render();

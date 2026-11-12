@@ -506,6 +506,12 @@ function backPill(back) {
   pill.href = `${SHELL_PATH}${back && back.startsWith("#/") ? back : "#/home"}`;
   pill.textContent = "‹ Mari로";
   pill.setAttribute("aria-label", "Mari 화면으로 돌아가기");
+  // The Engine sends no referrer, so the shell learns this way that it is a return, not a fresh start.
+  pill.addEventListener("click", () => {
+    try {
+      sessionStorage.setItem("mari-kit:returning", "1");
+    } catch {}
+  });
   pill.style.cssText =
     "position:fixed;z-index:2147483000;left:50%;transform:translateX(-50%);top:calc(env(safe-area-inset-top,0px) + 8px);" +
     "padding:8px 16px;border-radius:999px;background:#1c1c1e;color:#fff;font:600 13px/1.2 system-ui,sans-serif;" +
