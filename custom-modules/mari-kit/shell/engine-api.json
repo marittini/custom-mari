@@ -57,6 +57,8 @@
     "POST /conversation/activity/presence",
     "GET /chats/autonomous-candidates",
     "POST /chats/:id/autonomous-unread",
-    "DELETE /chats/:id/autonomous-unread"
+    "DELETE /chats/:id/autonomous-unread",
+    "DELETE /chats/:id",
+    "GET /chat-folders"
   ]
 }

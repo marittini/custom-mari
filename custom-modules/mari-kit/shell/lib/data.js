@@ -221,3 +221,17 @@ export function coverOf(chat) {
   const url = chatMeta(chat).mariKitCover;
   return typeof url === "string" && url.startsWith("/api/mari-kit/shell/cover/") ? url : null;
 }
+
+/**
+ * Branches of one chat (the Engine's groupId) as one entry, like the Engine's chat list: the most recent branch
+ * stands for the group and carries `branches` (all of them, newest first).
+ */
+export function byBranchGroup(chats) {
+  const groups = new Map();
+  for (const c of [...chats].sort(byLastActivity)) {
+    const key = c.groupId || c.id;
+    if (!groups.has(key)) groups.set(key, []);
+    groups.get(key).push(c);
+  }
+  return [...groups.values()].map((list) => ({ ...list[0], branches: list }));
+}

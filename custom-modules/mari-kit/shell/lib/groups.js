@@ -4,6 +4,7 @@
 //   lorebooks    library folders (/library-folders/lorebooks)
 //   characters   character groups (/characters/groups/list; characterIds)
 //   personas     persona groups (/characters/persona-groups/list; personaIds)
+//   chats        chat folders (/chat-folders, one mode each; each chat has folderId)
 // Read once per page load and only where a grouped list is shown. An item in several groups shows in the first.
 
 import { api } from "./api.js";
@@ -29,6 +30,11 @@ const SOURCES = {
   lorebooks: async () => folders(await api.get("/library-folders/lorebooks")),
   characters: async () =>
     (await api.get("/characters/groups/list")).map((g) => ({ id: g.id, name: g.name, items: ids(g.characterIds) })),
+  // Chat folders belong to one mode each; a chat carries its folderId.
+  chats: async () =>
+    (await api.get("/chat-folders"))
+      .sort((a, b) => (a.sortOrder ?? 0) - (b.sortOrder ?? 0))
+      .map((f) => ({ id: f.id, name: f.name, mode: f.mode, items: null })),
   personas: async () =>
     (await api.get("/characters/persona-groups/list")).map((g) => ({
       id: g.id,
