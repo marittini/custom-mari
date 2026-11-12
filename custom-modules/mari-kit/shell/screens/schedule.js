@@ -139,6 +139,27 @@ export function scheduleScreen({ mount, args, go }) {
   }
 
   // ── 지금 ─────────────────────────────
+  // Each persona keeps its own week; "기본" is for chats without a persona.
+  let personas = null;
+  data
+    .personas()
+    .then((list) => {
+      personas = list;
+      if (alive && state && view === "now") draw();
+    })
+    .catch(() => {});
+  function personaRow() {
+    if (!personas?.length) return null;
+    const to = (k) => go(`schedule/${encodeURIComponent(k)}/now${chatId ? `/${encodeURIComponent(chatId)}` : ""}`);
+    return h(
+      "div",
+      { class: "chips", role: "group", "aria-label": "페르소나", style: { margin: "4px 0 16px" } },
+      [["default", "기본"], ...personas.map((p) => [p.id, p.name || "이름 없음"])].map(([k, label]) =>
+        chip(label, key === k, () => key !== k && to(k)),
+      ),
+    );
+  }
+
   function nowView() {
     const p = state.profile;
     const n = state.now;
@@ -163,6 +184,7 @@ export function scheduleScreen({ mount, args, go }) {
           ? `${ampm(n.until)}까지`
           : "";
     return [
+      personaRow(),
       n
         ? h(
             "button",

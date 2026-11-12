@@ -10,7 +10,7 @@ import {
   shortTime,
   chatMeta,
 } from "../lib/data.js";
-import { pageHead, avatar, errorBox, lazyBg } from "../lib/ui.js";
+import { pageHead, avatar, avatarStack, errorBox, lazyBg } from "../lib/ui.js";
 import { modelStatus } from "../lib/status.js";
 import { api } from "../lib/api.js";
 
@@ -205,7 +205,7 @@ export function homeScreen({ mount, go }) {
             "div",
             { class: "gcard" },
             convos.map((c, i) => {
-              const who = index.get(c.characterIds?.[0]);
+              const cast = (c.characterIds || []).map((id) => index.get(id)).filter(Boolean);
               const title = chatTitle(c, index);
               return h(
                 "a",
@@ -214,7 +214,7 @@ export function homeScreen({ mount, go }) {
                   href: `#/convo/${encodeURIComponent(c.id)}`,
                   style: { gridTemplateColumns: "32px minmax(0,1fr) auto" },
                 },
-                avatar(who?.avatar, firstLetter(title), 32),
+                cast.length > 1 ? avatarStack(cast, 32) : avatar(cast[0]?.avatar, firstLetter(title), 32),
                 h(
                   "span",
                   { style: { display: "flex", flexDirection: "column", gap: "2px", minWidth: "0" } },

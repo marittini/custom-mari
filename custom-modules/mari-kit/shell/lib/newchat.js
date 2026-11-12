@@ -22,6 +22,7 @@ export async function openNewChat({ mode = "roleplay", characterId = null, go })
   });
   const s = sheet(body, { label: "새 채팅" });
   let pickedChar = characterId ? index.get(characterId) : null;
+  let extra = []; // more characters for a group chat; the first one's card gives the greeting
   let kind = mode;
   let greeting = 0;
   let connectionId = (conns.find((c) => c.isDefault === true || c.isDefault === "true") || {}).id || "";
@@ -39,11 +40,14 @@ export async function openNewChat({ mode = "roleplay", characterId = null, go })
 
   const title = (t) => h("div", { style: { padding: "8px 20px 12px", fontSize: "15px", fontWeight: "600" } }, t);
 
-  function pickCharacter() {
-    const rows = [...index.values()].sort((a, b) => a.name.localeCompare(b.name));
+  function pickCharacter(adding = false) {
+    const taken = new Set([pickedChar?.id, ...extra.map((c) => c.id)]);
+    const rows = [...index.values()]
+      .filter((c) => !adding || !taken.has(c.id))
+      .sort((a, b) => a.name.localeCompare(b.name));
     setChildren(
       body,
-      title("캐릭터 고르기"),
+      title(adding ? "함께할 캐릭터 추가" : "캐릭터 고르기"),
       rows.length
         ? h(
             "div",
@@ -56,7 +60,12 @@ export async function openNewChat({ mode = "roleplay", characterId = null, go })
                   class: "r two",
                   style: { gridTemplateColumns: "36px minmax(0,1fr)" },
                   onClick: async () => {
+                    if (adding) {
+                      extra = [...extra, c];
+                      return options();
+                    }
                     pickedChar = await withCard(c);
+                    extra = extra.filter((x) => x.id !== c.id);
                     if (pickedChar) options();
                   },
                 },
@@ -103,10 +112,43 @@ export async function openNewChat({ mode = "roleplay", characterId = null, go })
           list.map(([v, t]) => h("option", { value: v, selected: value === v }, t)),
         ),
       );
+    const cast = [pickedChar, ...extra];
     setChildren(
       body,
-      title(`${pickedChar.name}와 새 채팅`),
+      title(`${cast.map((c) => c.name).join(", ")}와 새 채팅`),
       seg,
+      h("div", { class: "gap" }),
+      h(
+        "div",
+        { class: "list" },
+        cast.map((c, i) =>
+          h(
+            "div",
+            { class: "r two static", style: { gridTemplateColumns: "28px minmax(0,1fr) auto" } },
+            avatar(c.avatar, firstLetter(c.name), 28),
+            h("span", null, c.name, i === 0 && extra.length ? h("small", { class: "hint" }, " · 첫 인사") : null),
+            i === 0
+              ? null
+              : h(
+                  "button",
+                  {
+                    type: "button",
+                    class: "txtbtn",
+                    onClick: () => {
+                      extra = extra.filter((x) => x.id !== c.id);
+                      options();
+                    },
+                  },
+                  "빼기",
+                ),
+          ),
+        ),
+        h(
+          "button",
+          { type: "button", class: "r two", onClick: () => pickCharacter(true) },
+          h("span", { class: "hint" }, "+ 함께할 캐릭터 추가"),
+        ),
+      ),
       h("div", { class: "gap" }),
       h(
         "div",
@@ -176,7 +218,9 @@ export async function openNewChat({ mode = "roleplay", characterId = null, go })
       h(
         "div",
         { style: { padding: "20px", display: "flex", justifyContent: "flex-end", gap: "8px" } },
-        characterId ? null : h("button", { type: "button", class: "pill", onClick: pickCharacter }, "다른 캐릭터"),
+        characterId
+          ? null
+          : h("button", { type: "button", class: "pill", onClick: () => pickCharacter() }, "다른 캐릭터"),
         h("button", { type: "button", class: "pill main", onClick: create }, "시작"),
       ),
     );
@@ -185,9 +229,9 @@ export async function openNewChat({ mode = "roleplay", characterId = null, go })
   async function create() {
     try {
       const chat = await api.post("/chats", {
-        name: pickedChar.name,
+        name: [pickedChar, ...extra].map((c) => c.name).join(", "),
         mode: kind,
-        characterIds: [pickedChar.id],
+        characterIds: [pickedChar.id, ...extra.map((c) => c.id)],
         connectionId: connectionId || null,
         personaId: personaId || null,
       });

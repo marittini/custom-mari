@@ -5,7 +5,7 @@ import { h, icon, I, setChildren } from "../lib/h.js";
 import { api } from "../lib/api.js";
 import { data, characterIndex, chatMeta, chatTitle } from "../lib/data.js";
 import { setPrefs, isDark, TOOL_DEFS, toolPlace } from "../lib/prefs.js";
-import { topBar, toast, errorBox, openEngine } from "../lib/ui.js";
+import { topBar, toast, errorBox, openEngine, sheet, avatar } from "../lib/ui.js";
 
 let lastTab = "chat";
 
@@ -74,6 +74,62 @@ export function chatSettingsScreen({ mount, args, go }) {
     } catch (error) {
       if (alive) setChildren(body, errorBox(error));
     }
+  }
+
+  /** Who is in the room: add or take out characters (at least one stays). */
+  function editCast(chat, index) {
+    let ids = [...(chat.characterIds || [])];
+    const body = h("div", { style: { overflowY: "auto", minHeight: "0", padding: "4px 0 20px" } });
+    const s = sheet(body, { label: "등장 캐릭터" });
+    const paint = () =>
+      setChildren(
+        body,
+        h("div", { style: { padding: "8px 20px 12px", fontSize: "15px", fontWeight: "600" } }, "등장 캐릭터"),
+        h(
+          "div",
+          { class: "list" },
+          [...index.values()]
+            .sort((a, b) => Number(ids.includes(b.id)) - Number(ids.includes(a.id)) || a.name.localeCompare(b.name))
+            .map((c) => {
+              const on = ids.includes(c.id);
+              return h(
+                "button",
+                {
+                  type: "button",
+                  class: "r two",
+                  role: "checkbox",
+                  "aria-checked": on ? "true" : "false",
+                  style: { gridTemplateColumns: "28px minmax(0,1fr) 20px" },
+                  onClick: () => {
+                    if (on && ids.length === 1) return toast("캐릭터가 한 명은 있어야 해요");
+                    ids = on ? ids.filter((x) => x !== c.id) : [...ids, c.id];
+                    paint();
+                  },
+                },
+                avatar(c.avatar, c.name?.[0] || "·", 28),
+                h("span", null, c.name),
+                h("span", { class: on ? "cbx on" : "cbx", "aria-hidden": "true" }),
+              );
+            }),
+        ),
+        h(
+          "div",
+          { style: { padding: "20px", display: "flex", justifyContent: "flex-end" } },
+          h(
+            "button",
+            {
+              type: "button",
+              class: "pill main",
+              onClick: async () => {
+                s.close();
+                await patchChat({ characterIds: ids });
+              },
+            },
+            "저장",
+          ),
+        ),
+      );
+    paint();
   }
 
   async function patchChat(patch) {
@@ -159,6 +215,7 @@ export function chatSettingsScreen({ mount, args, go }) {
           (chat.characterIds || []).map((id) =>
             linkRow(I.person, "캐릭터", index.get(id)?.name || "?", () => go(`character/${encodeURIComponent(id)}`)),
           ),
+          linkRow(I.person, "등장 캐릭터 바꾸기", `${(chat.characterIds || []).length}명`, () => editCast(chat, index)),
         ),
         h("div", { class: "gap" }),
         h(

@@ -1631,3 +1631,57 @@ label.grow {
 .cx-reply[hidden] {
   display: none;
 }
+
+/* A group chat's faces: two avatars overlapped corner to corner. */
+.avs {
+  position: relative;
+  display: inline-block;
+  flex: none;
+}
+.avs > .av {
+  position: absolute;
+}
+.avs > .av:first-child {
+  top: 0;
+  left: 0;
+}
+.avs > .av:nth-child(2) {
+  right: 0;
+  bottom: 0;
+  box-shadow: 0 0 0 2px var(--paper);
+}
+.avs-n {
+  position: absolute;
+  right: -4px;
+  top: -4px;
+  min-width: 16px;
+  padding: 0 4px;
+  border-radius: 8px;
+  background: var(--fill);
+  color: var(--ink-2);
+  font-size: 10px;
+  line-height: 16px;
+  text-align: center;
+}
+/* Who is talking in a group Convo: a small face and name at the start of each speaker's run. */
+.who {
+  position: relative;
+  padding-left: 38px;
+}
+.who > .av {
+  position: absolute;
+  left: 0;
+  top: 0;
+}
+.who-name {
+  margin: 0 0 4px 2px;
+  font-size: 12px;
+  color: var(--ink-3);
+}
+/* Who replies next in a group story. */
+.rp-who {
+  margin: 18px 0 -6px;
+  font-size: 12px;
+  letter-spacing: 0.02em;
+  color: var(--ink-3);
+}

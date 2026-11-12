@@ -422,9 +422,17 @@ export function rpScreen({ mount, args, go }) {
     if (!chat) return;
     const visible = messages.filter((m) => m.role !== "system" || messageText(m).trim());
     const lastIdx = visible.length - 1;
-    const blocks = visible.map((m, i) =>
-      m.role === "user" ? h("div", { class: "umsg" }, messageText(m)) : assistantBlock(m, i === lastIdx),
-    );
+    // In a group story, a small name marks where another character's reply starts.
+    const group = (chat.characterIds || []).length > 1;
+    const blocks = [];
+    visible.forEach((m, i) => {
+      if (m.role === "user") return blocks.push(h("div", { class: "umsg" }, messageText(m)));
+      const before = visible[i - 1];
+      const speaker = group && m.characterId ? index.get(m.characterId) : null;
+      if (speaker && !(before?.role === "assistant" && before.characterId === m.characterId))
+        blocks.push(h("div", { class: "rp-who" }, speaker.name));
+      blocks.push(assistantBlock(m, i === lastIdx));
+    });
     if (win.more) blocks.unshift(olderButton(win, scroller, () => ((messages = win.list), draw())));
     if (busy)
       blocks.push(

@@ -10,7 +10,7 @@ import {
   messageText,
   shortTime,
 } from "../lib/data.js";
-import { pageHead, avatar, errorBox } from "../lib/ui.js";
+import { pageHead, avatar, avatarStack, errorBox } from "../lib/ui.js";
 
 export function convosScreen({ mount, go }) {
   let alive = true;
@@ -50,12 +50,12 @@ export function convosScreen({ mount, go }) {
           "div",
           { style: { borderBottom: "1px solid var(--line)" } },
           rows.map((c, i) => {
-            const who = index.get(c.characterIds?.[0]);
+            const cast = (c.characterIds || []).map((id) => index.get(id)).filter(Boolean);
             const title = chatTitle(c, index);
             return h(
               "a",
               { class: "row", href: `#/convo/${encodeURIComponent(c.id)}` },
-              avatar(who?.avatar, firstLetter(title), 40),
+              cast.length > 1 ? avatarStack(cast, 40) : avatar(cast[0]?.avatar, firstLetter(title), 40),
               h(
                 "span",
                 { style: { display: "flex", flexDirection: "column", gap: "3px", minWidth: "0" } },

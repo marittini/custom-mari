@@ -88,7 +88,19 @@ export function callScreen(ctx) {
   let timer = null;
   let minimized = false;
   const meta = () => chatMeta(ctx.chat);
-  const lead = () => ctx.index.get(ctx.chat.characterIds?.[0]);
+  const cast = () => (ctx.chat.characterIds || []).map((id) => ctx.index.get(id)).filter(Boolean);
+  /** The face on screen: whoever spoke last, else the character who called, else the room's first character. */
+  const lead = () => {
+    const lastSpeaker = [...messages].reverse().find((m) => m.participantKind === "character")?.characterId;
+    return ctx.index.get(lastSpeaker || session?.initiatorCharacterId) || cast()[0];
+  };
+  const callName = () =>
+    session?.status === "ringing"
+      ? ctx.index.get(session.initiatorCharacterId)?.name || cast()[0]?.name || "통화"
+      : cast()
+          .map((c) => c.name)
+          .join(", ") || "통화";
+  const speakerName = (m) => (m.participantKind === "user" ? "나" : ctx.index.get(m.characterId)?.name || "상대");
   const layer = h("div", { class: "callx", hidden: true });
   const pill = h("button", {
     type: "button",
@@ -318,11 +330,7 @@ export function callScreen(ctx) {
               h(
                 "span",
                 { style: { display: "flex", flexDirection: "column", gap: "4px", minWidth: "0" } },
-                h(
-                  "span",
-                  { class: "label" },
-                  m.participantKind === "user" ? "나" : ctx.index.get(m.characterId)?.name || "상대",
-                ),
+                h("span", { class: "label" }, speakerName(m)),
                 h("span", { style: { fontFamily: "var(--font-read)", fontSize: "15px", lineHeight: "1.55" } }, top),
                 bottom ? h("span", { style: { fontSize: "12px", color: "var(--ink-3)" } }, bottom) : null,
               ),
@@ -473,14 +481,14 @@ export function callScreen(ctx) {
         : busy
           ? "…"
           : fmt(Date.now() - started);
-    pill.textContent = `${who?.name || "통화"} · ${fmt(Date.now() - started)}`;
+    pill.textContent = `${callName()} · ${fmt(Date.now() - started)}`;
     pill.hidden = !minimized || ringing;
     layer.hidden = minimized;
     if (minimized) return;
+    nameEl.textContent = callName();
     if (faceFor !== who?.id) {
       faceFor = who?.id;
       setChildren(faceEl, avatar(who?.avatar, who?.name?.[0] || "·", 96));
-      nameEl.textContent = who?.name || "통화";
       backdrop.style.backgroundImage = who?.avatar ? `url("${thumb(who.avatar, 240)}")` : "";
     }
     layer.classList.toggle("ringing", ringing);
@@ -506,12 +514,13 @@ export function callScreen(ctx) {
     const key = rows.map((r) => r.m.id + r.top).join("|") + showOriginal;
     if (capEl.dataset.key === key) return;
     capEl.dataset.key = key;
-    prevEl.textContent = prev ? `${prev.m.participantKind === "user" ? "나" : nameEl.textContent} · ${prev.top}` : "";
+    const group = cast().length > 1;
+    prevEl.textContent = prev ? `${speakerName(prev.m)} · ${prev.top}` : "";
     setChildren(
       capEl,
       cur
         ? [
-            cur.m.participantKind === "user" ? h("small", { class: "cx-me" }, "나") : null,
+            cur.m.participantKind === "user" || group ? h("small", { class: "cx-me" }, speakerName(cur.m)) : null,
             h("span", null, cur.top),
             cur.bottom ? h("small", null, cur.bottom) : null,
           ]
