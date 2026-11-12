@@ -57,11 +57,19 @@ export function settingsScreen({ mount, args, go, back }) {
     );
   }
 
+  const sec = (label) =>
+    h("div", { class: "sec", style: { padding: "18px 20px 6px" } }, h("span", { class: "hint" }, label));
+  const val = (t) => h("span", { class: "val" }, `${t} ›`);
+
   function listPage() {
     const p = prefs();
     const shown = TOOL_DEFS.filter((t) => toolPlace(t) === "show").length;
     const more = TOOL_DEFS.filter((t) => toolPlace(t) === "more").length;
-    return [
+    const results = h("div");
+    const groups = h(
+      "div",
+      null,
+      sec("화면"),
       h(
         "div",
         { class: "list" },
@@ -69,35 +77,41 @@ export function settingsScreen({ mount, args, go, back }) {
           role: "switch",
           "aria-checked": isDark() ? "true" : "false",
         }),
-        row(I.font, "글꼴", h("span", { class: "val" }, `${p.font || "기본"} ›`), () => go("settings/font")),
-        row(I.reader, "읽기", h("span", { class: "val" }, "›"), () => go("reader")),
-        row(I.list, "메시지 도구", h("span", { class: "val" }, `표시 ${shown} · 더보기 ${more} ›`), () =>
-          go("settings/tools"),
-        ),
-        row(I.square, "앱 이름 · 아이콘", h("span", { class: "val" }, `${p.appName || "기본"} ›`), () =>
-          go("settings/brand"),
-        ),
+        row(I.font, "글꼴", val(p.font || "기본"), () => go("settings/font")),
+        row(I.reader, "읽기", val(""), () => go("reader")),
+        row(I.list, "메시지 도구", val(`표시 ${shown} · 더보기 ${more}`), () => go("settings/tools")),
+        row(I.square, "앱 이름 · 아이콘", val(p.appName || "기본"), () => go("settings/brand")),
       ),
-      h("div", { class: "gap" }),
+      sec("모델"),
       h(
         "div",
         { class: "list" },
-        row(I.link, "연결", h("span", { class: "val" }, "›"), () => go("settings/connections")),
-        row(I.list, "프리셋", h("span", { class: "val" }, "›"), () => go("settings/presets")),
-        row(I.voice, "음성 · 읽는 법", h("span", { class: "val" }, "›"), () => go("voice")),
+        row(I.link, "연결", val(""), () => go("settings/connections")),
+        row(I.list, "프리셋", val(""), () => go("settings/presets")),
       ),
-      h("div", { class: "gap" }),
+      sec("사람과 세계"),
       h(
         "div",
         { class: "list" },
-        row(I.calendar, "내 일정", h("span", { class: "val" }, "Convo ›"), openSchedule),
-        row(I.radio, "라디오", h("span", { class: "val" }, "›"), () => go("radio")),
+        row(I.person, "캐릭터", val("서재"), () => go("library/chars")),
+        row(I.person, "페르소나", val("엔진"), () => openEngine(null, { panel: "personas" })),
+        row(I.lore, "로어북", val("엔진"), () => openEngine(null, { panel: "lorebooks" })),
       ),
-      h("div", { class: "gap" }),
+      sec("Mari 기능"),
       h(
         "div",
         { class: "list" },
-        row(I.square, "엔진 화면", h("span", { class: "val" }, "전체 기능 ›"), () => openEngine()),
+        row(I.voice, "음성 · 읽는 법", val(""), () => go("voice")),
+        row(I.calendar, "내 일정", val("Convo"), openSchedule),
+        row(I.radio, "라디오", val(""), () => go("radio")),
+      ),
+      sec("엔진"),
+      h(
+        "div",
+        { class: "list" },
+        row(I.gear, "엔진 설정", val("엔진"), () => openEngine(null, { panel: "settings" })),
+        row(I.square, "에이전트 · 업데이트", val("엔진"), () => openEngine(null, { panel: "agents" })),
+        row(I.square, "엔진 화면", val("전체 기능"), () => openEngine()),
         row(
           I.square,
           "엔진 주소로 열면 Mari 화면",
@@ -112,7 +126,95 @@ export function settingsScreen({ mount, args, go, back }) {
           { role: "switch", "aria-checked": startsInShell() ? "true" : "false" },
         ),
       ),
-    ];
+    );
+    const input = h("input", {
+      class: "inp",
+      type: "search",
+      placeholder: "설정 찾기 (엔진 설정 포함)",
+      "aria-label": "설정 찾기",
+      style: { width: "100%" },
+      onFocus: () => loadEngineSettings(),
+      onInput: () => search(input.value, results, groups),
+    });
+    return [h("div", { style: { padding: "4px 20px 4px" } }, input), results, groups];
+  }
+
+  // ── 설정 찾기 ──
+  // The shell's own settings, a few per-chat ones (they open in the newest chat's settings), and the Engine's
+  // settings sections (read once from the Engine's shared module through Mari Kit, ~6KB, only when searching).
+  const SHELL_ITEMS = [
+    ["다크 모드", "설정 › 화면", "dark theme 테마 어둡게", () => setPrefs({ theme: isDark() ? "light" : "dark" })],
+    ["글꼴", "설정 › 화면", "font 폰트", () => go("settings/font")],
+    ["읽기", "설정 › 화면", "글자 크기 줄 간격 정렬 reading", () => go("reader")],
+    ["메시지 도구", "설정 › 화면", "버튼 tools 복사 수정", () => go("settings/tools")],
+    ["앱 이름 · 아이콘", "설정 › 화면", "brand 홈 화면", () => go("settings/brand")],
+    ["연결", "설정 › 모델", "connection api 모델 키", () => go("settings/connections")],
+    ["프리셋", "설정 › 모델", "preset 프롬프트 파라미터", () => go("settings/presets")],
+    ["음성 · 읽는 법", "설정 › Mari 기능", "tts 목소리 voice 발음 elevenlabs", () => go("voice")],
+    ["내 일정", "설정 › Mari 기능", "schedule 상태 스케줄", () => openSchedule()],
+    ["라디오", "설정 › Mari 기능", "radio 사연", () => go("radio")],
+    ["엔진 주소로 열면 Mari 화면", "설정 › 엔진", "시작 화면 start", () => {}],
+  ];
+  const CHAT_ITEMS = [
+    ["번역 (이 채팅)", "translation", "자동 번역 원문 대신 번역 translate"],
+    ["로어북 (이 채팅)", "lorebooks", "lorebook 세계관"],
+    ["작가 노트", "author", "author note 깊이"],
+    ["등장 캐릭터", "cast", "단체 캐릭터 추가"],
+    ["모든 채팅 설정", "all", "고급 파라미터 요약 기억 회상 자율 메시지 함수 호출 변수 분기 배경"],
+  ];
+  let engineSettings = null;
+  async function loadEngineSettings() {
+    if (engineSettings) return engineSettings;
+    engineSettings = await api.get("/mari-kit/shell/engine-settings").catch(() => ({ tabs: [], sections: [] }));
+    return engineSettings;
+  }
+  async function search(q, results, groups) {
+    const query = q.trim().toLowerCase();
+    groups.hidden = !!query;
+    if (!query) return setChildren(results);
+    const hit = (...parts) => parts.join(" ").toLowerCase().includes(query);
+    const items = [];
+    for (const [label, where, words, act] of SHELL_ITEMS) if (hit(label, where, words)) items.push([label, where, act]);
+    for (const [label, v, words] of CHAT_ITEMS)
+      if (hit(label, words)) items.push([label, "최근 채팅 › 채팅 설정", () => openLatestChatSettings(v)]);
+    const eng = await loadEngineSettings();
+    const tabLabel = Object.fromEntries((eng.tabs || []).map((t) => [t.id, t.label]));
+    for (const s of eng.sections || [])
+      if (hit(s.label, s.description, (s.aliases || []).join(" ")))
+        items.push([
+          s.label,
+          `엔진 설정 › ${tabLabel[s.tab] || s.tab}`,
+          () => openEngine(null, { settings: s.id, tab: s.tab }),
+        ]);
+    setChildren(
+      results,
+      items.length
+        ? h(
+            "div",
+            { class: "list", style: { marginTop: "8px" } },
+            items
+              .slice(0, 20)
+              .map(([label, where, act]) =>
+                h(
+                  "button",
+                  { type: "button", class: "r", style: { gridTemplateColumns: "minmax(0,1fr) auto" }, onClick: act },
+                  h(
+                    "span",
+                    { style: { display: "flex", flexDirection: "column", gap: "2px", minWidth: "0" } },
+                    label,
+                    h("span", { class: "hint" }, where),
+                  ),
+                  h("span", { class: "val" }, where.startsWith("엔진") ? "엔진 ›" : "›"),
+                ),
+              ),
+          )
+        : h("div", { class: "empty" }, "찾는 설정이 없어요."),
+    );
+  }
+  async function openLatestChatSettings(view) {
+    const latest = (await data.chats().catch(() => [])).sort(byLastActivity)[0];
+    if (!latest) return toast("채팅이 아직 없어요");
+    go(`chat-settings/${encodeURIComponent(latest.id)}/${view}`);
   }
 
   // 내 일정 belongs to a persona: open the one the newest Convo uses.

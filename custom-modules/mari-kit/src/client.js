@@ -468,11 +468,89 @@ export function shouldOpenShell(path, start, engineTab) {
 
 function openShellOnStart() {
   try {
-    if (shouldOpenShell(location.pathname, localStorage.getItem(START_KEY), sessionStorage.getItem(ENGINE_TAB_KEY)))
+    if (shouldOpenShell(location.pathname, localStorage.getItem(START_KEY), sessionStorage.getItem(ENGINE_TAB_KEY))) {
+      // The shell tells this visitor once that its own home-screen icon skips the Engine's app (much lighter).
+      sessionStorage.setItem("mari-kit:via-engine", "1");
       location.replace(SHELL_PATH);
+    }
   } catch {
     // Storage can be blocked; the Engine screen then simply stays.
   }
+}
+
+// ── Opened from the shell ───────────────────────
+// The shell sends a visitor here for what it does not draw itself: a chat's settings section, or the character,
+// preset or lorebook editor. It leaves the target in sessionStorage; this opens it through the Engine's own
+// package API and shows one pill back to the shell screen the visitor came from.
+
+export const OPEN_KEY = "mari-kit:open";
+
+function waitFor(test, timeout = 10000) {
+  return new Promise((resolve) => {
+    const started = Date.now();
+    const tick = () => {
+      let value = null;
+      try {
+        value = test();
+      } catch {}
+      if (value) return resolve(value);
+      if (Date.now() - started > timeout) return resolve(null);
+      setTimeout(tick, 120);
+    };
+    tick();
+  });
+}
+
+function backPill(back) {
+  const pill = document.createElement("a");
+  pill.href = `${SHELL_PATH}${back && back.startsWith("#/") ? back : "#/home"}`;
+  pill.textContent = "‹ Mari로";
+  pill.setAttribute("aria-label", "Mari 화면으로 돌아가기");
+  pill.style.cssText =
+    "position:fixed;z-index:2147483000;left:50%;transform:translateX(-50%);top:calc(env(safe-area-inset-top,0px) + 8px);" +
+    "padding:8px 16px;border-radius:999px;background:#1c1c1e;color:#fff;font:600 13px/1.2 system-ui,sans-serif;" +
+    "text-decoration:none;box-shadow:0 2px 10px rgba(0,0,0,.25)";
+  document.body.append(pill);
+}
+
+async function openFromShell() {
+  let target = null;
+  try {
+    target = JSON.parse(sessionStorage.getItem(OPEN_KEY) || "null");
+    sessionStorage.removeItem(OPEN_KEY);
+  } catch {}
+  if (!target || typeof target !== "object") return;
+  backPill(target.back);
+  const host = await waitFor(() => globalThis.__MARINARA_HOST__);
+  if (!host) return;
+  const ui = host.stores.ui.getState;
+  const chat = host.stores.chat.getState;
+  if (target.chatId) {
+    if (chat().activeChatId !== target.chatId) chat().setActiveChatId?.(target.chatId);
+    await waitFor(() => chat().activeChatId === target.chatId);
+  }
+  // On a phone the Engine starts with its chat list drawn over everything; the visitor came for one thing.
+  ui().setSidebarOpen?.(false);
+  if (Array.isArray(target.section) && target.section.length) {
+    chat().setShouldOpenSettings(true);
+    const el = await waitFor(() =>
+      target.section
+        .map((id) => document.querySelector(`[data-chat-settings-section="${CSS.escape(id)}"]`))
+        .find(Boolean),
+    );
+    if (!el) return;
+    const toggle = el.querySelector('[aria-expanded="false"]');
+    if (toggle) toggle.click();
+    setTimeout(() => el.scrollIntoView({ block: "start", behavior: "smooth" }), 150);
+  } else if (target.character)
+    ui().openCharacterDetail(target.character, target.tab ? { initialTab: target.tab } : undefined);
+  else if (target.preset) ui().openPresetDetail(target.preset, target.tab ? { initialTab: target.tab } : undefined);
+  else if (target.lorebook) ui().openLorebookDetail(target.lorebook);
+  else if (target.settings) {
+    ui().openRightPanel("settings");
+    if (target.tab) ui().setSettingsTab(target.tab);
+    ui().setSettingsTargetSectionId?.(target.settings);
+  } else if (target.panel) ui().openRightPanel(target.panel);
 }
 
 class LinePlayer {
@@ -1322,4 +1400,5 @@ function defineElement() {
 if (typeof HTMLElement !== "undefined" && typeof customElements !== "undefined") {
   defineElement();
   openShellOnStart();
+  if (typeof document !== "undefined") void openFromShell();
 }

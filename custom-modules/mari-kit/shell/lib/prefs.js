@@ -108,6 +108,8 @@ export function applyPrefs() {
     else if (link.getAttribute("href") !== href) link.setAttribute("href", href);
   }
   document.title = p.appName || "Marinara";
+  const manifest = document.querySelector('link[rel="manifest"]');
+  if (manifest) manifest.href = `/api/mari-kit/manifest${p.appName ? `?name=${encodeURIComponent(p.appName)}` : ""}`;
   let fav = document.querySelector('link[rel="icon"]');
   if (p.icon) {
     if (!fav) {

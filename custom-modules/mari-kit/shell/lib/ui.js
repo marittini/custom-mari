@@ -203,13 +203,17 @@ export function hbox(label, ...children) {
   return h("div", { class: "hbox" }, h("span", { class: "htag" }, label), ...children);
 }
 
-/** The Engine's own screen, for anything the shell does not show yet (new upstream features included); with a chat id
- *  it opens on that chat, through the same last-chat key the Engine restores on start. */
-export function openEngine(chatId) {
+/**
+ * The Engine's own screen, for what the shell does not draw itself. `target` (optional) names what to open there:
+ * { section: [ids] } a chat settings section (the first id found), or { character, tab } / { preset } / { lorebook }
+ * / { panel }. Mari Kit's Engine-side script opens it and shows a pill back to this screen.
+ */
+export function openEngine(chatId, target = null) {
   try {
     if (chatId) localStorage.setItem("marinara-active-chat-id", chatId);
     // Mari Kit's Engine-side script sends the Engine's start page to the shell; this tab asked for the Engine.
     sessionStorage.setItem("mari-kit:engine-tab", "1");
+    if (target) sessionStorage.setItem("mari-kit:open", JSON.stringify({ ...target, chatId, back: location.hash }));
   } catch {}
   location.href = "/";
 }

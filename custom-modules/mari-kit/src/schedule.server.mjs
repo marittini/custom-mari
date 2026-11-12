@@ -165,7 +165,11 @@ export function normalizeProfile(raw) {
           ["idle", "dnd", "offline"].includes(w.status),
       )
     : [];
-  return { config, days, override, windows, updatedAt: str(src.updatedAt, 40) || null };
+  const summary =
+    src.summary && typeof src.summary === "object" && str(src.summary.text, 2000)
+      ? { text: str(src.summary.text, 2000), at: str(src.summary.at, 40) || null }
+      : null;
+  return { config, days, override, windows, summary, updatedAt: str(src.updatedAt, 40) || null };
 }
 
 export function activeOverride(profile, date = new Date()) {
@@ -423,6 +427,40 @@ export const scheduleFeature = {
       });
       return view(key, profile);
     });
+    // 일상 요약 (from the original extension): a short Korean paragraph about this persona's week, for the user to read.
+    app.post("/schedule/:key/summary", async (request) => {
+      const key = keyOf(request.params.key);
+      const { profile } = await read(key);
+      if (!DAYS.some((d) => profile.days[d]?.length)) throw httpError(400, "Make a schedule first.");
+      const model = await runtime.languageModels.resolve(profile.config.connectionId || null);
+      let result;
+      try {
+        result = await model.chatComplete(
+          [
+            {
+              role: "system",
+              content:
+                'Summarize this persona\'s weekly routine in one concise Korean paragraph (2-3 sentences): when they are busy, free and easiest to reach. Do not infer real human behavior. Return JSON {"summary":"..."}.',
+            },
+            { role: "user", content: JSON.stringify(profile.days) },
+          ],
+          { temperature: 0.4, maxTokens: 600 },
+        );
+      } catch (error) {
+        throw httpError(502, `The summary model call failed: ${error?.message ?? error}`);
+      }
+      let text = "";
+      try {
+        text = str(runtime.json.parseJsonish(String(result?.content ?? ""))?.summary, 2000);
+      } catch {}
+      if (!text) throw httpError(502, "The model did not return a summary.");
+      const saved = await save(key, (p) => {
+        p.summary = { text, at: new Date().toISOString() };
+        return p;
+      });
+      return view(key, saved);
+    });
+
     // AI: a whole week or one day. action "rewrite" | "adjust". Real-life windows are refreshed when needed.
     app.post("/schedule/:key/generate", async (request) => {
       const key = keyOf(request.params.key);

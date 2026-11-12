@@ -77,6 +77,12 @@ if (id === "mari-kit") {
     override: { status: "dnd", activity: "과제", expiresAt: "2026-11-11T10:30:00Z" },
   });
   assert.equal(sched.nowState(sp, at).activity, "과제", "an unexpired override wins");
+  assert.deepEqual(
+    sched.normalizeProfile({ summary: { text: "평일 저녁이 한가해요", at: "2026-11-12T00:00:00Z" } }).summary,
+    { text: "평일 저녁이 한가해요", at: "2026-11-12T00:00:00Z" },
+    "일상 요약 survives a save",
+  );
+  assert.equal(sched.normalizeProfile({ summary: { text: "" } }).summary, null);
   assert.match(sched.scheduleContext(sp, at, "마리"), /Right now 마리 is: 과제 \(do not disturb, until 19:30\)/);
   assert.equal(sched.nowState(sp, new Date("2026-11-11T11:00:00Z")).activity, "집", "an expired override is ignored");
   assert.equal(sched.scheduleContext({ ...sp, config: { ...sp.config, enabled: false } }, at), "");
@@ -455,6 +461,27 @@ if (id === "mari-kit") {
   assert.equal(client.shouldOpenShell("/", "engine", null), false);
   assert.equal(client.shouldOpenShell("/", null, "1"), false);
   assert.equal(client.shouldOpenShell("/api/mari-kit/app", null, null), false);
+}
+
+// Lorebooks a chat uses: the Engine's rule (pinned, global, character, persona, own chat; scope; exclusions).
+{
+  const { lorebookViews } = await import(pathToFileURL(join(outDir, "shell", "lib", "lorebooks.js")).href);
+  const chat = { id: "c1", characterIds: ["a", "b"], personaId: "p1" };
+  const books = [
+    { id: "pin", name: "pin" },
+    { id: "glob", name: "glob", isGlobal: true },
+    { id: "char", name: "char", characterIds: ["b"] },
+    { id: "pers", name: "pers", personaIds: ["p1"] },
+    { id: "own", name: "own", chatId: "c1" },
+    { id: "off", name: "off", isGlobal: true, enabled: false },
+    { id: "elsewhere", name: "elsewhere", isGlobal: true, scope: { mode: "specific", chatIds: ["c2"] } },
+    { id: "none", name: "none" },
+  ];
+  const views = lorebookViews(books, chat, { activeLorebookIds: ["pin"], excludedLorebookIds: ["glob"] });
+  assert.deepEqual(
+    views.map((v) => `${v.book.id}:${v.reasons.join("+")}:${v.pinned ? "P" : ""}${v.excluded ? "X" : ""}`),
+    ["pin:Chat:P", "glob:Global:X", "char:Character:", "pers:Persona:", "own:Chat:"],
+  );
 }
 
 // The shell's Engine calls all appear in shell/engine-api.json, which check-engine-api.mjs probes after updates.
