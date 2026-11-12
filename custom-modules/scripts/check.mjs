@@ -45,16 +45,61 @@ if (id === "mari-kit") {
     translation: false,
     weather: false,
     memory: false,
+    schedule: false,
   });
   assert.deepEqual(
     server.normalizeSettings({ features: { tts: true, memory: "yes", bogus: true } }).features,
-    { tts: true, translation: false, weather: false, memory: false },
+    { tts: true, translation: false, weather: false, memory: false, schedule: false },
     "unknown keys and non-boolean values are dropped",
   );
   assert.equal(server.chatUsesMariKit({ enableAgents: true, activeAgentIds: ["mari-kit"] }), true);
   assert.equal(server.chatUsesMariKit({ enableAgents: false, activeAgentIds: ["mari-kit"] }), false);
   assert.equal(server.chatUsesMariKit({ enableAgents: true, activeAgentIds: ["other"] }), false);
   assert.equal(server.chatUsesMariKit(null), false);
+
+  // ── Schedule ──
+  const sched = await import(pathToFileURL(join(outDir, "schedule.server.mjs")).href);
+  assert.deepEqual(
+    sched
+      .repairDay([
+        { time: "22:00-07:00", activity: "잠", status: "offline" },
+        { time: "06:00-09:00", activity: "출근", status: "idle" },
+      ])
+      .map((b) => b.time),
+    ["00:00-07:00", "07:00-09:00", "09:00-22:00", "22:00-24:00"],
+    "repair fills gaps and trims overlaps",
+  );
+  assert.throws(() => sched.validateDay([{ time: "09:00-10:00", activity: "a", status: "busy" }], "Monday"));
+  const at = new Date("2026-11-11T09:30:00Z"); // Wednesday 18:30 in Seoul
+  const sp = sched.normalizeProfile({
+    config: { enabled: true, zone: "Asia/Seoul" },
+    days: { Wednesday: [{ time: "00:00-24:00", activity: "집", status: "online" }] },
+    override: { status: "dnd", activity: "과제", expiresAt: "2026-11-11T10:30:00Z" },
+  });
+  assert.equal(sched.nowState(sp, at).activity, "과제", "an unexpired override wins");
+  assert.match(sched.scheduleContext(sp, at, "마리"), /Right now 마리 is: 과제 \(do not disturb, until 19:30\)/);
+  assert.equal(sched.nowState(sp, new Date("2026-11-11T11:00:00Z")).activity, "집", "an expired override is ignored");
+  assert.equal(sched.scheduleContext({ ...sp, config: { ...sp.config, enabled: false } }, at), "");
+
+  // ── Radio ──
+  const radio = await import(pathToFileURL(join(outDir, "radio.server.mjs")).href);
+  assert.match(radio.anonymousName(0.27), /^010-\*\*\*\*-27$/);
+  assert.equal(radio.normalizeRadioSettings({ zone: "x", rooms: ["a", 3] }).zone, "Asia/Seoul");
+  assert.deepEqual(radio.normalizeRadioSettings({ rooms: ["a", 3] }).rooms, ["a"]);
+  assert.throws(() => radio.parseEpisode({ segments: [] }), /no script/);
+  assert.equal(radio.parseEpisode({ title: "", segments: [{ type: "x", text: "hi" }] }).segments[0].type, "dj");
+  assert.match(
+    radio.radioPrompt({
+      dj: { name: "DJ", brief: "" },
+      guide: "g",
+      time: radio.airTime("Asia/Seoul"),
+      letter: "",
+      sender: "",
+      poster: null,
+      roomNotes: "",
+    }),
+    /story board/,
+  );
 
   // ── TTS ──
   const tts = await import(pathToFileURL(join(outDir, "tts.server.mjs")).href);
@@ -78,6 +123,21 @@ if (id === "mari-kit") {
   assert.match(guidance, /<audio_character id="ID">/);
   assert.match(guidance, /"id":"c1"/);
   assert.doesNotMatch(guidance, /phoneticName/, "phonetic names are not sent to the model");
+  const tagged = tts.buildTtsGuidance([{ kind: "character", id: "c1", name: "Aya", phoneticName: "" }], "tags");
+  assert.match(tagged, /\[short pause\]/, "tag mode asks for ElevenLabs audio tags");
+  assert.equal(
+    tts.resolveCue(tts.normalizeVoiceSettings({ engine: { source: "elevenlabs", model: "eleven_v3" } })),
+    "tags",
+  );
+  assert.equal(tts.resolveCue(tts.normalizeVoiceSettings({ engine: { source: "openai", model: "tts-1" } })), "free");
+  assert.equal(
+    tts.resolveCue(tts.normalizeVoiceSettings({ cue: "free", engine: { source: "elevenlabs", model: "eleven_v3" } })),
+    "free",
+  );
+  assert.match(tts.buildConvoTtsGuidance("free"), /Start each message/);
+  const pub = tts.publicVoiceSettings(tts.normalizeVoiceSettings({ eleven: { key: "sk_abcdefghijklmnop1234" } }));
+  assert.equal(pub.eleven.key, undefined, "the ElevenLabs key never goes back to the browser");
+  assert.equal(pub.eleven.keyTail, "1234");
 
   // Pronunciation: the reported case — a given name alone must use its own part of the phonetic name.
   const kuga = client.buildPronunciations([{ name: "쿠가 테루노리", phoneticName: "kuga terunori" }]);
@@ -114,6 +174,10 @@ if (id === "mari-kit") {
   }
   assert.equal(shown.match(/<span class="mk-line/g)?.length, lines.length);
   assert.doesNotMatch(shown, /audio_|\[low|\[soft/, "markup and line-start cues are hidden");
+  let convo = "[sighs] 진짜 늦었네. [short pause] 그래도 왔구나. [주의] 비밀";
+  for (const rule of client.DISPLAY_RULES)
+    convo = convo.replace(new RegExp(rule.findRegex, rule.flags), rule.replaceString);
+  assert.equal(convo, "진짜 늦었네. 그래도 왔구나. [주의] 비밀", "inline audio tags hidden, other brackets kept");
 
   // ── Memory ──
   const mem = await import(pathToFileURL(join(outDir, "memory.server.mjs")).href);

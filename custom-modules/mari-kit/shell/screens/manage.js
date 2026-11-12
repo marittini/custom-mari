@@ -418,7 +418,7 @@ export function presetPage(body, go, id) {
 // ── text to speech ────────────────────────
 export function voicePage(body) {
   guard(body, async () => {
-    const [config, chars] = await Promise.all([api.get("/tts/config"), data.characters()]);
+    const config = await api.get("/tts/config");
     let voices = [];
     try {
       const res = await api.get("/tts/voices");
@@ -447,53 +447,6 @@ export function voicePage(body) {
       ["single", "모두 같은 보이스"],
       ["per-character", "캐릭터마다 다른 보이스"],
     ]);
-    const index = characterIndex(chars);
-    const assigned = new Map((config.voiceAssignments || []).map((a) => [a.characterId, a.voice]));
-    const perChar = [...index.values()].map((c) => {
-      const pick = voices.length
-        ? select(assigned.get(c.id) || "", voiceOptions, { style: { width: "170px", minHeight: "36px" } })
-        : text(assigned.get(c.id) || "", { style: { width: "170px" }, placeholder: "보이스 ID" });
-      pick.addEventListener("change", async () => {
-        try {
-          await api.put("/tts/config/voice-assignment", {
-            characterId: c.id,
-            characterName: c.name,
-            voice: pick.value.trim(),
-          });
-          toast(`${c.name} 보이스를 저장했어요`);
-        } catch (error) {
-          toast(error.message);
-        }
-      });
-      const pron = text(c.row.phoneticName || "", {
-        placeholder: "읽는 법 (예: kuga terunori)",
-        style: { minHeight: "36px", fontSize: "13px" },
-      });
-      pron.addEventListener("change", async () => {
-        try {
-          // The list has no card; read this one so its other extensions are kept.
-          const ext = characterCard(await data.character(c.id))?.extensions || {};
-          await api.patch(`/characters/${encodeURIComponent(c.id)}`, {
-            data: { extensions: { ...ext, phoneticName: pron.value.trim() } },
-          });
-          data.characters(true);
-          toast(`${c.name} 읽는 법을 저장했어요`);
-        } catch (error) {
-          toast(error.message);
-        }
-      });
-      return h(
-        "div",
-        { class: "r two static", style: { alignItems: "start" } },
-        h(
-          "span",
-          { style: { display: "flex", flexDirection: "column", gap: "6px", minWidth: "0", paddingRight: "8px" } },
-          c.name,
-          pron,
-        ),
-        pick,
-      );
-    });
     const save = async () => {
       const next = {
         ...config,
@@ -533,9 +486,8 @@ export function voicePage(body) {
         h(
           "div",
           { class: "hint", style: { padding: "8px 20px 0" } },
-          "캐릭터별 읽는 법 · 보이스 · 바꾸면 바로 저장돼요",
+          "사람별 목소리와 읽는 법은 설정 › 음성에서 정해요",
         ),
-        h("div", { class: "list" }, perChar),
       ),
     );
   });

@@ -4,11 +4,22 @@
 
 import { h, icon, dots, I, setChildren } from "../lib/h.js";
 import { api } from "../lib/api.js";
-import { data, characterIndex, chatTitle, messageText, firstLetter, shortTime, messageWindow } from "../lib/data.js";
+import {
+  data,
+  characterIndex,
+  chatTitle,
+  chatMeta,
+  messageText,
+  firstLetter,
+  shortTime,
+  messageWindow,
+} from "../lib/data.js";
 import { TOOL_DEFS, toolPlace } from "../lib/prefs.js";
 import { toast, errorBox, avatar, olderButton } from "../lib/ui.js";
-import { pickVoice } from "../lib/render.js";
+import { pickVoice, stripCues } from "../lib/render.js";
 import * as tts from "../lib/tts.js";
+import { syncVoiceSettings } from "../lib/voice.js";
+import { callsAvailable, callScreen, callPrefs } from "../lib/call.js";
 import { runSlash } from "../lib/slash.js";
 import { GUIDE, quickReplies, runTool, streamGenerate } from "../lib/actions.js";
 
@@ -26,7 +37,14 @@ export function convoScreen({ mount, args, go }) {
   let quick = [];
   let qrOpen = false;
   let ttsConfig = null;
+  let callAudio = false;
+  let voiceSet = null;
   let abort = null;
+  let me = null; // the persona's schedule state (Mari Kit 내 일정), when there is one
+  let phoneBtn = null;
+  let call = null; // the call screen, when the Calls package is installed
+  let callPoll = null;
+  let offVisible = () => {};
 
   const who = h("span", {
     style: { display: "flex", flexDirection: "column", alignItems: "center", gap: "4px", minWidth: "0" },
@@ -37,7 +55,7 @@ export function convoScreen({ mount, args, go }) {
       style: {
         flexShrink: "0",
         display: "grid",
-        gridTemplateColumns: "52px minmax(0,1fr) 52px",
+        gridTemplateColumns: "96px minmax(0,1fr) 96px",
         alignItems: "center",
         padding: "12px 4px",
         borderBottom: "1px solid var(--line)",
@@ -58,6 +76,11 @@ export function convoScreen({ mount, args, go }) {
     h(
       "span",
       { style: { display: "flex", justifyContent: "flex-end" } },
+      (phoneBtn = h(
+        "button",
+        { type: "button", class: "ib", "aria-label": "전화 걸기", hidden: true, onClick: () => dial() },
+        icon(I.phone, 19, 1.6),
+      )),
       h(
         "button",
         {
@@ -130,6 +153,8 @@ export function convoScreen({ mount, args, go }) {
         quick = quickReplies(ui, I.guide);
         qrBtn.hidden = !quick.length;
         ttsConfig = config?.enabled ? config : null;
+        callAudio = config?.callAudioEnabled === true;
+        voiceSet = ttsConfig ? await syncVoiceSettings(config) : null;
         const lead = index.get(chat.characterIds?.[0]);
         const title = chatTitle(chat, index);
         setChildren(
@@ -151,12 +176,50 @@ export function convoScreen({ mount, args, go }) {
         );
         who.style.cursor = lead ? "pointer" : "";
         if (lead) who.onclick = () => go(`character/${encodeURIComponent(lead.id)}`);
+        loadMe();
+        setupCalls();
       }
       draw();
       if (first) requestAnimationFrame(() => (scroller.scrollTop = scroller.scrollHeight));
     } catch (error) {
       if (alive) setChildren(list, errorBox(error));
     }
+  }
+
+  // "나 · 퇴근길 · 오후 7:00까지" under the name; tapping it opens 내 일정.
+  const SCHED_LABEL = { online: "온라인", idle: "자리 비움", dnd: "방해 금지", offline: "오프라인" };
+  async function loadMe() {
+    try {
+      me = await api.get(`/mari-kit/schedule/chat/${encodeURIComponent(chatId)}`);
+    } catch {
+      me = null;
+    }
+    if (!alive || !me) return;
+    who.querySelector(".me-line")?.remove();
+    const n = me.now;
+    const line = h(
+      "button",
+      {
+        type: "button",
+        class: "me-line",
+        onClick: (e) => {
+          e.stopPropagation();
+          go(`schedule/${encodeURIComponent(me.key)}/now/${encodeURIComponent(chatId)}`);
+        },
+      },
+      n ? h("span", { class: `sdot ${n.status}` }) : null,
+      n ? `나 · ${n.activity}` : "내 일정 만들기",
+    );
+    who.append(line);
+  }
+  /** The Engine's own presence fields, so its autonomy sees the user's planned status too. */
+  function presence() {
+    const n = me?.profile?.config?.enabled ? me.now : null;
+    if (!n) return {};
+    return {
+      userStatus: n.status === "online" ? "active" : n.status === "dnd" ? "dnd" : "idle",
+      userActivity: `${SCHED_LABEL[n.status]}; 설정상 현재 일정: ${n.activity}`.slice(0, 120),
+    };
   }
 
   function toolsFor(m) {
@@ -169,8 +232,69 @@ export function convoScreen({ mount, args, go }) {
     };
   }
 
+  // An ended call stays in the conversation as one line (통화 설정 › 대화에 통화 대사 남기기).
+  function callEvent(m) {
+    if (m.role !== "system") return null;
+    let extra = m.extra;
+    try {
+      if (typeof extra === "string") extra = JSON.parse(extra);
+    } catch {}
+    const ev = extra?.conversationCallEvent;
+    return ev?.callId && ev.status === "ended" ? ev : null;
+  }
   function shown() {
-    return win.list.filter((m) => m.role !== "system");
+    const keepCalls = callPrefs().log;
+    return win.list.filter((m) => m.role !== "system" || (keepCalls && callEvent(m)));
+  }
+
+  async function setupCalls() {
+    const first = await callsAvailable(chatId);
+    if (!first || !alive) return;
+    call = callScreen({
+      chatId,
+      chat,
+      index,
+      ttsConfig,
+      mount,
+      go,
+      onEnded: async () => {
+        await load();
+        scroller.scrollTop = scroller.scrollHeight;
+      },
+    });
+    phoneBtn.hidden = false;
+    const ring = (st) => {
+      const s = st?.activeCall || st?.ringingCall;
+      if (s && alive && !call.session) call.open(s);
+    };
+    // A character can only ring under the package's own rules (call command on, call audio on); while it cannot,
+    // or the page is in the background, there is nothing to watch for.
+    const canRing = () => {
+      const m = chatMeta(chat);
+      return callAudio && m.characterCommands !== false && m.conversationCommandToggles?.call !== false;
+    };
+    const check = async () => {
+      if (!alive || call.session || document.visibilityState !== "visible" || !canRing()) return;
+      try {
+        ring(await api.get(`/conversation-calls/chat/${encodeURIComponent(chatId)}/status`));
+      } catch {}
+    };
+    ring(first);
+    callPoll = setInterval(check, 6000);
+    document.addEventListener("visibilitychange", check);
+    offVisible = () => document.removeEventListener("visibilitychange", check);
+  }
+  async function dial() {
+    if (!call) return;
+    if (chatMeta(chat).conversationCallsEnabled !== true) {
+      toast("이 방은 통화가 꺼져 있어요 · 통화 설정에서 켜 주세요");
+      return go(`call-settings/${encodeURIComponent(chatId)}`);
+    }
+    try {
+      call.open(await api.post("/conversation-calls/start", { chatId, mode: "audio", initiator: "user" }));
+    } catch (error) {
+      toast(`걸지 못했어요: ${error.message}`);
+    }
   }
 
   function draw() {
@@ -189,7 +313,12 @@ export function convoScreen({ mount, args, go }) {
     // Like the Engine's Convo, a blank line starts a new bubble.
     const bubbles = [];
     for (const m of messages) {
-      const parts = messageText(m)
+      const ev = callEvent(m);
+      if (ev) {
+        bubbles.push({ m, ev, me: null, first: true, last: true });
+        continue;
+      }
+      const parts = (m.role === "assistant" ? stripCues(messageText(m)) : messageText(m))
         .split(/\n{2,}/)
         .map((p) => p.trim())
         .filter(Boolean);
@@ -200,6 +329,18 @@ export function convoScreen({ mount, args, go }) {
     const lastMine = messages.map((m) => m.role === "user").lastIndexOf(true);
     bubbles.forEach((bub, i) => {
       const { m, me } = bub;
+      if (bub.ev) {
+        items.push(
+          h(
+            "button",
+            { type: "button", class: "callev", onClick: () => call?.logSheet(bub.ev.callId) },
+            icon(I.phone, 13, 1.8),
+            `음성 통화 · ${shortTime(m.createdAt)}`,
+            h("span", null, "대사 보기 ›"),
+          ),
+        );
+        return;
+      }
       const prev = bubbles[i - 1];
       const next = bubbles[i + 1];
       const firstOfRun = !prev || prev.me !== me;
@@ -393,12 +534,29 @@ export function convoScreen({ mount, args, go }) {
     );
   }
 
-  async function speakMessage(m) {
-    const key = tts.hashKey([m.id, m.activeSwipeIndex ?? 0, messageText(m), ttsConfig?.voice]);
-    if (tts.activeLine() === key) return tts.stop();
+  /** One message as a speak request: tag-capable voices read the cues inline, others get the first as a tone. */
+  function messageRequest(m) {
+    const raw = messageText(m);
     const voice = pickVoice(ttsConfig, m.characterId);
     const speaker = index.get(m.characterId)?.name;
-    await tts.speak(key, { text: messageText(m), ...(speaker ? { speaker } : {}), ...(voice ? { voice } : {}) });
+    const tags = voiceSet?.cueResolved === "tags";
+    const lead = /^\s*\[([^\]\n]{1,80})\]\s*/.exec(raw);
+    const text = tags ? raw : stripCues(raw);
+    return {
+      key: tts.hashKey([m.id, m.activeSwipeIndex ?? 0, raw, voice, ttsConfig?.source, ttsConfig?.model]),
+      body: {
+        text,
+        ...(speaker ? { speaker } : {}),
+        ...(voice ? { voice } : {}),
+        ...(!tags && lead ? { tone: lead[1].trim() } : {}),
+      },
+    };
+  }
+
+  async function speakMessage(m) {
+    const req = messageRequest(m);
+    if (tts.activeLine() === req.key) return tts.stop();
+    await tts.speak(req.key, req.body);
   }
 
   function tool(id, m) {
@@ -417,7 +575,7 @@ export function convoScreen({ mount, args, go }) {
     try {
       await streamGenerate({
         chatId,
-        body,
+        body: { ...presence(), ...body },
         signal: abort.signal,
         onToken: (text) => {
           if (!alive) return;
@@ -439,8 +597,12 @@ export function convoScreen({ mount, args, go }) {
       live = null;
       abort = null;
       if (alive) {
+        const before = new Set(messages.map((m) => m.id));
         await load();
         scroller.scrollTop = scroller.scrollHeight;
+        // 자동 재생: the character messages this turn added, in order.
+        if (ttsConfig && voiceSet?.convo && voiceSet.autoplay !== "off")
+          tts.speakSequence(messages.filter((m) => m.role === "assistant" && !before.has(m.id)).map(messageRequest));
       }
     }
   }
@@ -511,6 +673,9 @@ export function convoScreen({ mount, args, go }) {
       off();
       tts.stop();
       abort?.abort();
+      clearInterval(callPoll);
+      offVisible();
+      call?.dispose();
     },
     onPrefs: draw,
   };

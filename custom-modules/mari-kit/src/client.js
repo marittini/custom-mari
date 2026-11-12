@@ -39,6 +39,14 @@ export const DISPLAY_RULES = Object.freeze([
     replaceString: "$1",
     flags: "gi",
   },
+  {
+    // ElevenLabs audio tags anywhere in a reply ([sighs] … [short pause]): read aloud, not shown. Lowercase
+    // English only, so bracketed text the story itself writes stays visible.
+    name: "Mari Kit: voice tags (display)",
+    findRegex: String.raw`\[[a-z][a-z ,.'-]{0,40}\] ?`,
+    replaceString: "",
+    flags: "g",
+  },
 ]);
 
 function stripSpeechMarkdown(text) {
@@ -196,7 +204,7 @@ const STRINGS = {
       weather: "Convo 날씨",
       memory: "기억",
     },
-    rulesReady: "화면 표시 규칙 설치됨 (정규식 스크립트 3개)",
+    rulesReady: "화면 표시 규칙 설치됨 (정규식 스크립트 4개)",
     rulesFailed: "화면 표시 규칙을 설치하지 못했습니다",
     play: "이 대사 듣기",
     stop: "멈추기",
@@ -294,7 +302,7 @@ const STRINGS = {
       weather: "Convo weather",
       memory: "Memory",
     },
-    rulesReady: "Display rules installed (3 regex scripts)",
+    rulesReady: "Display rules installed (4 regex scripts)",
     rulesFailed: "Could not install the display rules",
     play: "Play this line",
     stop: "Stop",
@@ -463,6 +471,10 @@ class LinePlayer {
     try {
       const settings = await apiClient().get(`/${PACKAGE_ID}/settings`);
       if (!settings?.features?.tts || !this.element.isConnected) return;
+      // 음성 설정: 대사 옆 버튼 or tap-the-line, and whether the voice reads cues inline (ElevenLabs tags).
+      this.voice = await apiClient()
+        .get(`/${PACKAGE_ID}/tts/settings`)
+        .catch(() => null);
       if (this.chatId) {
         const result = await apiClient().get(`/${PACKAGE_ID}/tts/participants/${encodeURIComponent(this.chatId)}`);
         this.participants = Array.isArray(result?.participants) ? result.participants : [];
@@ -517,6 +529,12 @@ class LinePlayer {
           void this.play(button);
         });
         span.after(button);
+        if (this.voice?.lineButtons === false) {
+          // No visible button: the line itself plays.
+          button.style.display = "none";
+          span.style.cursor = "pointer";
+          span.addEventListener("click", () => button.click());
+        }
       });
     }
     const service = ttsService();
@@ -578,11 +596,12 @@ class LinePlayer {
       }
       const speaker = this.participants.find((p) => p.id === line.id)?.name;
       const spoken = applyPronunciations(line.text, buildPronunciations(this.participants));
-      await service.speak(spoken, id, {
+      const inlineCue = this.voice?.cueResolved === "tags" && line.cue;
+      await service.speak(inlineCue ? `[${line.cue}] ${spoken}` : spoken, id, {
         speaker,
         characterId: line.kind === "character" ? line.id : undefined,
         chatId: this.chatId,
-        tone: line.cue || undefined,
+        tone: inlineCue ? undefined : line.cue || undefined,
         voice: voice || undefined,
         cacheKey: `mari-kit:${hashText([spoken, line.cue, voice, config.source, config.model].join("\u0001"))}`,
         throwOnError: true,

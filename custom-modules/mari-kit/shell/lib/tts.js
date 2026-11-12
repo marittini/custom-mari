@@ -48,7 +48,15 @@ export async function forget(key) {
   } catch {}
 }
 
+let seq = 0;
+
+/** Stops playback and any running sequence. */
 export function stop() {
+  seq += 1;
+  end();
+}
+
+function end() {
   if (audio) {
     audio.pause();
     URL.revokeObjectURL(audio.src);
@@ -59,7 +67,7 @@ export function stop() {
 }
 
 export async function speak(key, request) {
-  stop();
+  end();
   activeKey = key;
   emit();
   try {
@@ -85,12 +93,34 @@ export async function speak(key, request) {
     if (activeKey !== key) return;
     audio = new Audio(URL.createObjectURL(blob));
     audio.addEventListener("ended", () => {
-      if (activeKey === key) stop();
+      if (activeKey === key) end();
     });
     await audio.play();
   } catch (error) {
-    if (activeKey === key) stop();
+    if (activeKey === key) end();
     throw error;
+  }
+}
+
+/** Plays [{ key, body }] one after another (autoplay); a stop() ends the whole run. */
+export async function speakSequence(items) {
+  const mine = ++seq;
+  for (const item of items) {
+    if (seq !== mine) return;
+    try {
+      await speak(item.key, item.body);
+    } catch {
+      continue;
+    }
+    if (activeKey !== item.key) continue; // already over (or replaced)
+    await new Promise((resolve) => {
+      const off = onTts((k) => {
+        if (k !== item.key) {
+          off();
+          resolve();
+        }
+      });
+    });
   }
 }
 

@@ -2,6 +2,7 @@ import { h, icon, I, setChildren } from "../lib/h.js";
 import { api } from "../lib/api.js";
 import { prefs, setPrefs, isDark, TOOL_DEFS, toolPlace, parseFamilies } from "../lib/prefs.js";
 import { pageHead, toast } from "../lib/ui.js";
+import { data, byLastActivity } from "../lib/data.js";
 import { connectionsPage, connectionPage, presetsPage, presetPage, voicePage } from "./manage.js";
 
 const sw = (on) => h("span", { class: on ? "sw on" : "sw" }, h("span"));
@@ -17,10 +18,11 @@ export function settingsScreen({ mount, args, go }) {
     connection: "연결",
     presets: "프리셋",
     preset: "프리셋",
-    voice: "음성 · 읽는 법",
+    voice: "엔진 TTS 연결",
   };
-  const parent = { connection: "settings/connections", preset: "settings/presets" }[page] || "settings";
-  const head = pageHead(titles[page] || "설정", page ? { back: () => go(parent) } : {});
+  const parent =
+    { connection: "settings/connections", preset: "settings/presets", voice: "voice/settings" }[page] || "settings";
+  const head = pageHead(titles[page] || "설정", page ? { label: "설정", back: () => go(parent) } : {});
   const body = h("div", { class: "scroll", style: { padding: "8px 0 28px" } });
   mount.append(head, body);
   const manage = {
@@ -75,9 +77,27 @@ export function settingsScreen({ mount, args, go }) {
         { class: "list" },
         row(I.link, "연결", h("span", { class: "val" }, "›"), () => go("settings/connections")),
         row(I.list, "프리셋", h("span", { class: "val" }, "›"), () => go("settings/presets")),
-        row(I.voice, "음성 · 읽는 법", h("span", { class: "val" }, "›"), () => go("settings/voice")),
+        row(I.voice, "음성 · 읽는 법", h("span", { class: "val" }, "›"), () => go("voice")),
+      ),
+      h("div", { class: "gap" }),
+      h(
+        "div",
+        { class: "list" },
+        row(I.calendar, "내 일정", h("span", { class: "val" }, "Convo ›"), openSchedule),
+        row(I.radio, "라디오", h("span", { class: "val" }, "›"), () => go("radio")),
       ),
     ];
+  }
+
+  // 내 일정 belongs to a persona: open the one the newest Convo uses.
+  async function openSchedule() {
+    const latest = (await data.chats().catch(() => []))
+      .filter((c) => c.mode === "conversation")
+      .sort(byLastActivity)[0];
+    const me = latest
+      ? await api.get(`/mari-kit/schedule/chat/${encodeURIComponent(latest.id)}`).catch(() => null)
+      : null;
+    go(`schedule/${encodeURIComponent(me?.key || "default")}/now${latest ? `/${encodeURIComponent(latest.id)}` : ""}`);
   }
 
   function fontPage() {

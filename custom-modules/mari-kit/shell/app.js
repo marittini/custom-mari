@@ -25,6 +25,10 @@ const SCREENS = {
   memory: () => import("./screens/memory.js").then((m) => m.memoryScreen),
   "chat-settings": () => import("./screens/chat-settings.js").then((m) => m.chatSettingsScreen),
   translation: () => import("./screens/translation.js").then((m) => m.translationScreen),
+  schedule: () => import("./screens/schedule.js").then((m) => m.scheduleScreen),
+  voice: () => import("./screens/voice.js").then((m) => m.voiceScreen),
+  radio: () => import("./screens/radio.js").then((m) => m.radioScreen),
+  "call-settings": () => import("./screens/call-settings.js").then((m) => m.callSettingsScreen),
 };
 
 export function go(path) {
@@ -92,5 +96,18 @@ async function render() {
 addEventListener("hashchange", render);
 matchMedia("(prefers-color-scheme: dark)").addEventListener("change", applyPrefs);
 onPrefs(() => current?.onPrefs?.());
+// The on-screen keyboard: Android Chrome shrinks the page itself (interactive-widget=resizes-content in the
+// page's viewport meta); iOS only shrinks the visual viewport and pans the page. Sizing the frame to the visual
+// viewport keeps every screen's input box right above the keyboard on both.
+const vv = window.visualViewport;
+if (vv) {
+  const fit = () => {
+    document.documentElement.style.setProperty("--app-h", `${Math.round(vv.height)}px`);
+    if (vv.offsetTop > 0) window.scrollTo(0, 0);
+  };
+  vv.addEventListener("resize", fit);
+  vv.addEventListener("scroll", fit);
+  fit();
+}
 applyPrefs();
 render();

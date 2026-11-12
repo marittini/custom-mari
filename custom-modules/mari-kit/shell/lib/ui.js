@@ -143,3 +143,48 @@ export function sheet(content, { onClose, label } = {}) {
   frame.append(scrim, el);
   return { el, close };
 }
+
+/**
+ * A small dropdown under the top-right of the frame (the ⋯ menus). items: { label, sub?, onClick } or "-".
+ * Closes on any choice or outside tap.
+ */
+export function popMenu(items) {
+  const frame = document.querySelector(".app");
+  frame.querySelector(".menu")?.remove();
+  const close = () => {
+    el.remove();
+    frame.removeEventListener("click", outside, true);
+  };
+  const outside = (e) => {
+    if (!el.contains(e.target)) close();
+  };
+  const el = h(
+    "div",
+    { class: "menu", role: "menu" },
+    items.map((it) =>
+      it === "-"
+        ? h("hr")
+        : h(
+            "button",
+            {
+              type: "button",
+              role: "menuitem",
+              onClick: () => {
+                close();
+                it.onClick?.();
+              },
+            },
+            h("span", null, it.label),
+            it.sub ? h("small", null, it.sub) : null,
+          ),
+    ),
+  );
+  frame.append(el);
+  setTimeout(() => frame.addEventListener("click", outside, true));
+  return { close };
+}
+
+/** A box whose label sits on its top border (the shell's form field). */
+export function hbox(label, ...children) {
+  return h("div", { class: "hbox" }, h("span", { class: "htag" }, label), ...children);
+}

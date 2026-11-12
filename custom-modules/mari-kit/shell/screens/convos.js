@@ -1,6 +1,15 @@
 import { h, icon, I, setChildren } from "../lib/h.js";
 import { openNewChat } from "../lib/newchat.js";
-import { data, byLastActivity, characterIndex, chatTitle, firstLetter, messageText, shortTime } from "../lib/data.js";
+import {
+  previewLine,
+  data,
+  byLastActivity,
+  characterIndex,
+  chatTitle,
+  firstLetter,
+  messageText,
+  shortTime,
+} from "../lib/data.js";
 import { pageHead, avatar, errorBox } from "../lib/ui.js";
 
 export function convosScreen({ mount, go }) {
@@ -32,7 +41,7 @@ export function convosScreen({ mount, go }) {
       const [chats, chars] = await Promise.all([data.chats(true), data.characters()]);
       const index = characterIndex(chars);
       const rows = chats.filter((c) => c.mode === "conversation").sort(byLastActivity);
-      const lasts = await Promise.all(rows.map((c) => data.messages(c.id, 1).catch(() => [])));
+      const lasts = await Promise.all(rows.map((c) => data.messages(c.id, 4).catch(() => [])));
       if (!alive) return;
       if (!rows.length) return setChildren(body, h("div", { class: "empty" }, "Convo 대화가 아직 없어요."));
       setChildren(
@@ -43,7 +52,6 @@ export function convosScreen({ mount, go }) {
           rows.map((c, i) => {
             const who = index.get(c.characterIds?.[0]);
             const title = chatTitle(c, index);
-            const last = lasts[i]?.[lasts[i].length - 1];
             return h(
               "a",
               { class: "row", href: `#/convo/${encodeURIComponent(c.id)}` },
@@ -58,7 +66,7 @@ export function convosScreen({ mount, go }) {
                     class: "hint",
                     style: { fontSize: "13px", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" },
                   },
-                  last ? messageText(last) : "",
+                  previewLine(lasts[i]),
                 ),
               ),
               h("span", { class: "label" }, shortTime(c.lastMessageAt || c.updatedAt)),

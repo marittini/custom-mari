@@ -59,16 +59,17 @@ export function chatSettingsScreen({ mount, args, go }) {
 
   async function load() {
     try {
-      const [chat, conns, presets, personas, chars, settings] = await Promise.all([
+      const [chat, conns, presets, personas, chars, settings, voice] = await Promise.all([
         data.chat(chatId),
         data.connections(),
         api.get("/prompts").catch(() => []),
         data.personas(),
         data.characters(),
         api.get("/mari-kit/settings").catch(() => null),
+        api.get("/mari-kit/tts/settings").catch(() => null),
       ]);
       if (!alive) return;
-      state = { chat, conns, presets, personas, index: characterIndex(chars), settings };
+      state = { chat, conns, presets, personas, index: characterIndex(chars), settings, voice };
       draw();
     } catch (error) {
       if (alive) setChildren(body, errorBox(error));
@@ -180,13 +181,32 @@ export function chatSettingsScreen({ mount, args, go }) {
             "이 방에서 대사 음성·번역·기억을 씀",
           ),
         ),
-        kitOn
+        // Convo turns read voice cues and the user's schedule without the agent (Convo has no agent list).
+        kitOn || chat.mode === "conversation"
           ? [
               h("div", { class: "gap" }),
               h(
                 "div",
                 { class: "list" },
                 switchRow(I.voice, "대사 음성", !!features.tts, () => setFeature("tts", !features.tts), "모든 방 공통"),
+                features.tts && state.voice
+                  ? switchRow(
+                      I.voice,
+                      "음성 지침 · 이 방",
+                      state.voice.rooms?.[chatId] !== false,
+                      async () => {
+                        try {
+                          await api.put(`/mari-kit/tts/room/${encodeURIComponent(chatId)}`, {
+                            guidance: state.voice.rooms?.[chatId] === false,
+                          });
+                          await load();
+                        } catch (error) {
+                          toast(error.message);
+                        }
+                      },
+                      "끄면 이 방 답장에 목소리 표시를 넣지 않아요",
+                    )
+                  : null,
                 switchRow(
                   I.translate,
                   "번역",
@@ -208,6 +228,14 @@ export function chatSettingsScreen({ mount, args, go }) {
                 ),
                 features.memory && chat.mode === "roleplay"
                   ? linkRow(I.memory, "기억 서재", "", () => go(`memory/${encodeURIComponent(chatId)}`))
+                  : null,
+                chat.mode === "conversation"
+                  ? linkRow(I.calendar, "내 일정", "", async () => {
+                      const me = await api
+                        .get(`/mari-kit/schedule/chat/${encodeURIComponent(chatId)}`)
+                        .catch(() => null);
+                      go(`schedule/${encodeURIComponent(me?.key || "default")}/now/${encodeURIComponent(chatId)}`);
+                    })
                   : null,
               ),
             ]
