@@ -448,6 +448,38 @@ if (id === "mari-kit") {
   );
 }
 
+// The shell's Engine calls all appear in shell/engine-api.json, which check-engine-api.mjs probes after updates.
+{
+  const { readdir } = await import("node:fs/promises");
+  const shellDir = resolve(dirname(fileURLToPath(import.meta.url)), "..", id, "shell");
+  const contract = join(shellDir, "engine-api.json");
+  const listed = await readFile(contract, "utf8").then(
+    (t) => new Set(JSON.parse(t).routes),
+    (error) => {
+      if (error.code === "ENOENT") return null;
+      throw error;
+    },
+  );
+  if (listed) {
+    const files = (await readdir(shellDir, { recursive: true })).filter((f) => f.endsWith(".js"));
+    const unlisted = new Set();
+    const call = /api\.(get|post|patch|put|delete|stream)\(\s*[`"'](\/[^`"']*)|fetch\(\s*[`"']\/api(\/[^`"'?]*)/g;
+    for (const f of files) {
+      const src = await readFile(join(shellDir, f), "utf8");
+      for (const m of src.matchAll(call)) {
+        const method = m[1] ? (m[1] === "stream" ? "POST" : m[1].toUpperCase()) : "POST";
+        const path = (m[2] ?? m[3])
+          .replace(/\$\{[^}]*\}/g, ":id")
+          .replace(/\$\{.*$/, "")
+          .replace(/\?.*$/, "");
+        if (/^\/(mari-kit|conversation-calls)\b/.test(path)) continue;
+        if (!listed.has(`${method} ${path}`)) unlisted.add(`${method} ${path} (${f})`);
+      }
+    }
+    assert.deepEqual([...unlisted], [], "Engine calls missing from shell/engine-api.json");
+  }
+}
+
 console.log(
   `OK ${manifest.id} ${manifest.version}: manifest, agents and helpers pass on capability API ${supported.major}.${supported.minor}`,
 );

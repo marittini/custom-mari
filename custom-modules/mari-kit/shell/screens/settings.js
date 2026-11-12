@@ -1,7 +1,7 @@
 import { h, icon, I, setChildren } from "../lib/h.js";
 import { api } from "../lib/api.js";
 import { prefs, setPrefs, isDark, TOOL_DEFS, toolPlace, parseFamilies } from "../lib/prefs.js";
-import { pageHead, toast } from "../lib/ui.js";
+import { pageHead, toast, openEngine } from "../lib/ui.js";
 import { data, byLastActivity } from "../lib/data.js";
 import { connectionsPage, connectionPage, presetsPage, presetPage, voicePage } from "./manage.js";
 
@@ -85,6 +85,12 @@ export function settingsScreen({ mount, args, go }) {
         { class: "list" },
         row(I.calendar, "내 일정", h("span", { class: "val" }, "Convo ›"), openSchedule),
         row(I.radio, "라디오", h("span", { class: "val" }, "›"), () => go("radio")),
+      ),
+      h("div", { class: "gap" }),
+      h(
+        "div",
+        { class: "list" },
+        row(I.square, "엔진 화면", h("span", { class: "val" }, "전체 기능 ›"), () => openEngine()),
       ),
     ];
   }
