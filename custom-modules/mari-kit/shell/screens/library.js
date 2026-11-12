@@ -250,7 +250,7 @@ export function libraryScreen({ mount, go, args = [] }) {
   (async () => {
     try {
       const [chats, chars, charGroups, folders] = await Promise.all([
-        data.chats(true),
+        data.chats("soft"),
         data.characters(true),
         groupsOf("characters"),
         groupsOf("chats"),

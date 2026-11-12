@@ -25,7 +25,7 @@ export function homeScreen({ mount, go }) {
   (async () => {
     try {
       const [chats, chars, conns, radio] = await Promise.all([
-        data.chats(true),
+        data.chats("soft"),
         data.characters(),
         data.connections(),
         api.get("/mari-kit/radio").catch(() => null),

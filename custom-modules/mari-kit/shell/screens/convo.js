@@ -57,6 +57,7 @@ export function convoScreen({ mount, args, go, back }) {
   let phoneBtn = null;
   let call = null; // the call screen, when the Calls package is installed
   let callPoll = null;
+  let ringCheck = null; // looks for a ringing call (calls start from a character's message)
   let auto = null; // Convo autonomy while this chat is open
   let offVisible = () => {};
 
@@ -339,7 +340,10 @@ export function convoScreen({ mount, args, go, back }) {
       } catch {}
     };
     ring(first);
-    callPoll = setInterval(check, 6000);
+    ringCheck = check;
+    // A character rings from a message, which this screen sees arrive (checked right after each reply); the slow
+    // fallback covers a call started elsewhere. Each check is a request with about 1.4KB of headers.
+    callPoll = setInterval(check, 30000);
     document.addEventListener("visibilitychange", check);
     offVisible = () => document.removeEventListener("visibilitychange", check);
   }
@@ -724,6 +728,7 @@ export function convoScreen({ mount, args, go, back }) {
       if (alive) {
         const before = new Set(messages.map((m) => m.id));
         await load(false, true);
+        ringCheck?.();
         scroller.scrollTop = scroller.scrollHeight;
         // 자동 재생: the character messages this turn added, in order.
         if (ttsConfig && voiceSet?.convo && voiceSet.autoplay !== "off")

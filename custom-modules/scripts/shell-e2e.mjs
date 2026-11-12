@@ -115,6 +115,14 @@ const flows = {
       "reply shown",
     );
     if ((await messageCount(convo.id)) < before + 2) throw new Error("messages were not saved");
+    // The list shows the new last line (its cached copy must notice the chat changed).
+    await page.getByRole("button", { name: "대화 목록" }).click();
+    await until(
+      async () =>
+        (await page.locator(`a[href="#/convo/${encodeURIComponent(convo.id)}"]`).innerText()).includes("곤란해"),
+      8000,
+      "list preview updated",
+    );
   },
 
   async "rp-send"({ page }) {

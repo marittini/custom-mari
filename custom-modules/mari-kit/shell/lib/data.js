@@ -1,8 +1,10 @@
 // Engine data the screens share, fetched once per load and refreshed on demand.
 
-import { api, characterCard, parseJson } from "./api.js";
+import { api, characterCard, parseJson, chatWriteCount } from "./api.js";
 
 let chatsP = null;
+let chatsAt = 0;
+let chatsWrites = 0;
 let charsP = null;
 const cards = new Map();
 let connsP = null;
@@ -10,7 +12,24 @@ let personasP = null;
 let uiP = null;
 
 export const data = {
-  chats: (fresh) => (fresh || !chatsP ? (chatsP = api.get("/chats")) : chatsP),
+  /**
+   * Every chat with its metadata (the Engine has no slimmer list). true re-reads now (after the shell changed a
+   * chat); "soft" re-reads only when the copy is older than 20 seconds or the shell has written to a chat since, so
+   * moving between 홈, 대화 and 서재 does not download it each time; nothing reuses the copy.
+   */
+  chats: (fresh) => {
+    const stale =
+      !chatsP ||
+      fresh === true ||
+      (fresh === "soft" && (Date.now() - chatsAt > 20_000 || chatsWrites !== chatWriteCount()));
+    if (stale) {
+      chatsAt = Date.now();
+      chatsWrites = chatWriteCount();
+      chatsP = api.get("/chats");
+      chatsP.catch(() => (chatsP = null));
+    }
+    return chatsP;
+  },
   /** Names, avatars and readings of every character: Mari Kit's slim list plus the Engine's avatar summaries. */
   characters: (fresh) => {
     if (fresh || !charsP) {

@@ -12,6 +12,12 @@ const clearInProgress = (chatId, startedAt) =>
     ? quiet(api.post("/conversation/autonomous/clear-in-progress", { chatId, startedAt }))
     : null;
 
+// How often to ask. The Engine's client asks every 30s, but a character writes first only after minutes of silence
+// (its reaction gate is 30s at least), and every request carries about 1.4KB of Engine headers: once a minute is
+// enough. The list of chats that allow it changes only with a setting, so it is read every 5 minutes.
+const POLL_MS = 60_000;
+const CANDIDATES_MS = 300_000;
+
 // The open Convo chat: poll, optional busy delay, then optional character-to-character exchanges.
 export function activeAutonomy({ chatId, meta, userStatus, isBusy, generate }) {
   let stopped = false;
@@ -20,7 +26,7 @@ export function activeAutonomy({ chatId, meta, userStatus, isBusy, generate }) {
   let delayTimer = null;
   let pending = null; // generationStartedAt waiting out a busy delay
 
-  const schedule = (ms = 30_000) => {
+  const schedule = (ms = POLL_MS) => {
     clearTimeout(pollTimer);
     if (!stopped) pollTimer = setTimeout(tick, ms);
   };
@@ -136,12 +142,19 @@ export function backgroundAutonomy({ activeChatId, userStatus, generate, onArriv
   const timers = new Map(); // chatId -> delay timer
   const pending = new Map(); // chatId -> generationStartedAt waiting out a delay
 
-  const schedule = (ms = 30_000) => {
+  const schedule = (ms = POLL_MS) => {
     clearTimeout(timer);
     if (!stopped) timer = setTimeout(tick, ms);
   };
 
+  let cached = null; // { at, list }
   async function candidates() {
+    if (cached && Date.now() - cached.at < CANDIDATES_MS) return cached.list;
+    const list = await readCandidates();
+    cached = { at: Date.now(), list };
+    return list;
+  }
+  async function readCandidates() {
     if (!noCandidatesRoute) {
       try {
         return (await api.get("/chats/autonomous-candidates")) || [];
@@ -193,7 +206,7 @@ export function backgroundAutonomy({ activeChatId, userStatus, generate, onArriv
       const open = activeChatId();
       const all = await candidates();
       // No chat lets its characters write first: look again only every 5 minutes (data saving).
-      if (!all.length) return schedule(300_000);
+      if (!all.length) return schedule(CANDIDATES_MS);
       const list = all.filter((c) => c.id !== open && !inFlight.has(c.id));
       if (userStatus() === "dnd") {
         for (const c of list)
