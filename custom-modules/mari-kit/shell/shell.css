@@ -1725,3 +1725,16 @@ label.grow {
 .t2::after {
   inset: -2px -12px;
 }
+/* A switch on its own in a row (the row itself does something else). */
+.swbtn {
+  position: relative;
+  display: inline-flex;
+  padding: 0;
+  border: 0;
+  background: transparent;
+}
+.swbtn::after {
+  content: "";
+  position: absolute;
+  inset: -11px -6px;
+}

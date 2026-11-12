@@ -457,6 +457,27 @@ if (id === "mari-kit") {
   assert.equal(client.shouldOpenShell("/api/mari-kit/app", null, null), false);
 }
 
+// Lorebooks a chat uses: the Engine's rule (pinned, global, character, persona, own chat; scope; exclusions).
+{
+  const { lorebookViews } = await import(pathToFileURL(join(outDir, "shell", "lib", "lorebooks.js")).href);
+  const chat = { id: "c1", characterIds: ["a", "b"], personaId: "p1" };
+  const books = [
+    { id: "pin", name: "pin" },
+    { id: "glob", name: "glob", isGlobal: true },
+    { id: "char", name: "char", characterIds: ["b"] },
+    { id: "pers", name: "pers", personaIds: ["p1"] },
+    { id: "own", name: "own", chatId: "c1" },
+    { id: "off", name: "off", isGlobal: true, enabled: false },
+    { id: "elsewhere", name: "elsewhere", isGlobal: true, scope: { mode: "specific", chatIds: ["c2"] } },
+    { id: "none", name: "none" },
+  ];
+  const views = lorebookViews(books, chat, { activeLorebookIds: ["pin"], excludedLorebookIds: ["glob"] });
+  assert.deepEqual(
+    views.map((v) => `${v.book.id}:${v.reasons.join("+")}:${v.pinned ? "P" : ""}${v.excluded ? "X" : ""}`),
+    ["pin:Chat:P", "glob:Global:X", "char:Character:", "pers:Persona:", "own:Chat:"],
+  );
+}
+
 // The shell's Engine calls all appear in shell/engine-api.json, which check-engine-api.mjs probes after updates.
 {
   const { readdir } = await import("node:fs/promises");
