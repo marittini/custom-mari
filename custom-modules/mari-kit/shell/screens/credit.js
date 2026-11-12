@@ -264,10 +264,21 @@ export function creditScreen({ mount, back }) {
                   "aria-checked": on ? "true" : "false",
                   onClick: () => patch({ hidden: on ? [...view.hidden, a.id] : view.hidden.filter((x) => x !== a.id) }),
                 },
-                h("span", null, a.name, h("small", null, value)),
+                h("span", null, a.name, h("small", null, value), b?.notice ? h("small", null, b.notice) : null),
                 sw(on),
               );
             }),
+            // LinkAPI's account balance needs the dashboard token, entered in the Engine's connection editor.
+            withBalance
+              .filter((a) => a.balanceSource === "linkapi" && shownBy.get(a.id)?.notice)
+              .map((a) =>
+                h(
+                  "button",
+                  { type: "button", class: "grow linkline", onClick: () => openEngine(null, { account: a.id }) },
+                  h("span", null, `${a.name} · 대시보드 토큰 넣기`),
+                  h("span", null, "엔진 ›"),
+                ),
+              ),
           )
         : h("p", { class: "hint" }, "잔액을 알려 주는 연결(오픈라우터, 나노GPT, 딥시크, 링크API 등)이 아직 없어요."),
       h(
