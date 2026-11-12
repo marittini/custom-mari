@@ -6,16 +6,20 @@
 
 import { h, icon, I, setChildren } from "../lib/h.js";
 import { api } from "../lib/api.js";
-import { data, characterIndex, chatMeta, chatTitle } from "../lib/data.js";
+import { data, characterIndex, chatMeta, chatTitle, coverOf } from "../lib/data.js";
 import { setPrefs, isDark, TOOL_DEFS, toolPlace } from "../lib/prefs.js";
-import { topBar, toast, errorBox, openEngine, sheet, avatar } from "../lib/ui.js";
+import { topBar, toast, errorBox, openEngine, sheet, avatar, thumb } from "../lib/ui.js";
 import { lorebookViews, REASON_LABEL } from "../lib/lorebooks.js";
 import { ENGINE_SECTIONS } from "../lib/engine-sections.js";
+import { groupsOf, splitByGroup, groupedOptions, sectioned } from "../lib/groups.js";
+
+const NOT_CHAT = ["image_generation", "video_generation", "audio_generation", "audio", "decision"];
 
 const VIEW_TITLES = {
   translation: "번역",
   cast: "등장 캐릭터",
   author: "작가 노트",
+  cover: "표지",
   lorebooks: "로어북",
   kit: "Mari Kit · 기능",
   view: "화면",
@@ -51,7 +55,10 @@ export function chatSettingsScreen({ mount, args, go, back }) {
       h(
         "select",
         { class: "sel", style: { width: "170px" }, onChange: (e) => onChange(e.target.value) },
-        options.map(([v, text]) => h("option", { value: v, selected: (value || "") === v }, text)),
+        // [[value, text]] pairs, or ready <option>/<optgroup> nodes (grouped lists).
+        Array.isArray(options[0]) || !options.length
+          ? options.map(([v, text]) => h("option", { value: v, selected: (value || "") === v }, text))
+          : options,
       ),
     );
   const linkRow = (path, label, value, onClick) =>
@@ -81,6 +88,8 @@ export function chatSettingsScreen({ mount, args, go, back }) {
       // Each page reads only what it shows: the main list needs connections, presets and personas; 번역 needs
       // connections; Mari Kit needs its settings.
       const main = !view;
+      const groupKinds = main ? ["connections", "presets", "personas"] : view === "translation" ? ["connections"] : [];
+      const groups = Object.fromEntries(await Promise.all(groupKinds.map(async (k) => [k, await groupsOf(k)])));
       const [chat, conns, presets, personas, chars, settings, voice] = await Promise.all([
         data.chat(chatId),
         main || view === "translation" ? data.connections() : [],
@@ -93,11 +102,33 @@ export function chatSettingsScreen({ mount, args, go, back }) {
       // Lorebooks only where they are shown (the list can be long).
       const lorebooks = !view || view === "lorebooks" ? await api.get("/lorebooks").catch(() => []) : null;
       if (!alive) return;
-      state = { chat, conns, presets, personas, index: characterIndex(chars), settings, voice, lorebooks };
+      state = {
+        chat,
+        // Chat models only: image, video and audio connections are not for writing replies.
+        conns: conns.filter((c) => !NOT_CHAT.includes(c.provider)),
+        presets,
+        personas,
+        index: characterIndex(chars),
+        settings,
+        voice,
+        lorebooks,
+        groups,
+      };
       draw();
     } catch (error) {
       if (alive) setChildren(body, errorBox(error));
     }
+  }
+
+  /** Chat connections for a dropdown, split by the Engine's connection folders. */
+  function connectionOptions(value, empty) {
+    return groupedOptions(
+      h,
+      value,
+      [["", empty]],
+      splitByGroup(state.conns, state.groups.connections || [], { folderOf: (c) => c.folderId }),
+      (c) => [c.id, c.name],
+    );
   }
 
   /** The Engine's own translation settings for this chat (same fields as its Chat Settings → Translation). */
@@ -146,7 +177,7 @@ export function chatSettingsScreen({ mount, args, go, back }) {
             I.link,
             meta.translationConnectionId ? "번역 연결" : "번역 연결 · 골라야 번역돼요",
             meta.translationConnectionId || "",
-            [["", "고르세요"], ...conns.map((c) => [c.id, c.name])],
+            connectionOptions(meta.translationConnectionId, "고르세요"),
             (v) => patchMeta({ translationConnectionId: v || null }),
           )
         : null,
@@ -325,40 +356,44 @@ export function chatSettingsScreen({ mount, args, go, back }) {
   }
 
   /** Who is in the room: add or take out characters (at least one stays). */
-  function editCast(chat, index) {
+  async function editCast(chat, index) {
     let ids = [...(chat.characterIds || [])];
+    const groups = await groupsOf("characters");
     const body = h("div", { style: { overflowY: "auto", minHeight: "0", padding: "4px 0 20px" } });
     const s = sheet(body, { label: "등장 캐릭터" });
     const paint = () =>
       setChildren(
         body,
         h("div", { style: { padding: "8px 20px 12px", fontSize: "15px", fontWeight: "600" } }, "등장 캐릭터"),
-        h(
-          "div",
-          { class: "list" },
-          [...index.values()]
-            .sort((a, b) => Number(ids.includes(b.id)) - Number(ids.includes(a.id)) || a.name.localeCompare(b.name))
-            .map((c) => {
-              const on = ids.includes(c.id);
-              return h(
-                "button",
-                {
-                  type: "button",
-                  class: "r two",
-                  role: "checkbox",
-                  "aria-checked": on ? "true" : "false",
-                  style: { gridTemplateColumns: "28px minmax(0,1fr) 20px" },
-                  onClick: () => {
-                    if (on && ids.length === 1) return toast("캐릭터가 한 명은 있어야 해요");
-                    ids = on ? ids.filter((x) => x !== c.id) : [...ids, c.id];
-                    paint();
-                  },
+        sectioned(
+          h,
+          splitByGroup(
+            [...index.values()].sort(
+              (a, b) => Number(ids.includes(b.id)) - Number(ids.includes(a.id)) || a.name.localeCompare(b.name),
+            ),
+            groups,
+          ),
+          (c) => {
+            const on = ids.includes(c.id);
+            return h(
+              "button",
+              {
+                type: "button",
+                class: "r two",
+                role: "checkbox",
+                "aria-checked": on ? "true" : "false",
+                style: { gridTemplateColumns: "28px minmax(0,1fr) 20px" },
+                onClick: () => {
+                  if (on && ids.length === 1) return toast("캐릭터가 한 명은 있어야 해요");
+                  ids = on ? ids.filter((x) => x !== c.id) : [...ids, c.id];
+                  paint();
                 },
-                avatar(c.avatar, c.name?.[0] || "·", 28),
-                h("span", null, c.name),
-                h("span", { class: on ? "cbx on" : "cbx", "aria-hidden": "true" }),
-              );
-            }),
+              },
+              avatar(c.avatar, c.name?.[0] || "·", 28),
+              h("span", null, c.name),
+              h("span", { class: on ? "cbx on" : "cbx", "aria-hidden": "true" }),
+            );
+          },
         ),
         h(
           "div",
@@ -443,14 +478,20 @@ export function chatSettingsScreen({ mount, args, go, back }) {
       h(
         "div",
         { class: "list" },
-        selectRow(I.link, "연결", chat.connectionId, [["", "기본"], ...conns.map((c) => [c.id, c.name])], (v) =>
+        selectRow(I.link, "연결", chat.connectionId, connectionOptions(chat.connectionId, "기본"), (v) =>
           patchChat({ connectionId: v || null }),
         ),
         selectRow(
           I.list,
           "프리셋",
           chat.promptPresetId,
-          [["", "기본"], ...presets.map((p) => [p.id, p.name])],
+          groupedOptions(
+            h,
+            chat.promptPresetId,
+            [["", "기본"]],
+            splitByGroup(presets, state.groups.presets || []),
+            (p) => [p.id, p.name],
+          ),
           async (v) => {
             await patchChat({ promptPresetId: v || null });
             // Like the Engine: a Roleplay chat picks the new preset's choices right away.
@@ -464,7 +505,13 @@ export function chatSettingsScreen({ mount, args, go, back }) {
           I.person,
           "페르소나",
           chat.personaId,
-          [["", "없음"], ...personas.map((p) => [p.id, p.name || "이름 없음"])],
+          groupedOptions(
+            h,
+            chat.personaId,
+            [["", "없음"]],
+            splitByGroup(personas, state.groups.personas || []),
+            (p) => [p.id, p.name || "이름 없음"],
+          ),
           (v) => patchChat({ personaId: v || null }),
         ),
       ),
@@ -472,6 +519,7 @@ export function chatSettingsScreen({ mount, args, go, back }) {
       h(
         "div",
         { class: "list" },
+        linkRow(I.square, "표지", coverOf(chat) ? "있음" : "캐릭터 사진", () => go(here("cover"))),
         linkRow(I.person, "등장 캐릭터", cast.join(", ") || "없음", () => go(here("cast"))),
         linkRow(I.lore, "로어북", lorebookSummary(), () => go(here("lorebooks"))),
         chat.mode === "roleplay"
@@ -670,6 +718,82 @@ export function chatSettingsScreen({ mount, args, go, back }) {
     ];
   }
 
+  /**
+   * 표지: this chat's own cover. The browser crops the picked photo to 3:4 and shrinks it to 600×800 WebP before
+   * sending it (~50–150KB instead of a full photo). Without a cover, lists show the first character's cropped avatar.
+   */
+  function coverView() {
+    const { chat, index } = state;
+    const current = coverOf(chat);
+    const lead = index.get((chat.characterIds || [])[0]);
+    const preview = h("div", {
+      class: "ph",
+      style: {
+        width: "150px",
+        aspectRatio: "3 / 4",
+        margin: "20px auto 8px",
+        borderRadius: "12px",
+        backgroundSize: "cover",
+        backgroundPosition: "center",
+        backgroundImage: current ? `url("${current}")` : lead?.avatar ? `url("${thumb(lead.avatar, 240)}")` : "",
+      },
+    });
+    const file = h("input", {
+      type: "file",
+      accept: "image/*",
+      hidden: true,
+      onChange: async () => {
+        const f = file.files?.[0];
+        if (!f) return;
+        try {
+          const data = await coverWebp(f);
+          const res = await api.post(`/mari-kit/shell/cover/${encodeURIComponent(chatId)}`, {
+            data,
+            replaces: current ? current.split("/").pop() : null,
+          });
+          await patchMeta({ mariKitCover: res.url });
+          toast(`표지를 바꿨어요 (${Math.round(res.bytes / 1024)}KB)`);
+        } catch (error) {
+          toast(`표지를 바꾸지 못했어요: ${error.message}`);
+        }
+      },
+    });
+    return [
+      preview,
+      h(
+        "p",
+        { class: "hint", style: { textAlign: "center", margin: "0 0 12px" } },
+        current ? "이 채팅의 표지" : "표지가 없어서 첫 캐릭터 사진(엔진에서 자른 모양)을 써요",
+      ),
+      file,
+      h(
+        "div",
+        { style: { display: "flex", justifyContent: "center", gap: "8px" } },
+        current
+          ? h(
+              "button",
+              {
+                type: "button",
+                class: "pill",
+                onClick: async () => {
+                  await api
+                    .delete(`/mari-kit/shell/cover/${encodeURIComponent(current.split("/").pop())}`)
+                    .catch(() => {});
+                  await patchMeta({ mariKitCover: null });
+                },
+              },
+              "표지 지우기",
+            )
+          : null,
+        h(
+          "button",
+          { type: "button", class: "pill main", onClick: () => file.click() },
+          current ? "다른 사진" : "사진 고르기",
+        ),
+      ),
+    ];
+  }
+
   function castView() {
     const { chat, index } = state;
     return [
@@ -863,6 +987,7 @@ export function chatSettingsScreen({ mount, args, go, back }) {
       all: allView,
       cast: castView,
       author: authorView,
+      cover: coverView,
       lorebooks: lorebooksView,
       translation: () => [gap(), translationList(chat, conns)],
       kit: kitView,
@@ -911,4 +1036,26 @@ export function chatSettingsScreen({ mount, args, go, back }) {
 
   load();
   return { dispose: () => (alive = false), onPrefs: draw };
+}
+
+/** A picked photo as a 3:4, 600×800 (at most) WebP, base64 — cropped from the middle, made in the browser. */
+async function coverWebp(file) {
+  const bitmap = await createImageBitmap(file);
+  const want = 3 / 4;
+  let sw = bitmap.width;
+  let sh = bitmap.height;
+  if (sw / sh > want) sw = Math.round(sh * want);
+  else sh = Math.round(sw / want);
+  const scale = Math.min(1, 600 / sw);
+  const canvas = document.createElement("canvas");
+  canvas.width = Math.round(sw * scale);
+  canvas.height = Math.round(sh * scale);
+  canvas
+    .getContext("2d")
+    .drawImage(bitmap, (bitmap.width - sw) / 2, (bitmap.height - sh) / 2, sw, sh, 0, 0, canvas.width, canvas.height);
+  const blob = await new Promise((resolve) => canvas.toBlob(resolve, "image/webp", 0.82));
+  const bytes = new Uint8Array(await blob.arrayBuffer());
+  let bin = "";
+  for (let i = 0; i < bytes.length; i += 0x8000) bin += String.fromCharCode(...bytes.subarray(i, i + 0x8000));
+  return btoa(bin);
 }

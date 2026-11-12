@@ -11,7 +11,7 @@
 // ──────────────────────────────────────────────
 
 import { createHash } from "node:crypto";
-import { readdir, readFile, realpath, stat } from "node:fs/promises";
+import { mkdir, readdir, readFile, realpath, stat, unlink, writeFile } from "node:fs/promises";
 import { join, sep } from "node:path";
 import { brotliCompressSync, constants, gzipSync } from "node:zlib";
 
@@ -159,21 +159,58 @@ async function avatarPath(file) {
   return path && path.startsWith(dir + sep) ? path : null;
 }
 
-async function avatarPreview(file, width) {
+/**
+ * The Engine's avatar crop, as the shell passes it (`c`): "R,x,y,w,h" — the current format, a rectangle normalized to
+ * the source — or "L,zoom,offsetX,offsetY" — the legacy format the Engine draws as `scale(zoom) translate(x%, y%)` on
+ * an object-cover square. Returns the source pixel rectangle to cut, or null for none.
+ */
+export function cropRegion(code, width, height) {
+  const parts = String(code || "").split(",");
+  const n = parts.slice(1).map(Number);
+  if (!width || !height || n.some((v) => !Number.isFinite(v))) return null;
+  let left, top, size;
+  if (parts[0] === "R" && n.length === 4) {
+    if (n[2] <= 0 || n[3] <= 0) return null;
+    left = n[0] * width;
+    top = n[1] * height;
+    const w = n[2] * width;
+    const h = n[3] * height;
+    size = Math.min(w, h);
+    left += (w - size) / 2;
+    top += (h - size) / 2;
+  } else if (parts[0] === "L" && n.length === 3) {
+    const [zoom, ox, oy] = n;
+    if (zoom <= 1) return null;
+    const side = Math.min(width, height);
+    size = side / zoom;
+    left = (width - side) / 2 + (0.5 - ox / 100) * side - size / 2;
+    top = (height - side) / 2 + (0.5 - oy / 100) * side - size / 2;
+  } else return null;
+  size = Math.max(1, Math.min(size, width, height));
+  left = Math.min(Math.max(0, left), width - size);
+  top = Math.min(Math.max(0, top), height - size);
+  return { left: Math.round(left), top: Math.round(top), width: Math.round(size), height: Math.round(size) };
+}
+
+async function avatarPreview(file, width, crop = "") {
   const path = await avatarPath(file);
   if (!path) return { status: 404 };
   const info = await stat(path);
-  const key = `${width}/${file}/${info.mtimeMs}`;
+  const key = `${width}/${file}/${info.mtimeMs}/${crop}`;
   const hit = avatarCache.get(key);
   if (hit) return hit;
   const sharp = await loadSharp();
   if (!sharp) return null;
   try {
-    const data = await sharp(path, { animated: false })
-      .rotate()
-      .resize({ width, withoutEnlargement: true })
-      .webp({ quality: 78 })
-      .toBuffer();
+    let image = sharp(path, { animated: false }).rotate();
+    if (crop) {
+      const meta = await sharp(path, { animated: false }).metadata();
+      const swap = (meta.orientation || 1) >= 5;
+      const region = cropRegion(crop, swap ? meta.height : meta.width, swap ? meta.width : meta.height);
+      // The rotated image is cut in a second pass, so the rectangle is in the orientation the Engine shows.
+      if (region) image = sharp(await image.toBuffer()).extract(region);
+    }
+    const data = await image.resize({ width, withoutEnlargement: true }).webp({ quality: 78 }).toBuffer();
     const entry = { data };
     avatarCache.set(key, entry);
     avatarBytes += data.length;
@@ -193,7 +230,8 @@ export async function shellRoutes(app, { runtime } = {}) {
     const file = avatarFile(request.query?.f);
     if (!file) return reply.status(400).send({ error: "Invalid avatar" });
     const width = AVATAR_WIDTHS.includes(Number(request.query?.w)) ? Number(request.query.w) : AVATAR_WIDTHS[0];
-    const preview = await avatarPreview(file, width);
+    const crop = /^[RL](?:,-?\d+(?:\.\d+)?){3,4}$/.test(String(request.query?.c || "")) ? request.query.c : "";
+    const preview = await avatarPreview(file, width, crop);
     if (preview?.status) return reply.status(preview.status).send({ error: "Not found" });
     if (!preview) return reply.redirect(`/api/avatars/file/${encodeURIComponent(file)}`);
     // Avatar file names are never reused for other pictures (the Engine caches the originals for good too).
@@ -224,6 +262,77 @@ export async function shellRoutes(app, { runtime } = {}) {
     }
     reply.header("Cache-Control", "private, max-age=3600");
     return engineSettings;
+  });
+  // ── chat covers ──
+  // A cover per chat, chosen in the shell: the browser shrinks and crops the picture to a 3:4 WebP before it is sent
+  // (so an upload is ~100KB, not a phone photo), Mari Kit re-encodes it with sharp where it can and keeps it under
+  // DATA_DIR/mari-kit/covers. The chat's metadata holds its URL (mariKitCover), so chat lists carry it for free.
+  const coverDir = () => (process.env.DATA_DIR ? join(process.env.DATA_DIR, "mari-kit", "covers") : null);
+  const coverName = (raw) => (/^[A-Za-z0-9_-]{1,64}-[0-9a-f]{12}\.webp$/.test(String(raw || "")) ? String(raw) : null);
+  app.post("/shell/cover/:chatId", async (request, reply) => {
+    const chatId = String(request.params.chatId || "");
+    if (!/^[A-Za-z0-9_-]{1,64}$/.test(chatId)) return reply.status(400).send({ error: "Invalid chat" });
+    const dir = coverDir();
+    if (!dir) return reply.status(500).send({ error: "No data folder" });
+    let data = Buffer.from(String(request.body?.data || ""), "base64");
+    const isWebp =
+      data.length > 12 && data.toString("ascii", 0, 4) === "RIFF" && data.toString("ascii", 8, 12) === "WEBP";
+    const sharp = await loadSharp();
+    // Browsers that cannot encode WebP send PNG or JPEG; sharp turns those into WebP. Without sharp only WebP is kept.
+    const isPicture = isWebp || (sharp && (data[0] === 0x89 || (data[0] === 0xff && data[1] === 0xd8)));
+    if (!isPicture || data.length > 3 * 1024 * 1024) return reply.status(400).send({ error: "A picture up to 3MB" });
+    if (sharp) {
+      try {
+        data = await sharp(data)
+          .resize({ width: 600, height: 800, fit: "cover", withoutEnlargement: true })
+          .webp({ quality: 80 })
+          .toBuffer();
+      } catch {
+        return reply.status(400).send({ error: "That picture could not be read" });
+      }
+    }
+    await mkdir(dir, { recursive: true });
+    const name = `${chatId}-${createHash("sha256").update(data).digest("hex").slice(0, 12)}.webp`;
+    await writeFile(join(dir, name), data);
+    const old = coverName(request.body?.replaces);
+    if (old && old !== name && old.startsWith(`${chatId}-`)) await unlink(join(dir, old)).catch(() => {});
+    return { url: `/api/mari-kit/shell/cover/${name}`, bytes: data.length };
+  });
+  app.delete("/shell/cover/:file", async (request) => {
+    const name = coverName(request.params.file);
+    const dir = coverDir();
+    if (name && dir) await unlink(join(dir, name)).catch(() => {});
+    return { ok: true };
+  });
+  app.get("/shell/cover/:file", async (request, reply) => {
+    const name = coverName(request.params.file);
+    const dir = coverDir();
+    if (!name || !dir) return reply.status(404).send({ error: "Not found" });
+    let data;
+    try {
+      data = await readFile(join(dir, name));
+    } catch {
+      return reply.status(404).send({ error: "Not found" });
+    }
+    // ?w=96|240: a small square-ish version for list thumbnails (kept in the avatar preview cache).
+    const width = AVATAR_WIDTHS.includes(Number(request.query?.w)) ? Number(request.query.w) : 0;
+    if (width) {
+      const key = `cover/${width}/${name}`;
+      let hit = avatarCache.get(key);
+      const sharp = hit ? null : await loadSharp();
+      if (!hit && sharp) {
+        try {
+          hit = { data: await sharp(data).resize({ width }).webp({ quality: 78 }).toBuffer() };
+          avatarCache.set(key, hit);
+          avatarBytes += hit.data.length;
+        } catch {}
+      }
+      if (hit) data = hit.data;
+    }
+    // The name carries the picture's hash, so it never changes under this URL.
+    reply.header("Cache-Control", "public, max-age=31536000, immutable");
+    reply.header("Content-Type", "image/webp");
+    return reply.send(data);
   });
   app.get("/shell/characters", async () =>
     (await runtime.resources.listCharacters()).filter((c) => !BUILT_IN.has(c.id)).map(slimCharacter),

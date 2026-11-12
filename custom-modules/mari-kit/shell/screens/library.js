@@ -1,7 +1,8 @@
 import { h, icon, I, setChildren } from "../lib/h.js";
-import { data, byLastActivity, characterIndex, chatTitle, firstLetter, shortTime } from "../lib/data.js";
+import { data, byLastActivity, characterIndex, chatTitle, firstLetter, shortTime, coverOf } from "../lib/data.js";
 import { pageHead, errorBox, lazyBg } from "../lib/ui.js";
 import { openNewChat } from "../lib/newchat.js";
+import { groupsOf, splitByGroup } from "../lib/groups.js";
 
 let lastSeg = "works";
 
@@ -113,7 +114,7 @@ export function libraryScreen({ mount, go, args = [] }) {
                   return card(
                     `#/rp/${encodeURIComponent(c.id)}`,
                     firstLetter(title),
-                    who?.avatar,
+                    coverOf(c) || who?.avatar,
                     title,
                     [
                       (c.characterIds || [])
@@ -142,16 +143,29 @@ export function libraryScreen({ mount, go, args = [] }) {
         setChildren(
           list,
           rows.length
-            ? h(
-                "div",
-                { class: "grid" },
-                rows.map((c) =>
-                  card(
-                    `#/character/${encodeURIComponent(c.id)}`,
-                    firstLetter(c.name),
-                    c.avatar,
-                    c.name,
-                    lastUse.has(c.id) ? shortTime(lastUse.get(c.id)) : "",
+            ? splitByGroup(rows, model.charGroups || []).map((part, i, all) =>
+                h(
+                  "div",
+                  null,
+                  all.length > 1 || part.label
+                    ? h(
+                        "div",
+                        { class: "label", style: { margin: i ? "20px 0 10px" : "0 0 10px", padding: "0 20px" } },
+                        part.label || "그룹 없음",
+                      )
+                    : null,
+                  h(
+                    "div",
+                    { class: "grid" },
+                    part.items.map((c) =>
+                      card(
+                        `#/character/${encodeURIComponent(c.id)}`,
+                        firstLetter(c.name),
+                        c.avatar,
+                        c.name,
+                        lastUse.has(c.id) ? shortTime(lastUse.get(c.id)) : "",
+                      ),
+                    ),
                   ),
                 ),
               )
@@ -166,9 +180,13 @@ export function libraryScreen({ mount, go, args = [] }) {
 
   (async () => {
     try {
-      const [chats, chars] = await Promise.all([data.chats(true), data.characters(true)]);
+      const [chats, chars, charGroups] = await Promise.all([
+        data.chats(true),
+        data.characters(true),
+        groupsOf("characters"),
+      ]);
       if (!alive) return;
-      model = { chats, index: characterIndex(chars) };
+      model = { chats, index: characterIndex(chars), charGroups };
       draw();
     } catch (error) {
       if (alive) setChildren(body, errorBox(error));

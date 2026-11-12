@@ -552,6 +552,7 @@ async function openFromShell() {
     ui().openCharacterDetail(target.character, target.tab ? { initialTab: target.tab } : undefined);
   else if (target.preset) ui().openPresetDetail(target.preset, target.tab ? { initialTab: target.tab } : undefined);
   else if (target.lorebook) ui().openLorebookDetail(target.lorebook);
+  else if (target.connection) ui().openConnectionDetail(target.connection);
   else if (target.settings) {
     ui().openRightPanel("settings");
     if (target.tab) ui().setSettingsTab(target.tab);

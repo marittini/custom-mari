@@ -9,6 +9,7 @@ import {
   messageText,
   shortTime,
   chatMeta,
+  coverOf,
 } from "../lib/data.js";
 import { pageHead, avatar, avatarStack, errorBox, lazyBg, hbox } from "../lib/ui.js";
 import { modelStatus } from "../lib/status.js";
@@ -66,9 +67,9 @@ export function homeScreen({ mount, go }) {
               h(
                 "span",
                 { class: "ph", style: { width: "56px", height: "76px", fontSize: "18px" } },
-                cover?.avatar ? "" : firstLetter(title),
+                coverOf(rp) || cover?.avatar ? "" : firstLetter(title),
               ),
-              cover?.avatar,
+              coverOf(rp) || cover?.avatar,
             ),
             h(
               "span",
@@ -216,7 +217,11 @@ export function homeScreen({ mount, go }) {
                   href: `#/convo/${encodeURIComponent(c.id)}`,
                   style: { gridTemplateColumns: "32px minmax(0,1fr) auto" },
                 },
-                cast.length > 1 ? avatarStack(cast, 32) : avatar(cast[0]?.avatar, firstLetter(title), 32),
+                coverOf(c)
+                  ? avatar(coverOf(c), firstLetter(title), 32)
+                  : cast.length > 1
+                    ? avatarStack(cast, 32)
+                    : avatar(cast[0]?.avatar, firstLetter(title), 32),
                 h(
                   "span",
                   { style: { display: "flex", flexDirection: "column", gap: "2px", minWidth: "0" } },
