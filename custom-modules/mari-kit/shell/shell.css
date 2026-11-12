@@ -1793,3 +1793,54 @@ button.toast {
   font: inherit;
   cursor: pointer;
 }
+/* Message tools on every message: the last reply keeps its row, others one faint ⋯. */
+.tools.compact {
+  margin-top: 0;
+}
+.tools.compact > .ma {
+  color: var(--ink-3);
+  opacity: 0.6;
+}
+/* Beside a user message (outside the bubble) and in the gap under a reply, so nothing grows taller. */
+.umsg,
+.read {
+  position: relative;
+}
+.umsg .tools.compact {
+  position: absolute;
+  top: 50%;
+  right: 100%;
+  margin: 0;
+  transform: translateY(-50%);
+}
+.read .tools.compact {
+  margin: -6px -10px -20px 0;
+}
+/* Hidden from the AI (the Engine's eye-off): dimmed, with a small note. */
+.hid > :not(.tools) {
+  opacity: 0.45;
+}
+.hid::before {
+  content: "AI에게 숨긴 메시지";
+  display: block;
+  margin-bottom: 4px;
+  font-family: var(--font-ui);
+  font-size: 11px;
+  letter-spacing: 0.04em;
+  color: var(--ink-3);
+}
+.sysmsg {
+  align-self: center;
+  max-width: 88%;
+  margin-top: 16px;
+  padding: 8px 12px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: transparent;
+  color: var(--ink-2);
+  font: inherit;
+  font-size: 13px;
+  line-height: 1.6;
+  white-space: pre-wrap;
+  text-align: center;
+}

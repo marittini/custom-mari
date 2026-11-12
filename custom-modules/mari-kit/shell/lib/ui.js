@@ -236,3 +236,14 @@ export function timeAndUnread(chat, time, size = "11px") {
     n > 0 ? h("span", { class: "unread", "aria-label": `안 읽은 메시지 ${n}개` }, n > 99 ? "99+" : String(n)) : null,
   );
 }
+
+/** Message menus open toward the side with room, so none hides under the top bar or the composer. */
+export function fitMenus(root) {
+  for (const menu of root.querySelectorAll(".tmenu")) {
+    const area = menu.closest(".scroll")?.getBoundingClientRect();
+    if (!area) continue;
+    const r = menu.getBoundingClientRect();
+    if (r.top < area.top) Object.assign(menu.style, { bottom: "auto", top: "40px" });
+    else if (r.bottom > area.bottom) Object.assign(menu.style, { top: "auto", bottom: "40px" });
+  }
+}

@@ -21,7 +21,7 @@ function rollDice(notation) {
 
 /**
  * Runs `/name args`. ctx: { chatId, chat, messages, characters: [{id,name}], generate(body), reload() }.
- * Returns a note to show, or "" when handled quietly.
+ * Returns a note to show, "" when handled quietly, or { engine, text } for a command only the Engine runs.
  */
 export async function runSlash(text, ctx) {
   const m = /^\/(\S+)\s*([\s\S]*)$/.exec(text.trim());
@@ -86,6 +86,6 @@ export async function runSlash(text, ctx) {
     case "help":
       return "쓸 수 있는 명령: /guided /continue /impersonate /send /sys /as /roll";
     default:
-      return `/${name}은 엔진 화면에서 써 주세요`;
+      return { engine: true, text: `/${name}은 엔진에서 쓸 수 있어요 · 열기 ›` };
   }
 }
