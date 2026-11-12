@@ -1416,18 +1416,11 @@ export function memoryScreen({ mount, args, go, back }) {
     });
     const fromRoom = async () => {
       // Only rooms that have something to copy: picking an empty one would just wipe this room.
-      const rooms = (await data.chats()).filter((c) => c.id !== chatId && c.mode === "roleplay");
-      const counts = await Promise.all(
-        rooms.map((c) =>
-          api
-            .get(`/mari-kit/memory/${encodeURIComponent(c.id)}`)
-            .then((r) => r.status?.counts)
-            .catch(() => null),
-        ),
-      );
-      const chats = rooms
-        .map((c, i) => ({ ...c, counts: counts[i] }))
-        .filter((c) => c.counts && c.counts.scenes + c.counts.facts + c.counts.openThreads > 0);
+      const [all, withMemory] = await Promise.all([data.chats(), api.get("/mari-kit/memory-rooms")]);
+      const counts = new Map((withMemory || []).map((r) => [r.id, r.counts]));
+      const chats = all
+        .filter((c) => c.id !== chatId && counts.has(c.id))
+        .map((c) => ({ ...c, counts: counts.get(c.id) }));
       if (!chats.length) return toast("기억이 있는 다른 방이 없어요");
       const sh = sheet(
         h(

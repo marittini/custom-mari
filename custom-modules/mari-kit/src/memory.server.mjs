@@ -978,6 +978,23 @@ export const memoryFeature = {
       return chat;
     };
 
+    // 다른 방에서 가져오기: which roleplay chats have memory, in one request (the picker used to ask once per chat,
+    // and each of those also read the whole transcript). Counts only, from the memory files.
+    app.get("/memory-rooms", async () => {
+      const rooms = (await runtime.persistence.listChats()).filter((c) => c.mode === "roleplay");
+      const out = [];
+      for (const chat of rooms) {
+        const { memory } = await readMemory(runtime, chat.id);
+        const counts = {
+          scenes: memory.scenes.length,
+          facts: memory.facts.filter((f) => !f.archived).length,
+          openThreads: memory.threads.filter((t) => t.status === "open").length,
+        };
+        if (counts.scenes + counts.facts + counts.openThreads > 0) out.push({ id: chat.id, counts });
+      }
+      return out;
+    });
+
     app.get("/memory/:chatId", async (request) => {
       const chat = await chatOf(request);
       const { memory } = await readMemory(runtime, chat.id);

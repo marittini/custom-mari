@@ -156,7 +156,7 @@ export function convosScreen({ mount, go }) {
 
   (async () => {
     try {
-      const [chats, chars, folders] = await Promise.all([data.chats(true), data.characters(), groupsOf("chats")]);
+      const [chats, chars, folders] = await Promise.all([data.chats("soft"), data.characters(), groupsOf("chats")]);
       const convos = chats.filter((c) => c.mode === "conversation");
       // One line per chat, for every branch (folded ones too), in one small request.
       const lasts = await data.previews(convos).catch(() => new Map());

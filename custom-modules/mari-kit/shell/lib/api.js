@@ -9,7 +9,13 @@ export class ApiError extends Error {
   }
 }
 
+// Counts writes that change a chat (its messages, settings, folder, cover), so a cached chat list knows it is old.
+let chatWrites = 0;
+const CHAT_WRITE = /^\/(chats|chat-folders|generate|mari-kit\/shell\/cover)(\/|\?|$)/;
+export const chatWriteCount = () => chatWrites;
+
 async function request(method, path, body) {
+  if (method !== "GET" && CHAT_WRITE.test(path)) chatWrites += 1;
   const headers = { ...CSRF };
   if (body !== undefined) headers["Content-Type"] = "application/json";
   const res = await fetch(`/api${path}`, {
@@ -37,6 +43,7 @@ export const api = {
   delete: (path) => request("DELETE", path),
   /** POST that answers with Server-Sent Events; yields { type, data, ... } objects. */
   async *stream(path, body, signal) {
+    if (CHAT_WRITE.test(path)) chatWrites += 1;
     const res = await fetch(`/api${path}`, {
       method: "POST",
       headers: { ...CSRF, "Content-Type": "application/json", Accept: "text/event-stream" },
