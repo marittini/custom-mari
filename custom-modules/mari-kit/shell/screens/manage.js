@@ -5,7 +5,7 @@
 import { h, icon, I, setChildren } from "../lib/h.js";
 import { api, characterCard } from "../lib/api.js";
 import { data, characterIndex } from "../lib/data.js";
-import { toast, errorBox, openEngine } from "../lib/ui.js";
+import { toast, errorBox, openEngine, avatar } from "../lib/ui.js";
 import { groupsOf, splitByGroup, sectioned } from "../lib/groups.js";
 
 const PROVIDERS = [
@@ -211,6 +211,47 @@ export function connectionPage(body, go, id) {
   });
 }
 
+// ── personas ──────────────────────────────
+// Every persona with its picture as the Engine crops it, split by persona groups. Editing (fields, picture and
+// crop, groups, export) is the Engine's persona editor, opened at that persona.
+export function personasPage(body) {
+  guard(body, async () => {
+    const [list, groups] = await Promise.all([data.personas(), groupsOf("personas")]);
+    const open = (p) =>
+      h(
+        "button",
+        { type: "button", class: "r two", onClick: () => openEngine(null, { persona: p.id }) },
+        h(
+          "span",
+          { style: { display: "flex", alignItems: "center", gap: "12px", minWidth: "0" } },
+          avatar(p.avatarPath, String(p.name || "·")[0], 32),
+          h("span", { style: { overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" } }, p.name),
+        ),
+        h("span", { class: "val" }, "편집 ›"),
+      );
+    setChildren(
+      body,
+      stack(
+        h(
+          "p",
+          { class: "hint", style: { margin: "0", padding: "0 20px", lineHeight: "1.6" } },
+          "채팅마다 쓸 페르소나는 그 채팅의 설정에서 골라요. 편집과 사진 자르기, 그룹은 엔진 페르소나 편집기에서 해요(엔진 화면, 처음 약 17MB).",
+        ),
+        list.length
+          ? h("div", null, sectioned(h, splitByGroup(list, groups), open, "personas"))
+          : h("div", { class: "empty" }, "페르소나가 아직 없어요."),
+        actions(
+          h(
+            "button",
+            { type: "button", class: "pill", onClick: () => openEngine(null, { panel: "personas" }) },
+            "새 페르소나 · 그룹 · 엔진 ›",
+          ),
+        ),
+      ),
+    );
+  });
+}
+
 // ── prompt presets ────────────────────────
 export function presetsPage(body, go) {
   guard(body, async () => {
@@ -218,10 +259,14 @@ export function presetsPage(body, go) {
     setChildren(
       body,
       stack(
-        sectioned(h, splitByGroup(list, folders), (p) =>
-          row(p.name, p.isDefault === true || p.isDefault === "true" ? "기본" : "", () =>
-            go(`settings/preset/${encodeURIComponent(p.id)}`),
-          ),
+        sectioned(
+          h,
+          splitByGroup(list, folders),
+          (p) =>
+            row(p.name, p.isDefault === true || p.isDefault === "true" ? "기본" : "", () =>
+              go(`settings/preset/${encodeURIComponent(p.id)}`),
+            ),
+          "presets",
         ),
       ),
     );

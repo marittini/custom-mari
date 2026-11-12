@@ -297,7 +297,7 @@ a {
   border-bottom: 1px solid var(--line);
   background: var(--surface);
 }
-.top.plain {
+.top.noline {
   border-bottom: 0;
   background: transparent;
 }
@@ -1843,4 +1843,43 @@ button.toast {
   line-height: 1.6;
   white-space: pre-wrap;
   text-align: center;
+}
+/* Engine groups as folding sections (connections, presets, personas, characters, chats). */
+.fgroup > summary {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  min-height: 44px;
+  padding: 6px 20px;
+  list-style: none;
+  cursor: pointer;
+  font-size: 12px;
+  letter-spacing: 0.04em;
+  color: var(--ink-3);
+}
+.fgroup > summary::-webkit-details-marker {
+  display: none;
+}
+.fgroup > summary > span:first-child::before {
+  content: "▾";
+  display: inline-block;
+  width: 16px;
+  transition: transform 0.15s;
+}
+.fgroup:not([open]) > summary > span:first-child::before {
+  transform: rotate(-90deg);
+}
+.greet > summary {
+  min-height: 44px;
+  display: flex;
+  align-items: center;
+  cursor: pointer;
+  font-size: 13px;
+  color: var(--ink-2);
+}
+.greet > .read {
+  padding: 4px 0 12px;
+  font-size: 14px;
+  line-height: 1.7;
+  white-space: pre-wrap;
 }

@@ -3,7 +3,7 @@ import { api } from "../lib/api.js";
 import { prefs, setPrefs, isDark, TOOL_DEFS, toolPlace, parseFamilies } from "../lib/prefs.js";
 import { pageHead, toast, openEngine } from "../lib/ui.js";
 import { data, byLastActivity } from "../lib/data.js";
-import { connectionsPage, connectionPage, presetsPage, presetPage, voicePage } from "./manage.js";
+import { connectionsPage, connectionPage, presetsPage, presetPage, voicePage, personasPage } from "./manage.js";
 
 const startsInShell = () => {
   try {
@@ -26,6 +26,7 @@ export function settingsScreen({ mount, args, go, back }) {
     presets: "프리셋",
     preset: "프리셋",
     voice: "엔진 TTS 연결",
+    personas: "페르소나",
   };
   const parent =
     { connection: "settings/connections", preset: "settings/presets", voice: "voice/settings" }[page] || "settings";
@@ -38,6 +39,7 @@ export function settingsScreen({ mount, args, go, back }) {
     presets: () => presetsPage(body, go),
     preset: () => presetPage(body, go, args[1]),
     voice: () => voicePage(body),
+    personas: () => personasPage(body),
   };
   const draw = () => {
     if (manage[page]) return manage[page]();
@@ -94,7 +96,7 @@ export function settingsScreen({ mount, args, go, back }) {
         "div",
         { class: "list" },
         row(I.person, "캐릭터", val("서재"), () => go("library/chars")),
-        row(I.person, "페르소나", val("엔진"), () => openEngine(null, { panel: "personas" })),
+        row(I.person, "페르소나", val(""), () => go("settings/personas")),
         row(I.lore, "로어북", val("엔진"), () => openEngine(null, { panel: "lorebooks" })),
       ),
       sec("Mari 기능"),

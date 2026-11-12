@@ -2,9 +2,21 @@ import { h, icon, I, setChildren } from "../lib/h.js";
 import { data, byLastActivity, characterIndex, chatTitle, firstLetter, shortTime, coverOf } from "../lib/data.js";
 import { pageHead, errorBox, lazyBg } from "../lib/ui.js";
 import { openNewChat } from "../lib/newchat.js";
-import { groupsOf, splitByGroup } from "../lib/groups.js";
+import { groupsOf, splitByGroup, foldGroup } from "../lib/groups.js";
 
 let lastSeg = "works";
+const SORTS = [
+  ["recent", "최근 대화"],
+  ["name", "이름"],
+  ["fav", "즐겨찾기"],
+];
+let charSort = (() => {
+  try {
+    return localStorage.getItem("mari-kit:char-sort") || "recent";
+  } catch {
+    return "recent";
+  }
+})();
 
 export function libraryScreen({ mount, go, args = [] }) {
   let alive = true;
@@ -137,23 +149,45 @@ export function libraryScreen({ mount, go, args = [] }) {
             const t = c.lastMessageAt || c.updatedAt || "";
             if (!lastUse.has(id) || t > lastUse.get(id)) lastUse.set(id, t);
           }
-        const rows = [...index.values()]
-          .sort((a, b) => String(lastUse.get(b.id) || "").localeCompare(String(lastUse.get(a.id) || "")))
-          .filter((c) => !ql || c.name.toLowerCase().includes(ql));
+        const recent = (a, b) => String(lastUse.get(b.id) || "").localeCompare(String(lastUse.get(a.id) || ""));
+        const order =
+          {
+            recent,
+            name: (a, b) => a.name.localeCompare(b.name),
+            // The Engine's favorite star (card extensions.fav) first, then recent.
+            fav: (a, b) => Number(!!b.row?.fav) - Number(!!a.row?.fav) || recent(a, b),
+          }[charSort] || recent;
+        const rows = [...index.values()].sort(order).filter((c) => !ql || c.name.toLowerCase().includes(ql));
+        const sorts = h(
+          "div",
+          { class: "chips", style: { padding: "0 20px 14px" } },
+          SORTS.map(([id, label]) =>
+            h(
+              "button",
+              {
+                type: "button",
+                class: "chip",
+                "aria-pressed": charSort === id ? "true" : "false",
+                onClick: () => {
+                  charSort = id;
+                  try {
+                    localStorage.setItem("mari-kit:char-sort", id);
+                  } catch {}
+                  drawList();
+                },
+              },
+              label,
+            ),
+          ),
+        );
         setChildren(
           list,
+          sorts,
           rows.length
             ? splitByGroup(rows, model.charGroups || []).map((part, i, all) =>
-                h(
-                  "div",
-                  null,
-                  all.length > 1 || part.label
-                    ? h(
-                        "div",
-                        { class: "label", style: { margin: i ? "20px 0 10px" : "0 0 10px", padding: "0 20px" } },
-                        part.label || "그룹 없음",
-                      )
-                    : null,
+                (all.length > 1 || part.label
+                  ? (grid) => foldGroup(h, "characters", part.label, part.items.length, grid)
+                  : (grid) => grid)(
                   h(
                     "div",
                     { class: "grid" },

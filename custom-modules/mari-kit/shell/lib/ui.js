@@ -20,7 +20,7 @@ export function pageHead(title, { label = todayLabel(), actions = [], back } = {
 export function topBar({ back, title, sub, actions = [], plain = false }) {
   return h(
     "header",
-    { class: plain ? "top plain" : "top" },
+    { class: plain ? "top noline" : "top" },
     back ? h("button", { type: "button", class: "ib", "aria-label": "뒤로", onClick: back }, icon(I.back)) : null,
     h(
       "div",

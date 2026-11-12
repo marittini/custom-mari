@@ -40,7 +40,18 @@ export const data = {
     return cards.get(id);
   },
   connections: () => connsP || (connsP = api.get("/connections").catch(() => [])),
-  personas: () => personasP || (personasP = api.get("/characters/personas/list").catch(() => [])),
+  /** Personas with the Engine's avatar crop on their avatar URL (like characters). */
+  personas: () =>
+    personasP ||
+    (personasP = api
+      .get("/characters/personas/list")
+      .then((list) =>
+        (Array.isArray(list) ? list : []).map((p) => ({
+          ...p,
+          avatarPath: withCrop(p.avatarPath || null, p.avatarCrop),
+        })),
+      )
+      .catch(() => [])),
   /** The Engine's own synced UI settings (quick replies live here). */
   engineUi: () =>
     uiP ||

@@ -87,21 +87,40 @@ export function groupedOptions(h, value, plain, parts, toOption) {
   ];
 }
 
-/** A list split by group: a small heading over each group (none when nothing is grouped), rows from `render`. */
-export function sectioned(h, parts, render) {
-  const grouped = parts.length > 1 || (parts.length === 1 && parts[0].label);
-  return parts.map((p) =>
-    h(
-      "div",
-      null,
-      grouped
-        ? h(
-            "div",
-            { class: "sec", style: { padding: "14px 20px 6px" } },
-            h("span", { class: "hint" }, p.label || "그룹 없음"),
-          )
-        : null,
-      h("div", { class: "list" }, p.items.map(render)),
-    ),
+/**
+ * One group that folds: its name and count on a tappable heading. The fold is remembered per list in this
+ * browser (`key`, e.g. "presets"), so a closed group stays closed next time.
+ */
+export function foldGroup(h, key, label, count, content) {
+  const id = `${key}:${label}`;
+  let closed = false;
+  try {
+    closed = (JSON.parse(localStorage.getItem("mari-kit:folds") || "[]") || []).includes(id);
+  } catch {}
+  const el = h(
+    "details",
+    {
+      class: "fgroup",
+      open: !closed,
+      onToggle: () => {
+        try {
+          const set = new Set(JSON.parse(localStorage.getItem("mari-kit:folds") || "[]") || []);
+          el.open ? set.delete(id) : set.add(id);
+          localStorage.setItem("mari-kit:folds", JSON.stringify([...set]));
+        } catch {}
+      },
+    },
+    h("summary", null, h("span", null, label || "그룹 없음"), h("span", { class: "hint" }, String(count))),
+    content,
   );
+  return el;
+}
+
+/** A list split by group: a folding heading over each group (none when nothing is grouped), rows from `render`. */
+export function sectioned(h, parts, render, key = "list") {
+  const grouped = parts.length > 1 || (parts.length === 1 && parts[0].label);
+  return parts.map((p) => {
+    const rows = h("div", { class: "list" }, p.items.map(render));
+    return grouped ? foldGroup(h, key, p.label, p.items.length, rows) : rows;
+  });
 }
