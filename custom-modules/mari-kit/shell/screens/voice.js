@@ -18,7 +18,7 @@ const chip = (label, on, onClick) =>
   );
 const sw = (on) => h("span", { class: on ? "sw on" : "sw" }, h("span"));
 
-export function voiceScreen({ mount, args, go }) {
+export function voiceScreen({ mount, args, go, back }) {
   const view = args[0] || "people";
   let alive = true;
   let config = null; // Engine TTS config
@@ -30,15 +30,15 @@ export function voiceScreen({ mount, args, go }) {
   mount.append(head, body);
 
   function header() {
-    if (view === "settings") return pageHead("음성 설정", { label: "모든 방 공통", back: () => go("voice") });
+    if (view === "settings") return pageHead("음성 설정", { label: "모든 방 공통", back: () => back("voice") });
     if (view === "tune")
-      return pageHead("ElevenLabs 다듬기", { label: "내 계정의 목소리 전체에", back: () => go("voice/settings") });
+      return pageHead("ElevenLabs 다듬기", { label: "내 계정의 목소리 전체에", back: () => back("voice/settings") });
     const label = !config
       ? "엔진 TTS 꺼짐"
       : `${config.source}${config.model ? ` · ${config.model}` : ""} · ${v?.cueResolved === "tags" ? "감정 태그로 읽어요" : "감정 설명으로 읽어요"}`;
     return pageHead("음성", {
       label,
-      back: () => go("settings"),
+      back: () => back("settings"),
       actions: h(
         "button",
         {

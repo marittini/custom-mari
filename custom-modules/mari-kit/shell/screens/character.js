@@ -16,7 +16,7 @@ function pick(card, path) {
   return path.split(".").reduce((o, k) => (o && typeof o === "object" ? o[k] : undefined), card);
 }
 
-export function characterScreen({ mount, args, go }) {
+export function characterScreen({ mount, args, go, back }) {
   let alive = true;
   const id = args[0];
   const body = h(
@@ -24,7 +24,7 @@ export function characterScreen({ mount, args, go }) {
     { class: "scroll", style: { padding: "4px 20px 0" } },
     h("div", { class: "empty" }, "불러오는 중…"),
   );
-  mount.append(topBar({ back: () => history.back(), plain: true }), body);
+  mount.append(topBar({ back: () => back("library"), plain: true }), body);
   (async () => {
     try {
       const [chars, chats, mk, row] = await Promise.all([

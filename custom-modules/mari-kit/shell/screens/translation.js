@@ -23,7 +23,7 @@ function parseGlossary(text) {
 const formatGlossary = (rows) =>
   (rows ?? []).map((e) => `${e.source} = ${e.target}${e.notes ? ` # ${e.notes}` : ""}`).join("\n");
 
-export function translationScreen({ mount, args }) {
+export function translationScreen({ mount, args, back }) {
   const chatId = args[0];
   let alive = true;
   const body = h(
@@ -31,7 +31,7 @@ export function translationScreen({ mount, args }) {
     { class: "scroll", style: { paddingBottom: "28px" } },
     h("div", { class: "empty" }, "불러오는 중…"),
   );
-  mount.append(topBar({ back: () => history.back(), title: "번역" }), body);
+  mount.append(topBar({ back: () => back("convos"), title: "번역" }), body);
 
   async function load() {
     try {

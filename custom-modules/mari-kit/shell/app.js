@@ -35,6 +35,42 @@ export function go(path) {
   location.hash = `#/${path}`;
 }
 
+// Where the user came from, so an on-screen back button always returns there (history.back) and never opens
+// the parent as a new page — that is what made two screens send each other back and forth forever.
+// Opened directly (no earlier screen in the shell), back goes up to the given parent instead, replacing the entry.
+const TRAIL_KEY = "mari-shell:trail";
+let trail = (() => {
+  try {
+    return JSON.parse(sessionStorage.getItem(TRAIL_KEY)) || [];
+  } catch {
+    return [];
+  }
+})();
+let replacing = false;
+function track() {
+  const here = location.hash || "#/home";
+  if (replacing) {
+    trail[trail.length - 1] = here;
+    replacing = false;
+  } else if (trail[trail.length - 2] === here) trail.pop();
+  else if (trail[trail.length - 1] !== here) trail.push(here);
+  trail = trail.slice(-50);
+  try {
+    sessionStorage.setItem(TRAIL_KEY, JSON.stringify(trail));
+  } catch {}
+}
+export function back(parent = "home") {
+  if (trail.length > 1) return history.back();
+  replacing = true;
+  location.replace(`#/${parent}`);
+}
+/** A dock tab starts a fresh trail: back from a tab's top screen leaves the shell, like any app. */
+function openTab(id) {
+  trail = [];
+  replacing = false;
+  location.replace(`#/${id}`);
+}
+
 function parseRoute() {
   const parts = location.hash.replace(/^#\/?/, "").split("/").filter(Boolean).map(decodeURIComponent);
   const name = SCREENS[parts[0]] ? parts[0] : "home";
@@ -54,7 +90,7 @@ function dock(active) {
           type: "button",
           class: t.id === active ? "dk on" : "dk",
           "aria-current": t.id === active ? "page" : false,
-          onClick: () => go(t.id),
+          onClick: () => openTab(t.id),
         },
         icon(t.icon, 22),
         h("span", null, t.label),
@@ -90,10 +126,13 @@ async function render() {
   const isTab = TABS.some((t) => t.id === route.name);
   if (isTab) frame.append(dock(route.name));
   setChildren(root, frame);
-  current = screen({ mount: body, args: route.args, go });
+  current = screen({ mount: body, args: route.args, go, back });
 }
 
-addEventListener("hashchange", render);
+addEventListener("hashchange", () => {
+  track();
+  render();
+});
 matchMedia("(prefers-color-scheme: dark)").addEventListener("change", applyPrefs);
 onPrefs(() => current?.onPrefs?.());
 // The on-screen keyboard: Android Chrome shrinks the page itself (interactive-widget=resizes-content in the
@@ -110,4 +149,5 @@ if (vv) {
   fit();
 }
 applyPrefs();
+track();
 render();
