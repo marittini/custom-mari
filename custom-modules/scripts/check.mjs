@@ -448,6 +448,15 @@ if (id === "mari-kit") {
   );
 }
 
+// Start screen: only the Engine's root page goes to the shell, and only when nothing asked for the Engine.
+{
+  const client = await import(pathToFileURL(join(outDir, "client.js")).href);
+  assert.equal(client.shouldOpenShell("/", null, null), true);
+  assert.equal(client.shouldOpenShell("/", "engine", null), false);
+  assert.equal(client.shouldOpenShell("/", null, "1"), false);
+  assert.equal(client.shouldOpenShell("/api/mari-kit/app", null, null), false);
+}
+
 // The shell's Engine calls all appear in shell/engine-api.json, which check-engine-api.mjs probes after updates.
 {
   const { readdir } = await import("node:fs/promises");

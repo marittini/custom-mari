@@ -453,6 +453,28 @@ function ensureStyle() {
 }
 
 /** Finds voiced lines on screen and gives each a play button. One instance per mounted chat view. */
+// ── Start screen ────────────────────────────────
+// The Mari shell is the start screen: opening the Engine's own address lands there. A tab the shell's "엔진 화면" link
+// opened stays on the Engine (sessionStorage), and choosing the Engine as start screen in the shell turns this off.
+
+export const SHELL_PATH = "/api/mari-kit/app";
+export const START_KEY = "mari-kit:start";
+export const ENGINE_TAB_KEY = "mari-kit:engine-tab";
+
+/** Should this page load go to the shell? Only the Engine's root page, and only when nothing asked for the Engine. */
+export function shouldOpenShell(path, start, engineTab) {
+  return path === "/" && start !== "engine" && engineTab !== "1";
+}
+
+function openShellOnStart() {
+  try {
+    if (shouldOpenShell(location.pathname, localStorage.getItem(START_KEY), sessionStorage.getItem(ENGINE_TAB_KEY)))
+      location.replace(SHELL_PATH);
+  } catch {
+    // Storage can be blocked; the Engine screen then simply stays.
+  }
+}
+
 class LinePlayer {
   constructor(element) {
     this.element = element;
@@ -1230,6 +1252,20 @@ function defineElement() {
           : "display:flex;flex-direction:column;gap:6px;padding:8px 10px;font-size:12px;color:var(--foreground)",
       });
       box.append(el("strong", { textContent: t.title }));
+      if (home) {
+        const open = el("a", {
+          href: SHELL_PATH,
+          textContent: "Mari 화면 열기",
+          style:
+            "align-self:flex-start;padding:8px 14px;border:1px solid var(--border);border-radius:8px;color:var(--foreground);text-decoration:none",
+        });
+        open.addEventListener("click", () => {
+          try {
+            sessionStorage.removeItem(ENGINE_TAB_KEY);
+          } catch {}
+        });
+        box.append(open);
+      }
       box.append(el("span", { textContent: t.hint, style: "opacity:.7" }));
       if (!status && !error) box.append(el("span", { textContent: t.loading }));
       if (status) {
@@ -1283,4 +1319,7 @@ function defineElement() {
   if (!customElements.get(TAG)) customElements.define(TAG, MariKitElement);
 }
 
-if (typeof HTMLElement !== "undefined" && typeof customElements !== "undefined") defineElement();
+if (typeof HTMLElement !== "undefined" && typeof customElements !== "undefined") {
+  defineElement();
+  openShellOnStart();
+}

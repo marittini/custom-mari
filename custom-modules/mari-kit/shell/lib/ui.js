@@ -194,6 +194,8 @@ export function hbox(label, ...children) {
 export function openEngine(chatId) {
   try {
     if (chatId) localStorage.setItem("marinara-active-chat-id", chatId);
+    // Mari Kit's Engine-side script sends the Engine's start page to the shell; this tab asked for the Engine.
+    sessionStorage.setItem("mari-kit:engine-tab", "1");
   } catch {}
   location.href = "/";
 }
