@@ -33,6 +33,7 @@ const SCREENS = {
   voice: () => import("./screens/voice.js").then((m) => m.voiceScreen),
   radio: () => import("./screens/radio.js").then((m) => m.radioScreen),
   "call-settings": () => import("./screens/call-settings.js").then((m) => m.callSettingsScreen),
+  credit: () => import("./screens/credit.js").then((m) => m.creditScreen),
 };
 
 export function go(path) {

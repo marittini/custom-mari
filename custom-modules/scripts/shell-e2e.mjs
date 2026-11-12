@@ -80,6 +80,24 @@ async function open(page) {
 
 const flows = {
   // A fresh open starts on 홈 even from a remembered address; a reload keeps the screen.
+  // 홈: radio, connections and the 남은 크레딧 receipt (no chat lists: those are 대화 and 서재).
+  async home({ page }) {
+    await open(page);
+    await page.waitForSelector(".rc .rchd");
+    if (await page.getByText("이어 읽기").count()) throw new Error("홈 still shows 이어 읽기");
+    await page
+      .locator(".rc")
+      .getByRole("button", { name: /설정|계정 추가/ })
+      .click();
+    await until(async () => (await hash(page)) === "#/credit", 5000, "credit settings open");
+    await page.getByRole("button", { name: "뒤로" }).first().click();
+    await until(
+      async () => ["", "#/home"].includes(await hash(page)) && (await page.locator(".rc").isVisible()),
+      5000,
+      "back to 홈",
+    );
+  },
+
   async "fresh-open"({ page }) {
     await page.goto(`${APP}#/settings`);
     await until(async () => (await hash(page)).startsWith("#/home"), 8000, "fresh open lands on 홈");
@@ -115,8 +133,8 @@ const flows = {
       "reply shown",
     );
     if ((await messageCount(convo.id)) < before + 2) throw new Error("messages were not saved");
-    // The list shows the new last line (its cached copy must notice the chat changed).
-    await page.getByRole("button", { name: "대화 목록" }).click();
+    // The 대화 list shows the new last line (its cached copy must notice the chat changed).
+    await goIn(page, "#/convos");
     await until(
       async () =>
         (await page.locator(`a[href="#/convo/${encodeURIComponent(convo.id)}"]`).innerText()).includes("곤란해"),

@@ -59,6 +59,10 @@
     "POST /chats/:id/autonomous-unread",
     "DELETE /chats/:id/autonomous-unread",
     "DELETE /chats/:id",
-    "GET /chat-folders"
+    "GET /chat-folders",
+    "GET /connection-accounts",
+    "GET /connection-accounts/:id/balance",
+    "GET /app-settings/outside-reads",
+    "PUT /app-settings/outside-reads"
   ]
 }

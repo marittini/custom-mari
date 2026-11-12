@@ -488,6 +488,76 @@ if (id === "mari-kit") {
 {
   const { cropRegion } = await import(pathToFileURL(join(outDir, "shell.server.mjs")).href);
   assert.deepEqual(cropRegion("R,0.25,0.1,0.5,0.5", 400, 400), { left: 100, top: 40, width: 200, height: 200 });
+  // 남은 크레딧: service-account JSON, a JWT signed on the server, Monitoring token counts × prices, folding.
+  {
+    const { parseServiceAccount, refreshGoogle, costOf, publicGoogle } = await import(
+      pathToFileURL(join(outDir, "credit.server.mjs")).href
+    );
+    const { generateKeyPairSync, createVerify } = await import("node:crypto");
+    const { privateKey, publicKey } = generateKeyPairSync("rsa", { modulusLength: 2048 });
+    const pem = privateKey.export({ type: "pkcs8", format: "pem" });
+    assert.equal(parseServiceAccount('{"type":"service_account"}'), null);
+    assert.equal(parseServiceAccount("not json"), null);
+    const sa = parseServiceAccount(
+      JSON.stringify({ type: "service_account", project_id: "p1", client_email: "bot@p1.iam", private_key: pem }),
+    );
+    assert.equal(sa.project_id, "p1");
+    assert.deepEqual(parseServiceAccount(sa), sa, "a stored key reads back as one");
+    assert.deepEqual(costOf({ "gemini-2.5-pro": [1e6, 1e6] }), { usd: 11.25, unknown: [] });
+    assert.deepEqual(costOf({ "mystery-model": [1e6, 0] }).unknown, ["mystery-model"]);
+    const calls = [];
+    const fakeFetch = async (url, opt = {}) => {
+      calls.push(String(url));
+      if (String(url).includes("oauth2")) {
+        const jwt = new URLSearchParams(opt.body).get("assertion").split(".");
+        const ok = createVerify("RSA-SHA256")
+          .update(`${jwt[0]}.${jwt[1]}`)
+          .verify(publicKey, Buffer.from(jwt[2], "base64url"));
+        assert.ok(ok, "JWT signed with the key file");
+        return new Response(JSON.stringify({ access_token: "t", expires_in: 3600 }));
+      }
+      assert.match(String(url), /monitoring\.googleapis\.com\/v3\/projects\/p1\/timeSeries/);
+      return new Response(
+        JSON.stringify({
+          timeSeries: [
+            {
+              resource: { labels: { model_user_id: "gemini-2.5-pro" } },
+              metric: { labels: { type: "input" } },
+              points: [{ value: { int64Value: "1000000" } }],
+            },
+            {
+              resource: { labels: { model_user_id: "gemini-2.5-pro" } },
+              metric: { labels: { type: "output" } },
+              points: [{ value: { int64Value: "1000000" } }],
+            },
+          ],
+        }),
+      );
+    };
+    const now = Date.parse("2026-11-12T12:00:00Z");
+    const fresh = {
+      id: "g1",
+      name: "a",
+      sa,
+      balance: 300,
+      total: 300,
+      at: new Date(now - 3600e3).toISOString(),
+      used: null,
+      folded: null,
+    };
+    const one = await refreshGoogle(fresh, { now, fetchFn: fakeFetch });
+    assert.equal(publicGoogle(one).left, 300 - 11.25);
+    assert.equal(publicGoogle(one).email, "bot@p1.iam");
+    assert.ok(!("sa" in publicGoogle(one)) && !JSON.stringify(publicGoogle(one)).includes("PRIVATE"));
+    // Within 30 minutes nothing is asked again; a window over a week folds the old part once.
+    const n = calls.length;
+    assert.equal(await refreshGoogle(one, { now: now + 60e3, fetchFn: fakeFetch }), one);
+    assert.equal(calls.length, n);
+    const old = { ...fresh, at: new Date(now - 10 * 86400e3).toISOString() };
+    const two = await refreshGoogle(old, { now, fetchFn: fakeFetch });
+    assert.equal(two.folded.usd, 11.25);
+    assert.equal(publicGoogle(two).left, 300 - 22.5);
+  }
   // List previews: newest shown line (hidden and command-only skipped, a call reads 음성 통화) and newest reply.
   const { previewOf } = await import(pathToFileURL(join(outDir, "shell.server.mjs")).href);
   const big = JSON.stringify({ cachedPrompt: "x".repeat(50000) });

@@ -10,6 +10,8 @@
   --user-font: system-ui, sans-serif;
   --font-ui: var(--user-font);
   --font-read: var(--font-ui);
+  /* The device's own fixed-width face (receipts): generic families only, nothing downloaded. */
+  --font-mono: ui-monospace, monospace;
   --paper: #ffffff;
   --surface: #ffffff;
   --fill: #f2f2f4;
@@ -1910,4 +1912,103 @@ button.toast {
   font-size: 13px;
   text-align: left;
   cursor: pointer;
+}
+/* 남은 크레딧: a receipt — dashed cut lines, dotted leaders, a torn bottom edge; monotone. */
+.rc {
+  padding: 16px 16px 26px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: var(--surface);
+  color: var(--ink);
+  font-family: var(--font-mono);
+  font-size: 12.5px;
+  line-height: 2;
+  font-variant-numeric: tabular-nums;
+  -webkit-mask: conic-gradient(from -45deg at bottom, #0000, #000 1deg 89deg, #0000 90deg) 50% / 12px 100%;
+  mask: conic-gradient(from -45deg at bottom, #0000, #000 1deg 89deg, #0000 90deg) 50% / 12px 100%;
+}
+.rchd {
+  text-align: center;
+  font-size: 10px;
+  letter-spacing: 0.18em;
+  color: var(--ink-3);
+}
+.rcbig {
+  text-align: center;
+  font-size: 28px;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  line-height: 1.5;
+}
+.rcsub {
+  text-align: center;
+  font-size: 11px;
+  color: var(--ink-3);
+}
+.rccut {
+  margin: 10px 0 8px;
+  border-top: 1px dashed var(--ink-3);
+}
+.rcl {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+}
+.rcl > span:first-child {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.rcl > span:last-child {
+  flex-shrink: 0;
+}
+.rcl > i {
+  flex: 1;
+  min-width: 12px;
+  border-bottom: 1px dotted var(--line-2);
+  transform: translateY(-4px);
+}
+.rcbar {
+  height: 3px;
+  margin: -2px 0 6px;
+  border-radius: 2px;
+  background: var(--line);
+  overflow: hidden;
+}
+.rcbar > b {
+  display: block;
+  height: 100%;
+  background: var(--ink);
+}
+.rcnote {
+  margin: -2px 0 6px;
+  font-size: 11px;
+  line-height: 1.5;
+  color: var(--ink-3);
+}
+.rcact {
+  margin-top: 2px;
+}
+.rcbtn {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  min-height: 28px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--ink);
+  font: inherit;
+  cursor: pointer;
+}
+.rcbtn::after {
+  content: "";
+  position: absolute;
+  inset: -8px;
+}
+/* Fields inside a labelled box or a padded page already have their side space. */
+.hbox .fld,
+.fld.flush {
+  padding: 0;
 }
