@@ -67,13 +67,17 @@ jobs:
           server=$!
           for i in $(seq 1 60); do curl -sf -o /dev/null http://127.0.0.1:7860/api/chats && break; sleep 2; done
           node custom-modules/scripts/check-engine-api.mjs http://127.0.0.1:7860 > api.log 2>&1 && api=pass
+          sections=fail
+          pnpm exec playwright install --with-deps chromium > /dev/null 2>&1 || true
+          node custom-modules/scripts/check-engine-sections.mjs http://127.0.0.1:7860 > sections.log 2>&1 && sections=pass
           kill "$server" || true
           echo "kit=$kit" >> "$GITHUB_OUTPUT"
           echo "api=$api" >> "$GITHUB_OUTPUT"
-          cat kit.log api.log
+          echo "sections=$sections" >> "$GITHUB_OUTPUT"
+          cat kit.log api.log sections.log
 
       - name: Report a break
-        if: steps.checks.outputs.kit != 'pass' || steps.checks.outputs.api != 'pass'
+        if: steps.checks.outputs.kit != 'pass' || steps.checks.outputs.api != 'pass' || steps.checks.outputs.sections != 'pass'
         run: |
           title="Mari Kit breaks on Marinara Engine ${{ steps.upstream.outputs.sha }}"
           if gh issue list --repo "$GITHUB_REPOSITORY" --state open --search "\"$title\" in:title" --json number --jq '.[0].number' | grep -q .; then
@@ -84,9 +88,10 @@ jobs:
             echo
             echo "- Package checks (\`check.mjs\`): **${{ steps.checks.outputs.kit }}**"
             echo "- Engine routes the Mari shell calls (\`check-engine-api.mjs\`): **${{ steps.checks.outputs.api }}**"
+            echo "- Engine chat-settings sections in the shell list (\`check-engine-sections.mjs\`): **${{ steps.checks.outputs.sections }}**"
             echo
             echo '```'
-            tail -n 30 kit.log api.log
+            tail -n 30 kit.log api.log sections.log
             echo '```'
           } > body.md
           gh issue create --repo "$GITHUB_REPOSITORY" --title "$title" --body-file body.md

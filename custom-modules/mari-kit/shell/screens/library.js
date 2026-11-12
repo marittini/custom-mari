@@ -5,9 +5,10 @@ import { openNewChat } from "../lib/newchat.js";
 
 let lastSeg = "works";
 
-export function libraryScreen({ mount, go }) {
+export function libraryScreen({ mount, go, args = [] }) {
   let alive = true;
-  let seg = lastSeg;
+  // #/library/chars opens the characters side (설정 › 캐릭터).
+  let seg = args[0] === "chars" ? (lastSeg = "chars") : lastSeg;
   let query = "";
   let searching = false;
   let model = null;

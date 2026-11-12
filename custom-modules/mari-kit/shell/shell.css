@@ -1766,3 +1766,9 @@ label.grow {
   text-align: left;
   cursor: pointer;
 }
+/* Monotone focus ring for text fields (the browser's own is a color). */
+.inp:focus,
+.inp:focus-visible {
+  outline: 2px solid var(--ink-3);
+  outline-offset: 1px;
+}

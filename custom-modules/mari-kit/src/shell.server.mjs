@@ -201,6 +201,30 @@ export async function shellRoutes(app, { runtime } = {}) {
     reply.header("Content-Type", "image/webp");
     return reply.send(preview.data);
   });
+  // The Engine's own settings sections (tab, label, description, search words) for the shell's settings search.
+  // From the Engine's shared module, so it follows Engine updates; empty if that module ever moves.
+  let engineSettings = null;
+  app.get("/shell/engine-settings", async (_request, reply) => {
+    if (!engineSettings) {
+      try {
+        const shared = await import("@marinara-engine/shared");
+        engineSettings = {
+          tabs: (shared.SETTINGS_TABS || []).map((t) => ({ id: t.id, label: t.label })),
+          sections: (shared.SETTINGS_SECTIONS || []).map((s) => ({
+            id: s.id,
+            tab: s.tab,
+            label: s.label,
+            description: s.description || "",
+            aliases: s.aliases || [],
+          })),
+        };
+      } catch {
+        engineSettings = { tabs: [], sections: [] };
+      }
+    }
+    reply.header("Cache-Control", "private, max-age=3600");
+    return engineSettings;
+  });
   app.get("/shell/characters", async () =>
     (await runtime.resources.listCharacters()).filter((c) => !BUILT_IN.has(c.id)).map(slimCharacter),
   );

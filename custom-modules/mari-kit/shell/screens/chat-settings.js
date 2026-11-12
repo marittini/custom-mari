@@ -10,46 +10,8 @@ import { data, characterIndex, chatMeta, chatTitle } from "../lib/data.js";
 import { setPrefs, isDark, TOOL_DEFS, toolPlace } from "../lib/prefs.js";
 import { topBar, toast, errorBox, openEngine, sheet, avatar } from "../lib/ui.js";
 import { lorebookViews, REASON_LABEL } from "../lib/lorebooks.js";
+import { ENGINE_SECTIONS } from "../lib/engine-sections.js";
 
-// Every section of the Engine's Chat Settings (2.5.2), by the group the shell shows it in. [label, section id
-// without its mode prefix, modes, the shell view that draws it (null: the Engine's)]. The daily upstream check
-// compares this list with the Engine's, so a new Engine section shows up as a report instead of going missing.
-const BOTH = ["conversation", "roleplay"];
-export const ENGINE_SECTIONS = {
-  채팅: [
-    ["채팅 이름", "chat-name", BOTH, "name"],
-    ["연결 · 프리셋 · 페르소나", "connection", BOTH, ""],
-    ["등장 캐릭터", "characters", BOTH, "cast"],
-    ["번역", "translation", BOTH, "translation"],
-    ["단체 대화", "group-chat", BOTH, null],
-    ["로어북", "lorebooks", BOTH, "lorebooks"],
-    ["채팅 변수", "chat-variables", BOTH, null],
-    ["자율 메시지", "autonomous-messaging", ["conversation"], null],
-    ["연결된 채팅", "connected-chats", BOTH, null],
-    ["함수 호출", "function-calling", BOTH, null],
-    ["고급 파라미터", "advanced-parameters", BOTH, null],
-    ["사칭 (Impersonate)", "impersonate", ["roleplay"], null],
-  ],
-  컨텍스트: [
-    ["작가 노트", "author-notes", ["roleplay"], "author"],
-    ["채팅 요약", "chat-summary", ["roleplay"], null],
-    ["활성 컨텍스트", "active-context", BOTH, null],
-  ],
-  기억: [
-    ["기억 회상", "memory-recall", BOTH, null],
-    ["자동 요약", "automatic-summarization", ["conversation"], null],
-  ],
-  기타: [
-    ["Mari Kit · 음성 · 번역 · 기억", "", BOTH, "kit"],
-    ["화면", "", BOTH, "view"],
-    ["에이전트", "agents", BOTH, null],
-    ["메시지 검색", "message-search", ["conversation"], null],
-    ["채팅 분기", "chat-branches", BOTH, null],
-    ["갤러리", "gallery", BOTH, null],
-    ["에이전트 활동", "agent-activity", ["roleplay"], null],
-    ["배경", "background", ["roleplay"], null],
-  ],
-};
 const VIEW_TITLES = {
   translation: "번역",
   cast: "등장 캐릭터",
@@ -116,14 +78,17 @@ export function chatSettingsScreen({ mount, args, go, back }) {
 
   async function load() {
     try {
+      // Each page reads only what it shows: the main list needs connections, presets and personas; 번역 needs
+      // connections; Mari Kit needs its settings.
+      const main = !view;
       const [chat, conns, presets, personas, chars, settings, voice] = await Promise.all([
         data.chat(chatId),
-        data.connections(),
-        api.get("/prompts").catch(() => []),
-        data.personas(),
+        main || view === "translation" ? data.connections() : [],
+        main ? api.get("/prompts").catch(() => []) : [],
+        main ? data.personas() : [],
         data.characters(),
-        api.get("/mari-kit/settings").catch(() => null),
-        api.get("/mari-kit/tts/settings").catch(() => null),
+        view === "kit" ? api.get("/mari-kit/settings").catch(() => null) : null,
+        view === "kit" ? api.get("/mari-kit/tts/settings").catch(() => null) : null,
       ]);
       // Lorebooks only where they are shown (the list can be long).
       const lorebooks = !view || view === "lorebooks" ? await api.get("/lorebooks").catch(() => []) : null;
@@ -561,8 +526,10 @@ export function chatSettingsScreen({ mount, args, go, back }) {
       h(
         "div",
         { class: "list" },
-        rows.map(([label, id, , v]) =>
-          v === null ? engineRow(label, id, chat) : linkRow(I.list, label, "", () => (v ? go(here(v)) : go(here()))),
+        rows.map(([label, ids, , v]) =>
+          v === null
+            ? engineRow(label, ids[0], chat)
+            : linkRow(I.list, label, "", () => (v ? go(here(v)) : go(here()))),
         ),
       ),
       anyEngine
