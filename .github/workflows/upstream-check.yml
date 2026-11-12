@@ -63,6 +63,7 @@ jobs:
           kit=fail; api=fail
           node custom-modules/scripts/check.mjs > kit.log 2>&1 && kit=pass
           data=$(mktemp -d)
+          node custom-modules/scripts/install.mjs --data-dir "$data" > /dev/null
           DATA_DIR="$data" PORT=7860 HOST=127.0.0.1 NODE_ENV=production node packages/server/dist/index.js > server.log 2>&1 &
           server=$!
           for i in $(seq 1 60); do curl -sf -o /dev/null http://127.0.0.1:7860/api/chats && break; sleep 2; done
@@ -70,14 +71,17 @@ jobs:
           sections=fail
           pnpm exec playwright install --with-deps chromium > /dev/null 2>&1 || true
           node custom-modules/scripts/check-engine-sections.mjs http://127.0.0.1:7860 > sections.log 2>&1 && sections=pass
+          flows=fail
+          node custom-modules/scripts/shell-e2e.mjs http://127.0.0.1:7860 > flows.log 2>&1 && flows=pass
           kill "$server" || true
           echo "kit=$kit" >> "$GITHUB_OUTPUT"
           echo "api=$api" >> "$GITHUB_OUTPUT"
           echo "sections=$sections" >> "$GITHUB_OUTPUT"
-          cat kit.log api.log sections.log
+          echo "flows=$flows" >> "$GITHUB_OUTPUT"
+          cat kit.log api.log sections.log flows.log
 
       - name: Report a break
-        if: steps.checks.outputs.kit != 'pass' || steps.checks.outputs.api != 'pass' || steps.checks.outputs.sections != 'pass'
+        if: steps.checks.outputs.kit != 'pass' || steps.checks.outputs.api != 'pass' || steps.checks.outputs.sections != 'pass' || steps.checks.outputs.flows != 'pass'
         run: |
           title="Mari Kit breaks on Marinara Engine ${{ steps.upstream.outputs.sha }}"
           if gh issue list --repo "$GITHUB_REPOSITORY" --state open --search "\"$title\" in:title" --json number --jq '.[0].number' | grep -q .; then
@@ -89,9 +93,10 @@ jobs:
             echo "- Package checks (\`check.mjs\`): **${{ steps.checks.outputs.kit }}**"
             echo "- Engine routes the Mari shell calls (\`check-engine-api.mjs\`): **${{ steps.checks.outputs.api }}**"
             echo "- Engine chat-settings sections in the shell list (\`check-engine-sections.mjs\`): **${{ steps.checks.outputs.sections }}**"
+            echo "- Mari shell flows at phone size (\`shell-e2e.mjs\`): **${{ steps.checks.outputs.flows }}**"
             echo
             echo '```'
-            tail -n 30 kit.log api.log sections.log
+            tail -n 30 kit.log api.log sections.log flows.log
             echo '```'
           } > body.md
           gh issue create --repo "$GITHUB_REPOSITORY" --title "$title" --body-file body.md
