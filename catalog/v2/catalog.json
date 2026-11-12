@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "generatedAt": "2026-11-12T05:38:11.476Z",
+  "generatedAt": "2026-11-12T05:45:33.316Z",
   "packages": [
     {
       "manifest": {
@@ -4677,7 +4677,7 @@
         },
         "id": "mari-kit",
         "name": "Mari Kit",
-        "version": "0.5.7",
+        "version": "0.5.8",
         "description": "개인 기능 모음(TTS·번역·날씨·기억)을 엔진 소스 수정 없이 붙이는 패키지입니다.",
         "engine": {
           "min": "2.5.2",
@@ -4715,7 +4715,7 @@
         "restartRequired": true,
         "builtAgainst": {
           "engineVersion": "2.5.2",
-          "engineCommit": "2fbbf20d6aab33a38e50a3095793b99208881de5"
+          "engineCommit": "168ab1e45899b72f643c44d1d884a25c66da2f39"
         },
         "files": [
           {
@@ -4725,8 +4725,8 @@
           },
           {
             "path": "client.js",
-            "sha256": "627b681e35ab1cab00fe72b5af360d2f93b48c8de94d8f97b7d88ff895d82235",
-            "bytes": 56718
+            "sha256": "8dfb5b78c6cdac34372a951327ada5e9a683fcbcf42403c6ef47d38ebf85dc8d",
+            "bytes": 56951
           },
           {
             "path": "convo-weather-core.mjs",
@@ -4790,8 +4790,8 @@
           },
           {
             "path": "shell/app.js",
-            "sha256": "788711919d7504328cd431af7763eefe9efbdb4e370737d348a094d81f076089",
-            "bytes": 5814
+            "sha256": "c6a6ce7a88593a98221933dae16bbf389af98245fba92a0977cbe88454dcb9c2",
+            "bytes": 6407
           },
           {
             "path": "shell/lib/actions.js",
@@ -4962,9 +4962,9 @@
       },
       "category": "misc",
       "artifact": {
-        "url": "https://raw.githubusercontent.com/marittini/custom-mari/mari-catalog/artifacts/mari-kit-0.5.7.zip",
-        "sha256": "8fb6ec669d1cb34324c3a9d668399f395993f6b3db8146a5cde13f39a3703a77",
-        "bytes": 216545
+        "url": "https://raw.githubusercontent.com/marittini/custom-mari/mari-catalog/artifacts/mari-kit-0.5.8.zip",
+        "sha256": "f32f19a038c6cf4286eef26295ca29052b4b4f3f7ce6abbc14f08435c546fdf8",
+        "bytes": 216855
       },
       "documentationUrl": "https://github.com/marittini/custom-mari/tree/main/custom-modules"
     }
