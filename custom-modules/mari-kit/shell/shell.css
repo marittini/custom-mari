@@ -577,7 +577,7 @@ a {
   font-size: 15px;
 }
 .sel {
-  height: 32px;
+  height: 38px;
   min-height: 32px;
   padding: 0 10px;
   font-size: 13px;
@@ -1171,7 +1171,9 @@ a {
   align-items: center;
   gap: 5px;
   max-width: 100%;
-  padding: 0 4px;
+  /* Clipped text cannot carry a wider ::after, so the padding is the touch area and the margin takes it back. */
+  padding: 14px 8px;
+  margin: -14px -4px;
   border: 0;
   background: transparent;
   color: var(--ink-3);
@@ -1698,4 +1700,28 @@ label.grow {
   display: block;
   margin-top: 6px;
   color: var(--ink-3);
+}
+/* Finger-sized touch areas (44px) for slim controls, without making them look bigger. */
+.cb,
+.chip,
+.t2,
+.callev,
+.seg2 button,
+.seg button,
+.seg3 button {
+  position: relative;
+}
+.cb::after,
+.chip::after,
+.t2::after,
+.callev::after,
+.seg2 button::after,
+.seg button::after,
+.seg3 button::after {
+  content: "";
+  position: absolute;
+  inset: -7px -4px;
+}
+.t2::after {
+  inset: -2px -12px;
 }
