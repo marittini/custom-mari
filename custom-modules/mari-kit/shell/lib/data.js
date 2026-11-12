@@ -145,6 +145,11 @@ export function messageWindow(chatId, page = 40) {
       for (let i = 0; firstId && more && i < 20 && !list.some((m) => m.id === firstId); i += 1) await this.older();
       return list;
     },
+    /** Reads older pages until message `id` is on screen (a search hit); false when it is not in the chat. */
+    async until(id) {
+      for (let i = 0; i < 200 && !list.some((m) => m.id === id); i += 1) if (!(await this.older())) break;
+      return list.some((m) => m.id === id);
+    },
     /** Adds the page before the first message on screen; returns how many came. */
     async older() {
       const first = list[0];

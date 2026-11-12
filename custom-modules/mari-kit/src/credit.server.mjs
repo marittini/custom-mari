@@ -99,6 +99,8 @@ export function normalizeCredit(raw) {
   return {
     display: d.display === "USD" ? "USD" : "KRW",
     fx: num(d.fx, 1),
+    // "적음" below this many USD left (null: never).
+    low: d.low === null ? null : (num(d.low) ?? 20),
     hidden: Array.isArray(d.hidden) ? d.hidden.filter((x) => typeof x === "string").slice(0, 200) : [],
     google: (Array.isArray(d.google) ? d.google : []).slice(0, 20).map((g) => ({
       id: str(g.id, 40),
@@ -110,6 +112,7 @@ export function normalizeCredit(raw) {
       lagHours: num(g.lagHours) ?? 24,
       expires: day(g.expires),
       used: g.used && typeof g.used === "object" ? g.used : null, // { usd, unknown, checkedAt, from }
+      spend: g.spend && typeof g.spend === "object" ? g.spend : null, // { today, month } USD
       folded: g.folded && typeof g.folded === "object" ? g.folded : null, // { until, usd, unknown }
       error: str(g.error, 200),
     })),
@@ -136,6 +139,7 @@ export function publicGoogle(g) {
     left: g.balance === null ? null : Math.max(0, g.balance - usedUsd),
     unknown: [...new Set([...(g.used?.unknown || []), ...(g.folded?.unknown || [])])].slice(0, 8),
     checkedAt: g.used?.checkedAt || "",
+    spend: g.used?.checkedAt && g.spend ? { today: g.spend.today, month: g.spend.month } : null,
     error: g.error,
   };
 }
@@ -227,7 +231,15 @@ export async function refreshGoogle(g, { force = false, now = Date.now(), fetchF
     }
     const liveFrom = folded ? Date.parse(folded.until) : start;
     const live = costOf(await googleTokens(g.sa, liveFrom, now, fetchFn));
-    return { ...g, folded, used: { ...live, checkedAt: new Date(now).toISOString() }, error: "" };
+    // What was spent today and this month (this server's local days), for the card's top line.
+    const d = new Date(now);
+    const midnight = new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime();
+    const firstDay = new Date(d.getFullYear(), d.getMonth(), 1).getTime();
+    const spend = {
+      today: costOf(await googleTokens(g.sa, midnight, now, fetchFn)).usd,
+      month: costOf(await googleTokens(g.sa, firstDay, now, fetchFn)).usd,
+    };
+    return { ...g, folded, spend, used: { ...live, checkedAt: new Date(now).toISOString() }, error: "" };
   } catch (error) {
     return { ...g, error: String(error.message || error).slice(0, 200) };
   }
@@ -303,6 +315,7 @@ export const creditFeature = {
       return {
         display: credit.display,
         fx: credit.fx,
+        low: credit.low,
         rates: { KRW, CNY },
         hidden: credit.hidden,
         google: credit.google.map(publicGoogle),
@@ -325,7 +338,7 @@ export const creditFeature = {
             google: c.google.map((g) => {
               const u = updated.find((x) => x.id === g.id);
               // Keep what the user changed meanwhile; take only the usage that was read.
-              return u && u.at === g.at ? { ...g, used: u.used, folded: u.folded, error: u.error } : g;
+              return u && u.at === g.at ? { ...g, used: u.used, folded: u.folded, spend: u.spend, error: u.error } : g;
             }),
           }));
       }
@@ -339,6 +352,7 @@ export const creditFeature = {
           ...c,
           ...(b.display !== undefined ? { display: b.display === "USD" ? "USD" : "KRW" } : {}),
           ...(b.fx !== undefined ? { fx: num(b.fx, 1) } : {}),
+          ...(b.low !== undefined ? { low: b.low === null || b.low === "" ? null : num(b.low) } : {}),
           ...(Array.isArray(b.hidden) ? { hidden: b.hidden.filter((x) => typeof x === "string").slice(0, 200) } : {}),
         })),
       );

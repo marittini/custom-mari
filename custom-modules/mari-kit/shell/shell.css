@@ -223,6 +223,9 @@ a {
 .pill {
   min-height: 40px;
   padding: 0 18px;
+  /* A button label stays on one line; the field beside it gives way. */
+  white-space: nowrap;
+  flex-shrink: 0;
   border: 1px solid var(--line-2);
   border-radius: 999px;
   background: transparent;
@@ -2011,4 +2014,92 @@ button.toast {
 .hbox .fld,
 .fld.flush {
   padding: 0;
+}
+/* A round check mark (pickers): filled when chosen. */
+.tick {
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  border: 1.5px solid var(--line-2);
+  justify-self: end;
+}
+.tick.on {
+  border-color: var(--me);
+  background: var(--me);
+  box-shadow: inset 0 0 0 3px var(--surface);
+}
+/* Unread count on a dock tab. */
+.dk {
+  position: relative;
+}
+.dk .unread {
+  position: absolute;
+  top: 4px;
+  left: calc(50% + 6px);
+  min-width: 16px;
+  height: 16px;
+  padding: 0 4px;
+  font-size: 10px;
+  line-height: 16px;
+}
+/* 서재 이어 읽기 */
+.ccard {
+  display: grid;
+  grid-template-columns: 56px minmax(0, 1fr) 40px;
+  align-items: center;
+  gap: 16px;
+  margin: 0 20px 20px;
+  padding: 16px;
+  color: var(--ink);
+  text-decoration: none;
+}
+.cline {
+  font-size: 13px;
+  line-height: 1.6;
+  color: var(--ink-2);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.cplay {
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  background: var(--me);
+  color: var(--me-fg);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+/* A search hit, marked for a moment after the jump. */
+.flash {
+  animation: flash 2.4s ease-out;
+}
+@keyframes flash {
+  0%,
+  30% {
+    outline: 2px solid var(--ink);
+    outline-offset: 6px;
+    border-radius: 8px;
+  }
+  100% {
+    outline: 2px solid transparent;
+    outline-offset: 6px;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .flash {
+    animation: none;
+    outline: 2px solid var(--ink);
+    outline-offset: 6px;
+  }
+}
+.rclow {
+  display: inline-block;
+  padding: 0 5px;
+  border: 1px solid var(--ink);
+  border-radius: 5px;
+  font-size: 10px;
+  line-height: 16px;
+  vertical-align: 1px;
 }

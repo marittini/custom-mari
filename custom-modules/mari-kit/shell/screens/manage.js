@@ -214,7 +214,7 @@ export function connectionPage(body, go, id) {
 // ── personas ──────────────────────────────
 // Every persona with its picture as the Engine crops it, split by persona groups. Editing (fields, picture and
 // crop, groups, export) is the Engine's persona editor, opened at that persona.
-export function personasPage(body) {
+export function personasPage(body, go) {
   guard(body, async () => {
     const [list, groups] = await Promise.all([data.personas(), groupsOf("personas")]);
     const open = (p) =>
@@ -244,8 +244,9 @@ export function personasPage(body) {
           h(
             "button",
             { type: "button", class: "pill", onClick: () => openEngine(null, { panel: "personas" }) },
-            "새 페르소나 · 그룹 · 엔진 ›",
+            "새 페르소나 · 엔진 ›",
           ),
+          h("button", { type: "button", class: "pill", onClick: () => go("groups/personas") }, "그룹 관리"),
         ),
       ),
     );

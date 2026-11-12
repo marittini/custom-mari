@@ -47,6 +47,9 @@ const folders = (list) =>
     .sort((a, b) => (a.sortOrder ?? 0) - (b.sortOrder ?? 0))
     .map((f) => ({ id: f.id, name: f.name, items: ids(f.itemIds) }));
 
+/** Forget one kind's groups after the shell changed them (a new folder, a renamed group). */
+export const forgetGroups = (kind) => cache.delete(kind);
+
 /** The groups of one kind ([] when there are none or they cannot be read). */
 export function groupsOf(kind) {
   if (!cache.has(kind))
