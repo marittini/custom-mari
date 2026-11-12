@@ -1,0 +1,68 @@
+name: Mari Catalog
+
+# Publishes Mari's agent catalog on the `mari-catalog` branch: the official Marinara-Agents catalog plus Mari Kit
+# (custom-modules/scripts/catalog.mjs). An Engine started with
+#   MARINARA_AGENT_CATALOG_URL=https://raw.githubusercontent.com/marittini/custom-mari/mari-catalog/catalog/v2/catalog.json
+# installs and updates the official agents and Mari Kit from its own Agents screen. Runs daily to pick up new
+# official agents, and whenever Mari Kit changes on main.
+
+on:
+  schedule:
+    - cron: "43 20 * * *"
+  push:
+    branches: [main]
+    paths: ["custom-modules/**"]
+  workflow_dispatch:
+
+concurrency:
+  group: mari-catalog
+  cancel-in-progress: false
+
+permissions:
+  contents: write
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    env:
+      ONNXRUNTIME_NODE_INSTALL: skip
+    steps:
+      - name: Checkout main
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Checkout the catalog branch
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: mari-catalog
+          path: catalog-out
+
+      - name: Set up pnpm
+        uses: pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413 # v6.1.0
+        with:
+          run_install: false
+
+      - name: Set up Node.js
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 24
+          cache: pnpm
+
+      - name: Build the catalog
+        run: |
+          pnpm install --frozen-lockfile
+          pnpm build:shared
+          node custom-modules/scripts/check.mjs
+          node custom-modules/scripts/catalog.mjs --out catalog-out \
+            --base-url "https://raw.githubusercontent.com/${GITHUB_REPOSITORY}/mari-catalog"
+
+      - name: Publish
+        working-directory: catalog-out
+        run: |
+          git add -A
+          if git diff --cached --quiet; then echo "Catalog unchanged"; exit 0; fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git commit -m "Mari agent catalog: $(date -u +%F)"
+          git push origin HEAD:mari-catalog

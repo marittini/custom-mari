@@ -209,18 +209,33 @@ RP 채팅의 채팅 설정 → 에이전트 → Mari Kit에서 정합니다. (�
 한계: 슬래시 명령은 `/guided /continue /impersonate /send /sys /as /roll`만 쉘에서 실행합니다(나머지는 엔진 화면).
 글꼴·읽기·메시지 도구·앱 이름 설정은 브라우저마다 저장됩니다.
 
-## 원본 업데이트 받기
+## 업데이트 받기
 
-엔진 소스는 원본(Pasta-Devs/Marinara-Engine) 그대로라서, 엔진이 원본에서 직접 업데이트합니다. 병합할 일은 없습니다.
+엔진은 원본(Pasta-Devs/Marinara-Engine)에서, Mari Kit은 엔진의 에이전트 화면에서 업데이트합니다. 병합할 일은 없습니다.
 
-1. 설치 폴더에서 한 번만: `git remote set-url origin https://github.com/Pasta-Devs/Marinara-Engine.git`
-   이후에는 엔진 앱의 업데이트 버튼이 원본 `main`을 그대로 받습니다. 그때 설치 폴더의 `custom-modules/`는
-   사라지지만, 데이터 폴더에 설치된 Mari Kit과 쉘은 그대로 남습니다.
-2. `.github/workflows/upstream-check.yml`이 매일 최신 원본 위에 Mari Kit을 올려 검사합니다. 깨지면 이 저장소에
-   이슈를 엽니다. 아무것도 병합하지 않습니다.
-3. 쉘이 쓰는 엔진 API는 `mari-kit/shell/engine-api.json`에 있습니다.
-   - `node custom-modules/scripts/check-engine-api.mjs <엔진 주소>`: 업데이트된 엔진에 그 API가 아직 있는지 확인합니다.
-     요청에 가짜 id와 빈 본문을 보내므로, 버려도 되는 데이터 폴더의 엔진에 돌립니다.
-   - `check.mjs`: 쉘 코드에 새 엔진 호출이 생겼는데 목록에 빠져 있으면 실패합니다.
-4. 원본에 새로 생긴 기능은 쉘에 들어오기 전에도 **설정 → 엔진 화면**이나 **채팅 설정 → 엔진 화면에서 열기**로 바로
-   씁니다. 엔진 화면이 같은 채팅으로 열립니다.
+처음 한 번만:
+
+1. 설치 폴더에서 `git remote set-url origin https://github.com/Pasta-Devs/Marinara-Engine.git`
+   이후에는 엔진 앱의 업데이트 버튼이 원본 `main`을 그대로 받습니다.
+2. 설치 폴더의 `.env`에 이 한 줄을 넣고 엔진을 다시 켭니다.
+
+   ```
+   MARINARA_AGENT_CATALOG_URL=https://raw.githubusercontent.com/marittini/custom-mari/mari-catalog/catalog/v2/catalog.json
+   ```
+
+   엔진의 에이전트 목록이 Mari 목록표를 읽습니다. 공식 에이전트는 전부 그대로 있고 Mari Kit이 하나 더 있습니다.
+   Mari Kit도 다른 에이전트처럼 에이전트 화면에서 설치하고 업데이트합니다.
+
+어떻게 돌아가나:
+
+- `.github/workflows/mari-catalog.yml`이 매일, 그리고 `main`의 Mari Kit이 바뀔 때마다 `mari-catalog` 브랜치에
+  목록표를 만듭니다(`scripts/catalog.mjs`). 공식 목록표는 그대로 복사하고 Mari Kit만 더합니다. 공식 에이전트
+  파일은 여전히 Pasta-Devs에서 받습니다. 공식에 새로 올라온 에이전트는 최대 하루 늦게 보이고, 공식의
+  staging 전용 미리보기는 보이지 않습니다.
+- Mari Kit 파일을 바꾸면 `manifest.template.json`의 버전을 올립니다. 같은 버전으로 다른 파일을 올리려 하면
+  `catalog.mjs`가 멈춥니다.
+- `.github/workflows/upstream-check.yml`이 매일 최신 원본 위에 Mari Kit을 올려 검사하고, 깨지면 이슈를 엽니다.
+- 쉘이 쓰는 엔진 API는 `mari-kit/shell/engine-api.json`에 있습니다.
+  `check-engine-api.mjs`가 업데이트된 엔진에 그 API가 아직 있는지 확인하고, `check.mjs`는 쉘 코드에 목록에 없는
+  엔진 호출이 생기면 실패합니다.
+- 원본에 새로 생긴 기능은 쉘에 들어오기 전에도 **설정 → 엔진 화면**이나 **채팅 설정 → 엔진 화면에서 열기**로 씁니다.
