@@ -6,7 +6,7 @@ import { h, icon, dots, I, setChildren } from "../lib/h.js";
 import { api } from "../lib/api.js";
 import { data, characterIndex, chatTitle, chatMeta, messageText, messageWindow } from "../lib/data.js";
 import { TOOL_DEFS, toolPlace, prefs } from "../lib/prefs.js";
-import { olderButton, topBar, toast, errorBox, fitMenus } from "../lib/ui.js";
+import { olderButton, topBar, toast, errorBox, fitMenus, jumpTo } from "../lib/ui.js";
 import { parseMessage, inline, buildPronunciations, applyPronunciations, pickVoice } from "../lib/render.js";
 import * as tts from "../lib/tts.js";
 import { syncVoiceSettings } from "../lib/voice.js";
@@ -158,8 +158,10 @@ export function rpScreen({ mount, args, go, back }) {
         .filter(Boolean)
         .join(" · ");
       if (first) await loadExtras();
+      // Opened from a search hit (#/rp/<chat>/<message>): read back to it.
+      if (first && args[1] && (await win.until(args[1]))) messages = win.list;
       draw();
-      if (first) requestAnimationFrame(() => (scroller.scrollTop = scroller.scrollHeight));
+      if (first) requestAnimationFrame(() => jumpTo(page, args[1]) || (scroller.scrollTop = scroller.scrollHeight));
     } catch (error) {
       if (alive) setChildren(page, errorBox(error));
     }

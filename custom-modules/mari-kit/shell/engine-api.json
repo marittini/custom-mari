@@ -63,6 +63,14 @@
     "GET /connection-accounts",
     "GET /connection-accounts/:id/balance",
     "GET /app-settings/outside-reads",
-    "PUT /app-settings/outside-reads"
+    "PUT /app-settings/outside-reads",
+    "POST /chat-folders/move-chat",
+    "POST /chat-folders",
+    "POST /characters/groups",
+    "PATCH /characters/groups/:id",
+    "DELETE /characters/groups/:id",
+    "POST /characters/persona-groups",
+    "PATCH /characters/persona-groups/:id",
+    "DELETE /characters/persona-groups/:id"
   ]
 }

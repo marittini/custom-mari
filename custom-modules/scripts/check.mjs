@@ -548,6 +548,7 @@ if (id === "mari-kit") {
     const one = await refreshGoogle(fresh, { now, fetchFn: fakeFetch });
     assert.equal(publicGoogle(one).left, 300 - 11.25);
     assert.equal(publicGoogle(one).email, "bot@p1.iam");
+    assert.deepEqual(publicGoogle(one).spend, { today: 11.25, month: 11.25 });
     assert.ok(!("sa" in publicGoogle(one)) && !JSON.stringify(publicGoogle(one)).includes("PRIVATE"));
     // Within 30 minutes nothing is asked again; a window over a week folds the old part once.
     const n = calls.length;
@@ -557,6 +558,24 @@ if (id === "mari-kit") {
     const two = await refreshGoogle(old, { now, fetchFn: fakeFetch });
     assert.equal(two.folded.usd, 11.25);
     assert.equal(publicGoogle(two).left, 300 - 22.5);
+  }
+  // 메시지 검색: every word, newest first, hidden ones skipped, a translation counts.
+  {
+    const { searchMessages } = await import(pathToFileURL(join(outDir, "shell.server.mjs")).href);
+    const rows = [
+      { id: "a", role: "user", content: "우산을 들고 역으로" },
+      { id: "b", role: "assistant", content: "Umbrella", extra: JSON.stringify({ translation: "우산 하나" }) },
+      { id: "c", role: "assistant", content: "우산 역", extra: { hiddenFromUser: true } },
+    ];
+    assert.deepEqual(
+      searchMessages(rows, "우산").map((m) => m.id),
+      ["b", "a"],
+    );
+    assert.deepEqual(
+      searchMessages(rows, "우산 역").map((m) => m.id),
+      ["a"],
+    );
+    assert.deepEqual(searchMessages(rows, "  "), []);
   }
   // List previews: newest shown line (hidden and command-only skipped, a call reads 음성 통화) and newest reply.
   const { previewOf } = await import(pathToFileURL(join(outDir, "shell.server.mjs")).href);

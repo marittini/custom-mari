@@ -6,7 +6,7 @@ import { h, icon, I, setChildren } from "./lib/h.js";
 import { applyPrefs, onPrefs } from "./lib/prefs.js";
 import { backgroundAutonomy } from "./lib/autonomy.js";
 import { streamGenerate } from "./lib/actions.js";
-import { data } from "./lib/data.js";
+import { data, chatMeta } from "./lib/data.js";
 import { toast } from "./lib/ui.js";
 const root = document.getElementById("app");
 const TABS = [
@@ -34,6 +34,8 @@ const SCREENS = {
   radio: () => import("./screens/radio.js").then((m) => m.radioScreen),
   "call-settings": () => import("./screens/call-settings.js").then((m) => m.callSettingsScreen),
   credit: () => import("./screens/credit.js").then((m) => m.creditScreen),
+  groups: () => import("./screens/groups.js").then((m) => m.groupsScreen),
+  search: () => import("./screens/search.js").then((m) => m.searchScreen),
 };
 
 export function go(path) {
@@ -85,7 +87,7 @@ function parseRoute() {
 let current = null;
 
 function dock(active) {
-  return h(
+  const nav = h(
     "nav",
     { class: "dock", "aria-label": "주 메뉴" },
     TABS.map((t) =>
@@ -95,6 +97,7 @@ function dock(active) {
           type: "button",
           class: t.id === active ? "dk on" : "dk",
           "aria-current": t.id === active ? "page" : false,
+          "data-tab": t.id,
           onClick: () => openTab(t.id),
         },
         icon(t.icon, 22),
@@ -102,6 +105,22 @@ function dock(active) {
       ),
     ),
   );
+  // 대화: how many messages characters wrote while their chat was closed (the Engine's unread marks), from the
+  // chat list the tab screens read anyway (the copy is reused for 20 seconds).
+  data
+    .chats("soft")
+    .then((chats) => {
+      const n = chats
+        .filter((c) => c.mode === "conversation")
+        .reduce((sum, c) => sum + (Number(chatMeta(c).autonomousUnreadCount) || 0), 0);
+      const tab = nav.querySelector('[data-tab="convos"]');
+      if (tab && n > 0) {
+        tab.setAttribute("aria-label", `대화, 안 읽은 메시지 ${n}개`);
+        tab.append(h("span", { class: "unread" }, n > 99 ? "99+" : String(n)));
+      }
+    })
+    .catch(() => {});
+  return nav;
 }
 
 let renderSeq = 0;
@@ -167,6 +186,7 @@ backgroundAutonomy({
   onArrived: (chat) => {
     data.chats(true);
     if (["home", "convos"].includes(parseRoute().name)) render();
+    else document.querySelector(".dock")?.replaceWith(dock(parseRoute().name)); // the 대화 count
     if (chat?.id) toast(`${chat.name || "대화"} · 새 메시지 ›`, () => go(`convo/${encodeURIComponent(chat.id)}`));
   },
 });

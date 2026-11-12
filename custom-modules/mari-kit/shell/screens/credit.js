@@ -198,6 +198,17 @@ export function creditScreen({ mount, back }) {
         ),
       ),
       field("1달러 환율 (원)", fx, "비워 두면 하루에 한 번 자동으로 받아요"),
+      h("div", { style: { height: "12px" } }),
+      field(
+        "이보다 적으면 '적음' 표시 ($)",
+        input(view.low ?? "", {
+          type: "number",
+          inputmode: "decimal",
+          placeholder: "끄려면 비우기",
+          onChange: (e) => patch({ low: e.target.value === "" ? null : Number(e.target.value) }),
+        }),
+        "계정마다 남은 금액을 달러로 바꿔 비교해요",
+      ),
 
       h(
         "div",

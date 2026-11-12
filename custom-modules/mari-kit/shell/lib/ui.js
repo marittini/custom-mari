@@ -247,3 +247,13 @@ export function fitMenus(root) {
     else if (r.bottom > area.bottom) Object.assign(menu.style, { top: "auto", bottom: "40px" });
   }
 }
+
+/** Scrolls a message into view and marks it briefly (a search hit). Returns false when it is not on screen. */
+export function jumpTo(root, id) {
+  const el = id && root.querySelector(`[data-message-id="${CSS.escape(id)}"]`);
+  if (!el) return false;
+  el.scrollIntoView({ block: "center" });
+  el.classList.add("flash");
+  setTimeout(() => el.classList.remove("flash"), 2400);
+  return true;
+}

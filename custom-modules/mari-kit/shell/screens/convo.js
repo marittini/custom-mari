@@ -15,7 +15,7 @@ import {
   messageWindow,
 } from "../lib/data.js";
 import { TOOL_DEFS, toolPlace } from "../lib/prefs.js";
-import { toast, errorBox, avatar, avatarStack, olderButton, fitMenus } from "../lib/ui.js";
+import { toast, errorBox, avatar, avatarStack, olderButton, fitMenus, jumpTo } from "../lib/ui.js";
 import { pickVoice, stripCues, inline } from "../lib/render.js";
 import * as tts from "../lib/tts.js";
 import { syncVoiceSettings } from "../lib/voice.js";
@@ -237,9 +237,11 @@ export function convoScreen({ mount, args, go, back }) {
           generate: (body) => generate(body),
         });
         if (Number(chatMeta(chat).autonomousUnreadCount) > 0) clearUnread(chatId).then(() => data.chats(true));
+        // Opened from a search hit (#/convo/<chat>/<message>): read back to it.
+        if (args[1] && (await win.until(args[1]))) messages = shown();
       }
       draw();
-      if (first) requestAnimationFrame(() => (scroller.scrollTop = scroller.scrollHeight));
+      if (first) requestAnimationFrame(() => jumpTo(list, args[1]) || (scroller.scrollTop = scroller.scrollHeight));
     } catch (error) {
       if (alive) setChildren(list, errorBox(error));
     }

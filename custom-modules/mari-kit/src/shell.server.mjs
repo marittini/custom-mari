@@ -264,7 +264,47 @@ export function previewOf(messages) {
 
 const previewCache = new Map(); // chatId -> { at, value }
 
+/** Messages of a transcript that contain every word of the query (shown text, translation): newest first. */
+export function searchMessages(messages, query, limit = 60) {
+  const words = String(query || "")
+    .toLowerCase()
+    .split(/\s+/)
+    .filter(Boolean)
+    .slice(0, 8);
+  if (!words.length) return [];
+  const out = [];
+  for (let i = messages.length - 1; i >= 0 && out.length < limit; i -= 1) {
+    const m = messages[i];
+    const extra = parseExtra(m.extra);
+    if (extra.hiddenFromUser === true || extra.commandOnly === true) continue;
+    const text =
+      typeof extra.displayText === "string" && extra.displayText ? extra.displayText : String(m.content ?? "");
+    const hay = `${text}\n${typeof extra.translation === "string" ? extra.translation : ""}`.toLowerCase();
+    if (!words.every((w) => hay.includes(w))) continue;
+    // A short piece around the first word, on one line.
+    const flat = `${text} ${extra.translation || ""}`.replace(/\s+/g, " ");
+    const at = Math.max(0, flat.toLowerCase().indexOf(words[0]) - 40);
+    out.push({
+      id: m.id,
+      role: m.role,
+      characterId: m.characterId,
+      createdAt: m.createdAt,
+      snippet: `${at > 0 ? "…" : ""}${flat.slice(at, at + 140)}${flat.length > at + 140 ? "…" : ""}`,
+    });
+  }
+  return out;
+}
+
 export async function shellRoutes(app, { runtime } = {}) {
+  // 메시지 검색: searched on the server so the phone gets only the hits (the Engine's own search downloads the
+  // whole transcript, with the prompt it keeps on recent replies).
+  app.get("/shell/search/:chatId", async (request, reply) => {
+    const chat = await runtime.persistence.getChat(String(request.params.chatId || ""));
+    if (!chat) return reply.status(404).send({ error: "Chat not found" });
+    const q = String(request.query?.q || "").slice(0, 200);
+    return { hits: searchMessages(await runtime.persistence.listMessages(chat.id), q) };
+  });
+
   app.get("/shell/previews", async (request, reply) => {
     const ids = String(request.query?.ids || "")
       .split(",")

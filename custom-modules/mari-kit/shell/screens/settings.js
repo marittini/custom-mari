@@ -39,7 +39,7 @@ export function settingsScreen({ mount, args, go, back }) {
     presets: () => presetsPage(body, go),
     preset: () => presetPage(body, go, args[1]),
     voice: () => voicePage(body),
-    personas: () => personasPage(body),
+    personas: () => personasPage(body, go),
   };
   const draw = () => {
     if (manage[page]) return manage[page]();

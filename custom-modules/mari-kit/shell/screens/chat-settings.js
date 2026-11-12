@@ -11,7 +11,7 @@ import { setPrefs, isDark, TOOL_DEFS, toolPlace } from "../lib/prefs.js";
 import { topBar, toast, errorBox, openEngine, sheet, avatar, thumb } from "../lib/ui.js";
 import { lorebookViews, REASON_LABEL } from "../lib/lorebooks.js";
 import { ENGINE_SECTIONS } from "../lib/engine-sections.js";
-import { groupsOf, splitByGroup, groupedOptions, sectioned } from "../lib/groups.js";
+import { groupsOf, splitByGroup, groupedOptions, sectioned, forgetGroups } from "../lib/groups.js";
 
 const NOT_CHAT = ["image_generation", "video_generation", "audio_generation", "audio", "decision"];
 
@@ -88,7 +88,11 @@ export function chatSettingsScreen({ mount, args, go, back }) {
       // Each page reads only what it shows: the main list needs connections, presets and personas; 번역 needs
       // connections; Mari Kit needs its settings.
       const main = !view;
-      const groupKinds = main ? ["connections", "presets", "personas"] : view === "translation" ? ["connections"] : [];
+      const groupKinds = main
+        ? ["connections", "presets", "personas", "chats"]
+        : view === "translation"
+          ? ["connections"]
+          : [];
       const groups = Object.fromEntries(await Promise.all(groupKinds.map(async (k) => [k, await groupsOf(k)])));
       const [chat, conns, presets, personas, chars, settings, voice] = await Promise.all([
         data.chat(chatId),
@@ -520,6 +524,13 @@ export function chatSettingsScreen({ mount, args, go, back }) {
         "div",
         { class: "list" },
         linkRow(I.square, "표지", coverOf(chat) ? "있음" : "캐릭터 사진", () => go(here("cover"))),
+        linkRow(I.search, "메시지 검색", "", () => go(`search/${encodeURIComponent(chatId)}`)),
+        linkRow(
+          I.list,
+          "폴더",
+          (state.groups.chats || []).find((f) => f.id === chat.folderId)?.name || "폴더 없음",
+          folderSheet,
+        ),
         linkRow(I.person, "등장 캐릭터", cast.join(", ") || "없음", () => go(here("cast"))),
         linkRow(I.lore, "로어북", lorebookSummary(), () => go(here("lorebooks"))),
         chat.mode === "roleplay"
@@ -571,6 +582,73 @@ export function chatSettingsScreen({ mount, args, go, back }) {
     } catch (error) {
       toast(`지우지 못했어요: ${error.message}`);
     }
+  }
+
+  // 폴더: the Engine's chat folders of this chat's mode; move this chat, or make a folder and move it there.
+  function folderSheet() {
+    const { chat } = state;
+    const folders = (state.groups.chats || []).filter((f) => f.mode === chat.mode);
+    const move = async (folderId) => {
+      try {
+        await api.post("/chat-folders/move-chat", { chatId, folderId });
+        forgetGroups("chats");
+        await data.chats(true);
+        s.close();
+        toast(folderId ? "폴더로 옮겼어요" : "폴더에서 뺐어요");
+        await load();
+      } catch (error) {
+        toast(error.message);
+      }
+    };
+    const name = h("input", { class: "inp", placeholder: "새 폴더 이름", maxlength: 60 });
+    const pick = (id, label) =>
+      h(
+        "button",
+        {
+          type: "button",
+          class: "r two",
+          "aria-pressed": (chat.folderId || null) === id ? "true" : "false",
+          onClick: () => move(id),
+        },
+        h("span", null, label),
+        h("span", { class: "val" }, (chat.folderId || null) === id ? "지금" : ""),
+      );
+    const s = sheet(
+      h(
+        "div",
+        { style: { display: "flex", flexDirection: "column", gap: "8px", padding: "4px 0 24px", overflowY: "auto" } },
+        h("b", { style: { padding: "0 20px 6px", fontSize: "15px" } }, "폴더"),
+        h(
+          "div",
+          { class: "list" },
+          folders.map((f) => pick(f.id, f.name)),
+          pick(null, "폴더 없음"),
+        ),
+        h(
+          "div",
+          { style: { display: "flex", gap: "8px", padding: "12px 20px 0" } },
+          name,
+          h(
+            "button",
+            {
+              type: "button",
+              class: "pill main",
+              onClick: async () => {
+                if (!name.value.trim()) return toast("폴더 이름을 적어 주세요");
+                try {
+                  const made = await api.post("/chat-folders", { name: name.value.trim(), mode: chat.mode });
+                  await move(made.id);
+                } catch (error) {
+                  toast(error.message);
+                }
+              },
+            },
+            "만들고 옮기기",
+          ),
+        ),
+      ),
+      { label: "폴더" },
+    );
   }
 
   function allView() {

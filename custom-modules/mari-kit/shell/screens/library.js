@@ -74,6 +74,45 @@ export function libraryScreen({ mount, go, args = [] }) {
     );
   }
 
+  // The newest story with its last line (one small request, kept until the chat changes).
+  function continueCard(c) {
+    const { index } = model;
+    const title = chatTitle(c, index);
+    const line = h("span", { class: "read cline" }, "");
+    data
+      .previews([c])
+      .then((m) => {
+        const text = String(m.get(c.id)?.assistant || "");
+        const quotes = text.match(/[“"「『][^”"」』]{2,}[”"」』]/g);
+        line.textContent = (quotes?.length ? quotes[quotes.length - 1] : text.trim().split(/\n+/).pop()) || "";
+      })
+      .catch(() => {});
+    return h(
+      "a",
+      { class: "gcard ccard", href: `#/rp/${encodeURIComponent(c.id)}` },
+      lazyBg(
+        h(
+          "span",
+          { class: "ph", style: { width: "56px", height: "76px", fontSize: "18px" } },
+          coverOf(c) || index.get(c.characterIds?.[0])?.avatar ? "" : firstLetter(title),
+        ),
+        coverOf(c) || index.get(c.characterIds?.[0])?.avatar,
+      ),
+      h(
+        "span",
+        { style: { display: "flex", flexDirection: "column", gap: "4px", minWidth: "0" } },
+        h(
+          "span",
+          { class: "hint", style: { fontSize: "11px" } },
+          `이어 읽기 · ${shortTime(c.lastMessageAt || c.updatedAt)}`,
+        ),
+        h("span", { style: { fontSize: "16px", fontWeight: "600" } }, title),
+        line,
+      ),
+      h("span", { class: "cplay", "aria-label": "이어서" }, icon(I.play, 14, 2)),
+    );
+  }
+
   function draw() {
     if (!model) return;
     const { chats, index } = model;
@@ -167,8 +206,11 @@ export function libraryScreen({ mount, go, args = [] }) {
               .join(" · "),
           );
         };
+        // 이어 읽기: the story read last, on top (not while searching).
+        const latest = !ql ? rows[0] : null;
         setChildren(
           list,
+          latest ? continueCard(latest) : null,
           rows.length
             ? parts.map((p) => {
                 const grid = h("div", { class: "grid" }, p.items.map(book));
@@ -217,7 +259,16 @@ export function libraryScreen({ mount, go, args = [] }) {
         );
         setChildren(
           list,
-          sorts,
+          h(
+            "div",
+            { style: { display: "flex", justifyContent: "space-between", alignItems: "center", paddingRight: "20px" } },
+            sorts,
+            h(
+              "a",
+              { class: "hint", href: "#/groups/characters", style: { padding: "10px 0", whiteSpace: "nowrap" } },
+              "그룹 관리 ›",
+            ),
+          ),
           rows.length
             ? splitByGroup(rows, model.charGroups || []).map((part, i, all) =>
                 (all.length > 1 || part.label

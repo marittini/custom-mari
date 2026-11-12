@@ -100,8 +100,20 @@ const dday = (iso) => {
 
 const leader = (left, right, extra = {}) =>
   h("div", { class: "rcl", ...extra }, h("span", null, left), h("i"), h("span", null, right));
+// "적음": what is left is under the threshold set in 설정 (USD).
+const named = (name, usd, view) =>
+  view.low !== null && usd !== null && usd < view.low ? [name, " ", h("span", { class: "rclow" }, "적음")] : name;
 const bar = (part, whole) =>
   h("div", { class: "rcbar" }, h("b", { style: { width: `${Math.max(0, Math.min(100, (part / whole) * 100))}%` } }));
+
+/** 오늘·이번 달 쓴 것: only Google reports spending (the other sites report what is left). */
+function spentLine(google, view) {
+  const counted = google.filter((g) => g.hasKey && g.spend);
+  if (!counted.length) return null;
+  const today = counted.reduce((a, g) => a + g.spend.today, 0);
+  const month = counted.reduce((a, g) => a + g.spend.month, 0);
+  return h("div", { class: "rcsub" }, `오늘 ${money(today, view)} · 이번 달 ${money(month, view)} 씀 (구글)`);
+}
 
 /** The home receipt. `onRefresh` re-reads now; `go` opens the settings. */
 export function creditCard({ view, accounts, google }, { go, onRefresh, busy = false }) {
@@ -115,7 +127,7 @@ export function creditCard({ view, accounts, google }, { go, onRefresh, busy = f
         : g.total
           ? `$${g.left.toFixed(0)} / $${g.total}`
           : `$${g.left.toFixed(2)}`;
-    rows.push(leader(g.name, right));
+    rows.push(leader(named(g.name, g.left, view), right));
     if (g.left !== null) totalUsd += g.left;
     if (g.left !== null && g.total) rows.push(bar(g.left, g.total));
     // The reason is in 설정; here only that the figure is not up to date.
@@ -129,7 +141,10 @@ export function creditCard({ view, accounts, google }, { go, onRefresh, busy = f
     const usd = toUsd(a.left, a.unit, view.rates);
     if (usd !== null) totalUsd += usd;
     rows.push(
-      leader(a.name, a.total ? `${native(a.left, a.unit)} / ${native(a.total, a.unit)}` : native(a.left, a.unit)),
+      leader(
+        named(a.name, usd, view),
+        a.total ? `${native(a.left, a.unit)} / ${native(a.total, a.unit)}` : native(a.left, a.unit),
+      ),
     );
     if (a.total) rows.push(bar(a.left, a.total));
   }
@@ -152,6 +167,7 @@ export function creditCard({ view, accounts, google }, { go, onRefresh, busy = f
       : [
           h("div", { class: "rcbig" }, money(totalUsd, view)),
           h("div", { class: "rcsub" }, `전부 합쳐서 · 약 ${other}`),
+          spentLine(google, view),
         ],
     h("div", { class: "rccut" }),
     rows,
