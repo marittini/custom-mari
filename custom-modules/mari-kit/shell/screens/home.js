@@ -11,7 +11,7 @@ import {
   chatMeta,
   coverOf,
 } from "../lib/data.js";
-import { pageHead, avatar, avatarStack, errorBox, lazyBg, hbox } from "../lib/ui.js";
+import { pageHead, avatar, avatarStack, errorBox, lazyBg, hbox, timeAndUnread } from "../lib/ui.js";
 import { modelStatus } from "../lib/status.js";
 import { api } from "../lib/api.js";
 
@@ -232,7 +232,7 @@ export function homeScreen({ mount, go }) {
                     previewLine(convoLast[i]),
                   ),
                 ),
-                h("span", { class: "hint", style: { fontSize: "11px" } }, shortTime(c.lastMessageAt || c.updatedAt)),
+                timeAndUnread(c, shortTime(c.lastMessageAt || c.updatedAt)),
               );
             }),
           ),

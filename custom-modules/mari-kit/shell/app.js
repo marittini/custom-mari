@@ -4,6 +4,10 @@
 
 import { h, icon, I, setChildren } from "./lib/h.js";
 import { applyPrefs, onPrefs } from "./lib/prefs.js";
+import { backgroundAutonomy } from "./lib/autonomy.js";
+import { streamGenerate } from "./lib/actions.js";
+import { data } from "./lib/data.js";
+import { toast } from "./lib/ui.js";
 const root = document.getElementById("app");
 const TABS = [
   { id: "home", label: "홈", icon: I.home },
@@ -148,6 +152,24 @@ if (vv) {
   vv.addEventListener("scroll", fit);
   fit();
 }
+// Convo autonomy for chats the user is not looking at (the Engine runs this in its client, so the shell must):
+// a character may write first; the chat gets an unread mark and a notice that opens it. Polls only while visible.
+const openConvo = () => /^#\/convo\/([^/]+)/.exec(location.hash)?.[1] ?? null;
+backgroundAutonomy({
+  activeChatId: () => (openConvo() ? decodeURIComponent(openConvo()) : null),
+  userStatus: () => "active",
+  generate: async (chatId, body) => {
+    let produced = false;
+    await streamGenerate({ chatId, body, onSaved: (m) => m && (produced = true) });
+    return { produced };
+  },
+  onArrived: (chat) => {
+    data.chats(true);
+    if (["home", "convos"].includes(parseRoute().name)) render();
+    if (chat?.id) toast(`${chat.name || "대화"} · 새 메시지 ›`, () => go(`convo/${encodeURIComponent(chat.id)}`));
+  },
+});
+
 // Chrome offers to install the shell as an app; the home hint uses it when it is there.
 addEventListener("beforeinstallprompt", (e) => {
   e.preventDefault();

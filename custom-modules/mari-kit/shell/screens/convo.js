@@ -21,6 +21,7 @@ import * as tts from "../lib/tts.js";
 import { syncVoiceSettings } from "../lib/voice.js";
 import { callsAvailable, callScreen, callPrefs } from "../lib/call.js";
 import { shownText, translate } from "../lib/translate.js";
+import { activeAutonomy, clearUnread } from "../lib/autonomy.js";
 import { runSlash } from "../lib/slash.js";
 import { GUIDE, quickReplies, runTool, streamGenerate } from "../lib/actions.js";
 
@@ -46,6 +47,7 @@ export function convoScreen({ mount, args, go, back }) {
   let phoneBtn = null;
   let call = null; // the call screen, when the Calls package is installed
   let callPoll = null;
+  let auto = null; // Convo autonomy while this chat is open
   let offVisible = () => {};
 
   const who = h("span", {
@@ -214,6 +216,16 @@ export function convoScreen({ mount, args, go, back }) {
             );
         loadMe();
         setupCalls();
+        // The Engine's Convo autonomy (characters writing first, exchanges, busy delays) runs in its client;
+        // the shell runs the same while this chat is open (lib/autonomy.js).
+        auto = activeAutonomy({
+          chatId,
+          meta: () => chatMeta(chat),
+          userStatus: () => presence().userStatus || "active",
+          isBusy: () => busy,
+          generate: (body) => generate(body),
+        });
+        if (Number(chatMeta(chat).autonomousUnreadCount) > 0) clearUnread(chatId).then(() => data.chats(true));
       }
       draw();
       if (first) requestAnimationFrame(() => (scroller.scrollTop = scroller.scrollHeight));
@@ -622,8 +634,10 @@ export function convoScreen({ mount, args, go, back }) {
     return runTool(id, { chatId, chat, message: m, reload: load, generate, go, speak: speakMessage });
   }
 
+  /** Runs one generation; resolves true when a message was saved (autonomy needs to know). */
   async function generate(body) {
-    if (busy) return;
+    if (busy) return false;
+    let produced = false;
     busy = true;
     live = "";
     draw();
@@ -641,6 +655,7 @@ export function convoScreen({ mount, args, go, back }) {
           scroller.scrollTop = scroller.scrollHeight;
         },
         onSaved: (saved) => {
+          if (saved) produced = true;
           if (!alive || !saved) return;
           messages.push(saved);
           live = "";
@@ -648,7 +663,8 @@ export function convoScreen({ mount, args, go, back }) {
         },
       });
     } catch (error) {
-      if (error.name !== "AbortError") toast(`생성하지 못했어요: ${error.message}`);
+      // A character's own (autonomous) message failing is not the user's error to see.
+      if (error.name !== "AbortError" && !body?.autonomous) toast(`생성하지 못했어요: ${error.message}`);
     } finally {
       busy = false;
       live = null;
@@ -662,6 +678,7 @@ export function convoScreen({ mount, args, go, back }) {
           tts.speakSequence(messages.filter((m) => m.role === "assistant" && !before.has(m.id)).map(messageRequest));
       }
     }
+    return produced;
   }
 
   async function stopGenerating() {
@@ -683,6 +700,7 @@ export function convoScreen({ mount, args, go, back }) {
         toast("번역하지 못해서 원문으로 보냈어요");
         return text;
       });
+    auto?.userSent();
     generate({ userMessage: text });
   }
 
@@ -737,6 +755,7 @@ export function convoScreen({ mount, args, go, back }) {
       tts.stop();
       abort?.abort();
       clearInterval(callPoll);
+      auto?.stop();
       offVisible();
       call?.dispose();
     },

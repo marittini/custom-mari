@@ -122,7 +122,8 @@ export async function streamGenerate({ chatId, body, signal, onToken, onSaved })
     } else if (event.type === "message_saved") {
       onSaved?.(event.data);
       if (event.data?.role === "assistant") text = "";
-    } else if (event.type === "error") {
+    } else if (event.type === "error" && !body?.autonomous) {
+      // A character's own (autonomous) message failing is not the user's error to see.
       toast(typeof event.data === "string" ? event.data : event.data?.message || "생성하지 못했어요");
     }
   }

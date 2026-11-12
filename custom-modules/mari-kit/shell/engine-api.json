@@ -47,6 +47,16 @@
     "PUT /tts/config",
     "PUT /tts/config/voice-assignment",
     "POST /tts/speak",
-    "GET /tts/voices"
+    "GET /tts/voices",
+    "POST /conversation/autonomous/check",
+    "POST /conversation/busy-delay",
+    "POST /conversation/autonomous/exchange",
+    "POST /conversation/autonomous/clear-in-progress",
+    "POST /conversation/activity/assistant",
+    "POST /conversation/activity/user",
+    "POST /conversation/activity/presence",
+    "GET /chats/autonomous-candidates",
+    "POST /chats/:id/autonomous-unread",
+    "DELETE /chats/:id/autonomous-unread"
   ]
 }

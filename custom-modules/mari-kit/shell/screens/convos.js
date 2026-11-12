@@ -11,7 +11,7 @@ import {
   shortTime,
   coverOf,
 } from "../lib/data.js";
-import { pageHead, avatar, avatarStack, errorBox } from "../lib/ui.js";
+import { pageHead, avatar, avatarStack, errorBox, timeAndUnread } from "../lib/ui.js";
 
 export function convosScreen({ mount, go }) {
   let alive = true;
@@ -74,7 +74,7 @@ export function convosScreen({ mount, go }) {
                   previewLine(lasts[i]),
                 ),
               ),
-              h("span", { class: "label" }, shortTime(c.lastMessageAt || c.updatedAt)),
+              timeAndUnread(c, shortTime(c.lastMessageAt || c.updatedAt)),
             );
           }),
         ),
