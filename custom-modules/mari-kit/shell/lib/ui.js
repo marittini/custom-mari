@@ -130,11 +130,13 @@ export function errorBox(error) {
 }
 
 let toastTimer = null;
-export function toast(text) {
+export function toast(text, onClick = null) {
   const frame = document.querySelector(".app");
   if (!frame) return;
   frame.querySelector(".toast")?.remove();
-  const el = h("div", { class: "toast", role: "status" }, text);
+  const el = onClick
+    ? h("button", { type: "button", class: "toast", role: "status", onClick: () => (el.remove(), onClick()) }, text)
+    : h("div", { class: "toast", role: "status" }, text);
   frame.append(el);
   clearTimeout(toastTimer);
   toastTimer = setTimeout(() => el.remove(), 2600);
@@ -218,4 +220,19 @@ export function openEngine(chatId, target = null) {
     if (target) sessionStorage.setItem("mari-kit:open", JSON.stringify({ ...target, chatId, back: location.hash }));
   } catch {}
   location.href = "/";
+}
+
+/** Time with the Engine's unread mark (Convo characters that wrote while the chat was closed). */
+export function timeAndUnread(chat, time, size = "11px") {
+  let n = 0;
+  try {
+    const m = typeof chat?.metadata === "string" ? JSON.parse(chat.metadata) : chat?.metadata;
+    n = Number(m?.autonomousUnreadCount) || 0;
+  } catch {}
+  return h(
+    "span",
+    { style: { display: "flex", flexDirection: "column", alignItems: "flex-end", gap: "4px" } },
+    h("span", { class: "hint", style: { fontSize: size } }, time),
+    n > 0 ? h("span", { class: "unread", "aria-label": `안 읽은 메시지 ${n}개` }, n > 99 ? "99+" : String(n)) : null,
+  );
 }

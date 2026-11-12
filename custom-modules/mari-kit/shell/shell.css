@@ -118,6 +118,18 @@ a {
   letter-spacing: 0.04em;
   color: var(--ink-3);
 }
+.unread {
+  min-width: 18px;
+  height: 18px;
+  padding: 0 5px;
+  border-radius: 9px;
+  background: var(--me);
+  color: var(--me-fg);
+  font-size: 11px;
+  line-height: 18px;
+  text-align: center;
+  font-variant-numeric: tabular-nums;
+}
 .dot {
   width: 7px;
   height: 7px;
@@ -1775,4 +1787,9 @@ label.grow {
 .inp:focus-visible {
   outline: 2px solid var(--ink-3);
   outline-offset: 1px;
+}
+button.toast {
+  border: 0;
+  font: inherit;
+  cursor: pointer;
 }
