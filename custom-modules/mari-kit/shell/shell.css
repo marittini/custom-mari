@@ -2103,3 +2103,27 @@ button.toast {
   line-height: 16px;
   vertical-align: 1px;
 }
+/* 연결 · 크레딧: groups inside the receipt fold like the shell's lists, in the receipt's small caps. */
+.rc .fgroup > summary {
+  min-height: 36px;
+  padding: 4px 0 0;
+  font-size: 10px;
+  letter-spacing: 0.14em;
+}
+.rcg {
+  padding-bottom: 4px;
+}
+.rcm {
+  margin: -4px 0 4px;
+  padding-left: 12px;
+  font-size: 11px;
+  line-height: 1.7;
+  color: var(--ink-3);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.rcmore {
+  color: var(--ink-3);
+  font-size: 11px;
+}
