@@ -1,15 +1,10 @@
 import { h, icon, I, setChildren } from "../lib/h.js";
-import {
-  data,
-  byLastActivity,
-  characterIndex,
-  chatTitle,
-  firstLetter,
-  shortTime,
-  chatMeta,
-  coverOf,
-} from "../lib/data.js";
-import { pageHead, avatar, avatarStack, errorBox, lazyBg, hbox, timeAndUnread } from "../lib/ui.js";
+import { data } from "../lib/data.js";
+import { pageHead, errorBox, hbox } from "../lib/ui.js";
+import { loadCredit, creditCard } from "../lib/credit.js";
+
+const clockOf = (d) =>
+  `${d.getHours() < 12 ? "오전" : "오후"} ${d.getHours() % 12 || 12}:${String(d.getMinutes()).padStart(2, "0")}`;
 import { modelStatus } from "../lib/status.js";
 import { api } from "../lib/api.js";
 
@@ -24,96 +19,15 @@ export function homeScreen({ mount, go }) {
 
   (async () => {
     try {
-      const [chats, chars, conns, radio] = await Promise.all([
+      const [chats, conns, radio] = await Promise.all([
         data.chats("soft"),
-        data.characters(),
         data.connections(),
         api.get("/mari-kit/radio").catch(() => null),
       ]);
-      const index = characterIndex(chars);
-      const sorted = [...chats].sort(byLastActivity);
-      const rp = sorted.find((c) => c.mode === "roleplay");
-      const convos = sorted.filter((c) => c.mode === "conversation").slice(0, 3);
-      // One line per chat from Mari Kit's preview route (never the prompt the Engine keeps on recent replies).
-      const previews = await data.previews([rp, ...convos].filter(Boolean)).catch(() => new Map());
       if (!alive) return;
       const parts = [];
       const hint = installHint();
       if (hint) parts.push(hint);
-
-      if (rp) {
-        const lastAssistant = previews.get(rp.id)?.assistant || "";
-        const cover = index.get(rp.characterIds?.[0]);
-        const title = chatTitle(rp, index);
-        parts.push(
-          h(
-            "a",
-            {
-              class: "gcard",
-              href: `#/rp/${encodeURIComponent(rp.id)}`,
-              style: {
-                display: "grid",
-                gridTemplateColumns: "56px minmax(0,1fr) 40px",
-                alignItems: "center",
-                gap: "16px",
-                padding: "16px",
-              },
-            },
-            lazyBg(
-              h(
-                "span",
-                { class: "ph", style: { width: "56px", height: "76px", fontSize: "18px" } },
-                coverOf(rp) || cover?.avatar ? "" : firstLetter(title),
-              ),
-              coverOf(rp) || cover?.avatar,
-            ),
-            h(
-              "span",
-              { style: { display: "flex", flexDirection: "column", gap: "4px", minWidth: "0" } },
-              h(
-                "span",
-                { class: "hint", style: { fontSize: "11px" } },
-                `이어 읽기 · ${shortTime(rp.lastMessageAt || rp.updatedAt)}`,
-              ),
-              h("span", { style: { fontSize: "16px", fontWeight: "600" } }, title),
-              lastAssistant
-                ? h(
-                    "span",
-                    {
-                      class: "read",
-                      style: {
-                        fontSize: "13px",
-                        lineHeight: "1.6",
-                        color: "var(--ink-2)",
-                        whiteSpace: "nowrap",
-                        overflow: "hidden",
-                        textOverflow: "ellipsis",
-                      },
-                    },
-                    lastLine(lastAssistant),
-                  )
-                : null,
-            ),
-            h(
-              "span",
-              {
-                "aria-label": "이어서",
-                style: {
-                  width: "40px",
-                  height: "40px",
-                  borderRadius: "50%",
-                  background: "var(--me)",
-                  color: "var(--me-fg)",
-                  display: "flex",
-                  alignItems: "center",
-                  justifyContent: "center",
-                },
-              },
-              icon(I.play, 14, 2),
-            ),
-          ),
-        );
-      }
 
       // 내 연결: only connections a chat actually uses (or the default), not every saved endpoint.
       // The three most recently used; the rest stay one tap away so 최근 대화 is not pushed off the screen.
@@ -197,43 +111,6 @@ export function homeScreen({ mount, go }) {
         });
       }
 
-      if (convos.length) {
-        parts.push(
-          h("div", { class: "gsec" }, h("span", null, "최근 대화")),
-          h(
-            "div",
-            { class: "gcard" },
-            convos.map((c, i) => {
-              const cast = (c.characterIds || []).map((id) => index.get(id)).filter(Boolean);
-              const title = chatTitle(c, index);
-              return h(
-                "a",
-                {
-                  class: "grow",
-                  href: `#/convo/${encodeURIComponent(c.id)}`,
-                  style: { gridTemplateColumns: "32px minmax(0,1fr) auto" },
-                },
-                coverOf(c)
-                  ? avatar(coverOf(c), firstLetter(title), 32)
-                  : cast.length > 1
-                    ? avatarStack(cast, 32)
-                    : avatar(cast[0]?.avatar, firstLetter(title), 32),
-                h(
-                  "span",
-                  { style: { display: "flex", flexDirection: "column", gap: "2px", minWidth: "0" } },
-                  h("span", { style: { fontSize: "14px", fontWeight: "500" } }, title),
-                  h(
-                    "span",
-                    { class: "hint", style: { whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" } },
-                    previews.get(c.id)?.line || "",
-                  ),
-                ),
-                timeAndUnread(c, shortTime(c.lastMessageAt || c.updatedAt)),
-              );
-            }),
-          ),
-        );
-      }
       // 라디오: the newest episode, marked when it finished while the reader was away.
       if (radio) {
         const ep = radio.episodes?.[0];
@@ -246,7 +123,7 @@ export function homeScreen({ mount, go }) {
               ? `${ep.no}회 · 만들지 못했어요`
               : `${ep.no}회 · ${ep.title}`;
         parts.splice(
-          rp ? 1 : 0,
+          hint ? 1 : 0,
           0,
           h(
             "a",
@@ -265,20 +142,31 @@ export function homeScreen({ mount, go }) {
           ),
         );
       }
-      if (!parts.length) parts.push(h("div", { class: "empty" }, "아직 채팅이 없어요."));
+      // 남은 크레딧: every account's balance in one receipt (reads after the rest is drawn).
+      const creditHead = h("div", { class: "gsec" }, h("span", null, "남은 크레딧"), h("span", null, ""));
+      const creditBox = h("div", null, h("div", { class: "empty", style: { padding: "16px 0" } }, "확인하는 중…"));
+      parts.push(creditHead, creditBox);
+      const drawCredit = async (refresh = false) => {
+        if (refresh) setChildren(creditBox, creditCard(last, { go, busy: true, onRefresh: () => {} }));
+        try {
+          last = await loadCredit({ refresh });
+          if (!alive) return;
+          const at = [...last.google.map((g) => g.checkedAt)].filter(Boolean).sort().pop();
+          creditHead.lastChild.textContent = `${clockOf(at ? new Date(at) : new Date())} 확인`;
+          setChildren(creditBox, creditCard(last, { go, onRefresh: () => drawCredit(true) }));
+        } catch (error) {
+          if (alive) setChildren(creditBox, errorBox(error));
+        }
+      };
+      let last = null;
       setChildren(scroll, ...parts);
+      drawCredit();
     } catch (error) {
       if (alive) setChildren(scroll, errorBox(error));
     }
   })();
 
   return { dispose: () => (alive = false) };
-}
-
-function lastLine(text) {
-  const quotes = String(text).match(/[“"「『][^”"」』]{2,}[”"」』]/g);
-  const pick = quotes?.length ? quotes[quotes.length - 1] : String(text).trim().split(/\n+/).pop();
-  return pick || "";
 }
 
 /** Once, for a visit that came through the Engine's address: the home-screen icon opens Mari directly. */

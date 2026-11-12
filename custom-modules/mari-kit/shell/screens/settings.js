@@ -106,6 +106,7 @@ export function settingsScreen({ mount, args, go, back }) {
         row(I.voice, "음성 · 읽는 법", val(""), () => go("voice")),
         row(I.calendar, "내 일정", val("Convo"), openSchedule),
         row(I.radio, "라디오", val(""), () => go("radio")),
+        row(I.square, "남은 크레딧", val("홈"), () => go("credit")),
       ),
       sec("엔진"),
       h(
@@ -155,6 +156,12 @@ export function settingsScreen({ mount, args, go, back }) {
     ["음성 · 읽는 법", "설정 › Mari 기능", "tts 목소리 voice 발음 elevenlabs", () => go("voice")],
     ["내 일정", "설정 › Mari 기능", "schedule 상태 스케줄", () => openSchedule()],
     ["라디오", "설정 › Mari 기능", "radio 사연", () => go("radio")],
+    [
+      "남은 크레딧",
+      "설정 › Mari 기능",
+      "credit 잔액 balance 버텍스 vertex 구글 google 크레딧 영수증",
+      () => go("credit"),
+    ],
     ["엔진 주소로 열면 Mari 화면", "설정 › 엔진", "시작 화면 start", () => {}],
   ];
   const CHAT_ITEMS = [
