@@ -28,7 +28,7 @@ const chip = (label, on, onClick, extra) =>
     label,
   );
 
-export function scheduleScreen({ mount, args, go }) {
+export function scheduleScreen({ mount, args, go, back }) {
   const key = args[0] || "default";
   const view = args[1] || "now";
   const chatId = args[2] || "";
@@ -40,21 +40,21 @@ export function scheduleScreen({ mount, args, go }) {
   const body = h("div", { class: "scroll", style: { padding: "0 20px 32px" } });
 
   const header = () => {
-    const back = () => (view === "now" ? history.back() : go(link(view === "make" ? "week" : "now")));
+    const up = () => back(view === "now" ? "settings" : link(view === "make" ? "week" : "now"));
     if (view === "week")
       return pageHead("주간 일정", {
         label: "이번 주",
-        back,
+        back: up,
         actions: h(
           "button",
           { type: "button", class: "ib", "aria-label": "AI로 만들기", onClick: () => go(link("make")) },
           icon(I.spark),
         ),
       });
-    if (view === "make") return pageHead("일정 만들기", { label: "AI가 짜는 일주일", back });
+    if (view === "make") return pageHead("일정 만들기", { label: "AI가 짜는 일주일", back: up });
     return pageHead("내 일정", {
       label: state ? `오늘 · ${DAY_KO[DAYS.indexOf(state.today)]}요일` : " ",
-      back,
+      back: up,
       actions: h("button", { type: "button", class: "ib", "aria-label": "일정 메뉴", onClick: openMenu }, dots()),
     });
   };

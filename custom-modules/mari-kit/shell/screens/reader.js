@@ -17,9 +17,9 @@ const STEPS = [
 ];
 const round = (v) => Math.round(v * 100) / 100;
 
-export function readerScreen({ mount }) {
+export function readerScreen({ mount, back }) {
   const body = h("div", { class: "scroll", style: { paddingBottom: "24px" } });
-  mount.append(topBar({ back: () => history.back(), title: "읽기 설정" }), body);
+  mount.append(topBar({ back: () => back("settings"), title: "읽기 설정" }), body);
   const draw = () => {
     const p = prefs();
     const families = Array.isArray(p.families) ? p.families : [];

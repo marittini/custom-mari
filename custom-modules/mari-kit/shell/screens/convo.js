@@ -24,7 +24,7 @@ import { shownText, translate } from "../lib/translate.js";
 import { runSlash } from "../lib/slash.js";
 import { GUIDE, quickReplies, runTool, streamGenerate } from "../lib/actions.js";
 
-export function convoScreen({ mount, args, go }) {
+export function convoScreen({ mount, args, go, back }) {
   const chatId = args[0];
   let alive = true;
   let chat = null;
@@ -70,7 +70,7 @@ export function convoScreen({ mount, args, go }) {
         type: "button",
         class: "ib",
         "aria-label": "대화 목록",
-        onClick: () => (history.length > 1 ? history.back() : go("convos")),
+        onClick: () => back("convos"),
       },
       icon(I.back, 22, 1.8),
     ),

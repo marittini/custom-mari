@@ -14,7 +14,7 @@ import { runSlash } from "../lib/slash.js";
 import { GUIDE, quickReplies, runTool as sharedTool, streamGenerate } from "../lib/actions.js";
 import { savedTranslation, shownText, translate } from "../lib/translate.js";
 
-export function rpScreen({ mount, args, go }) {
+export function rpScreen({ mount, args, go, back }) {
   const chatId = args[0];
   let alive = true;
   let chat = null;
@@ -47,7 +47,7 @@ export function rpScreen({ mount, args, go }) {
         type: "button",
         class: "ib",
         "aria-label": "뒤로",
-        onClick: () => (history.length > 1 ? history.back() : go("library")),
+        onClick: () => back("library"),
       },
       icon(I.back),
     ),

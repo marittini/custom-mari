@@ -9,7 +9,7 @@ import { topBar, toast, errorBox, openEngine, sheet, avatar } from "../lib/ui.js
 
 let lastTab = "chat";
 
-export function chatSettingsScreen({ mount, args, go }) {
+export function chatSettingsScreen({ mount, args, go, back }) {
   const chatId = args[0];
   let alive = true;
   let tab = lastTab;
@@ -20,7 +20,7 @@ export function chatSettingsScreen({ mount, args, go }) {
     { class: "scroll", style: { paddingBottom: "28px" } },
     h("div", { class: "empty" }, "불러오는 중…"),
   );
-  mount.append(topBar({ back: () => history.back(), title: "채팅 설정", sub: " " }), tabs, body);
+  mount.append(topBar({ back: () => back("convos"), title: "채팅 설정", sub: " " }), tabs, body);
 
   const sw = (on) => h("span", { class: on ? "sw on" : "sw" }, h("span"));
   const selectRow = (path, label, value, options, onChange) =>

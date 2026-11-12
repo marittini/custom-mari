@@ -10,7 +10,7 @@ import { callPrefs, setCallPrefs } from "../lib/call.js";
 const sw = (on) => h("span", { class: on ? "sw on" : "sw" }, h("span"));
 const CACHE = "mari-shell-tts";
 
-export function callSettingsScreen({ mount, args, go }) {
+export function callSettingsScreen({ mount, args, go, back }) {
   const chatId = args[0];
   let alive = true;
   let chat = null;
@@ -21,7 +21,7 @@ export function callSettingsScreen({ mount, args, go }) {
     { class: "scroll", style: { padding: "0 20px 32px" } },
     h("div", { class: "empty" }, "불러오는 중…"),
   );
-  mount.append(pageHead("통화 설정", { label: " ", back: () => history.back() }), body);
+  mount.append(pageHead("통화 설정", { label: " ", back: () => back("convos") }), body);
 
   async function load() {
     try {

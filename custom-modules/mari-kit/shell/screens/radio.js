@@ -36,7 +36,7 @@ function onAirLabel(zone) {
 }
 const showName = (dj) => `${dj}의 심야 라디오`;
 
-export function radioScreen({ mount, args, go }) {
+export function radioScreen({ mount, args, go, back }) {
   const view = args[0] || "home";
   let alive = true;
   let state = null; // { settings, episodes }
@@ -75,7 +75,7 @@ export function radioScreen({ mount, args, go }) {
       head,
       pageHead("라디오", {
         label: dj ? `${freq(dj.name)} MHz · ${onAirLabel(zoneOf(s))}` : " ",
-        back: () => go("home"),
+        back: () => back("home"),
         actions: [
           h(
             "button",
@@ -216,7 +216,7 @@ export function radioScreen({ mount, args, go }) {
     setChildren(
       head,
       topBar({
-        back: () => go("radio"),
+        back: () => back("radio"),
         title: ep.title ? `${ep.no}회 · ${ep.title}` : `${ep.no}회`,
         sub: `${showName(ep.djName)} · ${freq(ep.djName)} MHz`,
         actions: [
@@ -308,7 +308,7 @@ export function radioScreen({ mount, args, go }) {
       head,
       pageHead("지난 방송", {
         label: selecting ? `${picked.size}개 고름` : starOnly ? "북마크만" : `${state.episodes.length}회`,
-        back: () => go("radio"),
+        back: () => back("radio"),
         actions: [
           selecting
             ? null
@@ -444,7 +444,7 @@ export function radioScreen({ mount, args, go }) {
   // ── 설정 ─────────────────────────────
   function settingsView() {
     const s = state.settings;
-    setChildren(head, pageHead("라디오 설정", { label: "모든 방송 공통", back: () => go("radio") }));
+    setChildren(head, pageHead("라디오 설정", { label: "모든 방송 공통", back: () => back("radio") }));
     const conn = h(
       "select",
       { class: "sel", style: { width: "160px" }, onChange: (e) => saveSettings({ connectionId: e.target.value }) },

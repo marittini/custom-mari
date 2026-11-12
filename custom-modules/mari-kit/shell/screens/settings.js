@@ -14,7 +14,7 @@ const startsInShell = () => {
 };
 const sw = (on) => h("span", { class: on ? "sw on" : "sw" }, h("span"));
 
-export function settingsScreen({ mount, args, go }) {
+export function settingsScreen({ mount, args, go, back }) {
   const page = args[0] || "";
   const titles = {
     "": "설정",
@@ -29,7 +29,7 @@ export function settingsScreen({ mount, args, go }) {
   };
   const parent =
     { connection: "settings/connections", preset: "settings/presets", voice: "voice/settings" }[page] || "settings";
-  const head = pageHead(titles[page] || "설정", page ? { label: "설정", back: () => go(parent) } : {});
+  const head = pageHead(titles[page] || "설정", page ? { label: "설정", back: () => back(parent) } : {});
   const body = h("div", { class: "scroll", style: { padding: "8px 0 28px" } });
   mount.append(head, body);
   const manage = {

@@ -147,7 +147,7 @@ const SETTINGS = [
   },
 ];
 
-export function memoryScreen({ mount, args, go }) {
+export function memoryScreen({ mount, args, go, back }) {
   const chatId = args[0];
   const view = args[1] || "home";
   let alive = true;
@@ -166,7 +166,7 @@ export function memoryScreen({ mount, args, go }) {
     h(
       "header",
       { class: "top" },
-      h("button", { type: "button", class: "ib", "aria-label": "뒤로", onClick: () => history.back() }, icon(I.back)),
+      h("button", { type: "button", class: "ib", "aria-label": "뒤로", onClick: () => back("home") }, icon(I.back)),
       h("div", { class: "ttl" }, title, sub),
       toggleOn,
     ),
