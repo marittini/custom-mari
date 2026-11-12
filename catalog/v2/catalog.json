@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "generatedAt": "2026-11-12T01:53:32.996Z",
+  "generatedAt": "2026-11-12T04:06:58.811Z",
   "packages": [
     {
       "manifest": {
@@ -4677,7 +4677,7 @@
         },
         "id": "mari-kit",
         "name": "Mari Kit",
-        "version": "0.5.1",
+        "version": "0.5.2",
         "description": "개인 기능 모음(TTS·번역·날씨·기억)을 엔진 소스 수정 없이 붙이는 패키지입니다.",
         "engine": {
           "min": "2.5.2",
@@ -4715,7 +4715,7 @@
         "restartRequired": true,
         "builtAgainst": {
           "engineVersion": "2.5.2",
-          "engineCommit": "bf5de43c03f6d3a0753565eb6d3ee5b87962ef6b"
+          "engineCommit": "1df4e9b27e695967e4d883376ace7ced0c144ae3"
         },
         "files": [
           {
@@ -4725,8 +4725,8 @@
           },
           {
             "path": "client.js",
-            "sha256": "ff3da0a8c7da942338598dc6a946d7191e1b1804c136795a2a280f363623e093",
-            "bytes": 51698
+            "sha256": "8089da5e4c8bb300748e25eee4663f1f6513564f065eaaf8981a7b118f554886",
+            "bytes": 53240
           },
           {
             "path": "convo-weather-core.mjs",
@@ -4850,8 +4850,8 @@
           },
           {
             "path": "shell/lib/ui.js",
-            "sha256": "b04aa71702538b82c63690b9e43f4e5c29367877f9b95ccaa6db493b6c0ae89c",
-            "bytes": 5933
+            "sha256": "a76f5687c82d79cf0668bd2b5bbb549260bce7a42698292b63faf2c3ae200aed",
+            "bytes": 6101
           },
           {
             "path": "shell/lib/voice.js",
@@ -4925,8 +4925,8 @@
           },
           {
             "path": "shell/screens/settings.js",
-            "sha256": "9bcb2e6f599470978452df2d648fce2b6bc80b851f676f78b739b11dfe1a00bc",
-            "bytes": 10848
+            "sha256": "acd3f7fe1d3dd52a5d29708d08a71e7f7c8965098e70da17d3956491ff924b27",
+            "bytes": 11431
           },
           {
             "path": "shell/screens/translation.js",
@@ -4947,9 +4947,9 @@
       },
       "category": "misc",
       "artifact": {
-        "url": "https://raw.githubusercontent.com/marittini/custom-mari/mari-catalog/artifacts/mari-kit-0.5.1.zip",
-        "sha256": "cf12888e55a82c1ae5293e51d0dfe365231302d7425c1f282d074b2b4bdec6a9",
-        "bytes": 197363
+        "url": "https://raw.githubusercontent.com/marittini/custom-mari/mari-catalog/artifacts/mari-kit-0.5.2.zip",
+        "sha256": "be383b65829d791676a438a3e1508d1307b0b7fb5ac8906fc669c17702983da4",
+        "bytes": 198089
       },
       "documentationUrl": "https://github.com/marittini/custom-mari/tree/main/custom-modules"
     }
