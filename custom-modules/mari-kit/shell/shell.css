@@ -1738,3 +1738,31 @@ label.grow {
   position: absolute;
   inset: -11px -6px;
 }
+/* 내일 일정: the next block and how soon it starts, tomorrow's first block, and the week's summary. */
+.nextl {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  margin-top: 12px;
+  padding: 12px 14px;
+  border-radius: 12px;
+  background: var(--fill);
+  font-size: 14px;
+}
+.foldl {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  width: 100%;
+  margin-top: 12px;
+  padding: 12px 14px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: transparent;
+  color: var(--ink);
+  font: inherit;
+  font-size: 14px;
+  text-align: left;
+  cursor: pointer;
+}

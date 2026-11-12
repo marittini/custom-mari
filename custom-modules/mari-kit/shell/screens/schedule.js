@@ -207,6 +207,7 @@ export function scheduleScreen({ mount, args, go, back }) {
       p.config.enabled
         ? null
         : h("p", { class: "hint", style: { margin: "16px 0 0" } }, "Convo에 알리지 않는 중이에요 · ⋯에서 켜요"),
+      nextLine(n, nowMin),
       h(
         "div",
         { style: { paddingTop: "12px" } },
@@ -217,11 +218,88 @@ export function scheduleScreen({ mount, args, go, back }) {
             "div",
             { class: on ? "tline on" : z <= nowMin && z > a ? "tline past" : "tline" },
             h("span", null, b.time.split("-")[0]),
-            h("span", null, b.activity),
+            h(
+              "span",
+              { style: { display: "inline-flex", alignItems: "center", gap: "8px", minWidth: "0" } },
+              dot(b.status),
+              b.activity,
+            ),
           );
         }),
       ),
+      tomorrowLine(p),
+      summaryBox(p),
     ];
+  }
+
+  /** 다음 일정, with how long until it starts. */
+  function nextLine(n, nowMin) {
+    if (!n?.next) return null;
+    const start = n.next.time.split("-")[0];
+    const left = (toMin(start) - nowMin + 1440) % 1440;
+    const span = left >= 60 ? `${Math.floor(left / 60)}시간${left % 60 ? ` ${left % 60}분` : ""}` : `${left}분`;
+    return h(
+      "div",
+      { class: "nextl" },
+      h(
+        "span",
+        { style: { display: "inline-flex", alignItems: "center", gap: "8px" } },
+        dot(n.next.status),
+        `다음 · ${n.next.activity}`,
+      ),
+      h("span", { class: "hint" }, `${ampm(start)} · ${span} 뒤`),
+    );
+  }
+
+  /** 내일 첫 일정. */
+  function tomorrowLine(p) {
+    const i = DAYS.indexOf(state.today);
+    const day = DAYS[(i + 1) % 7];
+    const first = (p.days[day] || []).find((b) => b.activity !== "수면") || (p.days[day] || [])[0];
+    if (!first) return null;
+    return h(
+      "button",
+      { type: "button", class: "foldl", onClick: () => go(link("week")) },
+      h("span", { class: "hint" }, `내일 · ${DAY_KO[(i + 1) % 7]}요일`),
+      h("span", null, `${ampm(first.time.split("-")[0])} ${first.activity} ›`),
+    );
+  }
+
+  /** 일상 요약: a short paragraph about the week, made on request (one model call). */
+  function summaryBox(p) {
+    if (!DAYS.some((d) => p.days[d]?.length)) return null;
+    const make = async (btn) => {
+      btn.disabled = true;
+      btn.textContent = "만드는 중…";
+      try {
+        state = await api.post(`${base}/summary`);
+        draw();
+      } catch (error) {
+        toast(error.message);
+        btn.disabled = false;
+        btn.textContent = p.summary ? "다시 만들기" : "요약 만들기";
+      }
+    };
+    const btn = h(
+      "button",
+      { type: "button", class: "txtbtn", onClick: (e) => make(e.currentTarget) },
+      p.summary ? "다시 만들기" : "요약 만들기",
+    );
+    return h(
+      "div",
+      { class: "foldl", style: { cursor: "default" } },
+      h(
+        "span",
+        { class: "hint", style: { display: "flex", justifyContent: "space-between", alignItems: "center" } },
+        "일상 요약",
+        btn,
+      ),
+      h(
+        "span",
+        { style: { lineHeight: "1.6", color: p.summary ? "var(--ink-2)" : "var(--ink-3)" } },
+        p.summary?.text || "이 주간 일정이 어떤 하루하루인지 한 단락으로 정리해 둬요.",
+      ),
+    );
   }
 
   function overrideSheet() {

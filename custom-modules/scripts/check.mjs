@@ -77,6 +77,12 @@ if (id === "mari-kit") {
     override: { status: "dnd", activity: "과제", expiresAt: "2026-11-11T10:30:00Z" },
   });
   assert.equal(sched.nowState(sp, at).activity, "과제", "an unexpired override wins");
+  assert.deepEqual(
+    sched.normalizeProfile({ summary: { text: "평일 저녁이 한가해요", at: "2026-11-12T00:00:00Z" } }).summary,
+    { text: "평일 저녁이 한가해요", at: "2026-11-12T00:00:00Z" },
+    "일상 요약 survives a save",
+  );
+  assert.equal(sched.normalizeProfile({ summary: { text: "" } }).summary, null);
   assert.match(sched.scheduleContext(sp, at, "마리"), /Right now 마리 is: 과제 \(do not disturb, until 19:30\)/);
   assert.equal(sched.nowState(sp, new Date("2026-11-11T11:00:00Z")).activity, "집", "an expired override is ignored");
   assert.equal(sched.scheduleContext({ ...sp, config: { ...sp.config, enabled: false } }, at), "");
