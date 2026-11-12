@@ -40,6 +40,10 @@ export function shellPage(version) {
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, interactive-widget=resizes-content">
 <meta name="color-scheme" content="light dark">
 <title>Marinara</title>
+<link rel="manifest" href="/api/mari-kit/manifest">
+<link rel="apple-touch-icon" href="/icon-192.png">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
 <link rel="stylesheet" href="${base}/shell.css">
 <script type="module" src="${base}/app.js"></script>
 </head>
@@ -200,6 +204,32 @@ export async function shellRoutes(app, { runtime } = {}) {
   app.get("/shell/characters", async () =>
     (await runtime.resources.listCharacters()).filter((c) => !BUILT_IN.has(c.id)).map(slimCharacter),
   );
+  // Installs the shell as its own home-screen app: it opens Mari directly (about 0.08MB) instead of loading the
+  // Engine's app first. Icons are the Engine's own; the name follows the shell's 앱 이름 (sent as ?name=).
+  app.get("/manifest", async (request, reply) => {
+    const name =
+      String(request.query?.name || "")
+        .trim()
+        .slice(0, 40) || "Marinara";
+    reply.header("Cache-Control", "no-cache");
+    reply.header("Content-Type", "application/manifest+json; charset=utf-8");
+    return reply.send(
+      JSON.stringify({
+        name,
+        short_name: name.slice(0, 12),
+        id: "/api/mari-kit/app",
+        start_url: "/api/mari-kit/app#/home",
+        scope: "/api/mari-kit/",
+        display: "standalone",
+        background_color: "#ffffff",
+        theme_color: "#ffffff",
+        icons: [
+          { src: "/icon-192.png", sizes: "192x192", type: "image/png" },
+          { src: "/icon-512.png", sizes: "512x512", type: "image/png" },
+        ],
+      }),
+    );
+  });
   app.get("/app", async (_request, reply) => {
     reply.header("Cache-Control", "no-cache");
     reply.header("Content-Type", "text/html; charset=utf-8");

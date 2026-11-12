@@ -10,7 +10,7 @@ import {
   shortTime,
   chatMeta,
 } from "../lib/data.js";
-import { pageHead, avatar, avatarStack, errorBox, lazyBg } from "../lib/ui.js";
+import { pageHead, avatar, avatarStack, errorBox, lazyBg, hbox } from "../lib/ui.js";
 import { modelStatus } from "../lib/status.js";
 import { api } from "../lib/api.js";
 
@@ -41,6 +41,8 @@ export function homeScreen({ mount, go }) {
       ]);
       if (!alive) return;
       const parts = [];
+      const hint = installHint();
+      if (hint) parts.push(hint);
 
       if (rp) {
         const lastAssistant = [...rpLast].reverse().find((m) => m.role === "assistant");
@@ -276,4 +278,52 @@ function lastLine(text) {
   const quotes = String(text).match(/[“"「『][^”"」』]{2,}[”"」』]/g);
   const pick = quotes?.length ? quotes[quotes.length - 1] : String(text).trim().split(/\n+/).pop();
   return pick || "";
+}
+
+/** Once, for a visit that came through the Engine's address: the home-screen icon opens Mari directly. */
+function installHint() {
+  try {
+    if (
+      sessionStorage.getItem("mari-kit:via-engine") !== "1" ||
+      localStorage.getItem("mari-kit:install-hint") === "seen"
+    )
+      return null;
+  } catch {
+    return null;
+  }
+  const close = () => {
+    try {
+      localStorage.setItem("mari-kit:install-hint", "seen");
+    } catch {}
+    box.remove();
+  };
+  const prompt = window.__mariInstall;
+  const box = hbox(
+    "더 가볍게 열기",
+    h(
+      "p",
+      { style: { margin: "0", fontSize: "13px", lineHeight: "1.6", color: "var(--ink-2)" } },
+      "엔진 주소로 열면 엔진 앱을 먼저 받아요(처음 약 17MB). 홈 화면에 Mari를 추가해 그 아이콘으로 열면 0.1MB 안팎이에요.",
+    ),
+    h(
+      "div",
+      { style: { display: "flex", justifyContent: "flex-end", gap: "8px", marginTop: "10px" } },
+      h("button", { type: "button", class: "pill", onClick: close }, "닫기"),
+      prompt
+        ? h(
+            "button",
+            {
+              type: "button",
+              class: "pill main",
+              onClick: async () => {
+                await prompt.prompt().catch(() => {});
+                close();
+              },
+            },
+            "홈 화면에 추가",
+          )
+        : h("span", { class: "hint", style: { alignSelf: "center" } }, "브라우저 메뉴 → 홈 화면에 추가"),
+    ),
+  );
+  return box;
 }

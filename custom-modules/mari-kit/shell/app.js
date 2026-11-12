@@ -148,6 +148,11 @@ if (vv) {
   vv.addEventListener("scroll", fit);
   fit();
 }
+// Chrome offers to install the shell as an app; the home hint uses it when it is there.
+addEventListener("beforeinstallprompt", (e) => {
+  e.preventDefault();
+  window.__mariInstall = e;
+});
 applyPrefs();
 track();
 render();

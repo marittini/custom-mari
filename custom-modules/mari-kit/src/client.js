@@ -468,8 +468,11 @@ export function shouldOpenShell(path, start, engineTab) {
 
 function openShellOnStart() {
   try {
-    if (shouldOpenShell(location.pathname, localStorage.getItem(START_KEY), sessionStorage.getItem(ENGINE_TAB_KEY)))
+    if (shouldOpenShell(location.pathname, localStorage.getItem(START_KEY), sessionStorage.getItem(ENGINE_TAB_KEY))) {
+      // The shell tells this visitor once that its own home-screen icon skips the Engine's app (much lighter).
+      sessionStorage.setItem("mari-kit:via-engine", "1");
       location.replace(SHELL_PATH);
+    }
   } catch {
     // Storage can be blocked; the Engine screen then simply stays.
   }
