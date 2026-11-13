@@ -51,7 +51,7 @@ const DEFAULTS = {
   fontRp: "", // "" → same as font
   fontConvo: "",
   highlight: false, // 대사 형광펜
-  lineVoice: true, // RP: ▶ after every spoken line (Mari only; the Engine screen has its own switch)
+  lineVoice: false, // RP: ▶ after every spoken line; off → tap a line for its popup (Mari only)
   fontCss: "",
   families: [],
   size: 16,
