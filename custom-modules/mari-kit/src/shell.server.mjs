@@ -110,6 +110,64 @@ function shellVersion() {
 }
 
 const BUILT_IN = new Set(["__professor_mari__"]);
+const SHELL_APPEARANCE_ID = "mari-kit:shell-appearance";
+const SHELL_APPEARANCE_KIND = "shell-appearance";
+
+function shellAppearanceTheme(data) {
+  const theme = data && typeof data === "object" && !Array.isArray(data) ? data.theme : null;
+  return theme === "dark" || theme === "light" ? theme : null;
+}
+
+async function readShellAppearance(runtime) {
+  const documents = runtime?.persistence?.documents;
+  if (typeof documents?.getById !== "function") return null;
+  const doc = await documents.getById("mari-kit", SHELL_APPEARANCE_ID);
+  return shellAppearanceTheme(doc?.data);
+}
+
+async function writeShellAppearance(runtime, theme) {
+  const documents = runtime?.persistence?.documents;
+  if (
+    typeof documents?.getById !== "function" ||
+    typeof documents?.create !== "function" ||
+    typeof documents?.update !== "function"
+  ) {
+    throw Object.assign(new Error("Appearance storage is unavailable"), { statusCode: 503 });
+  }
+  for (let attempt = 0; attempt < 3; attempt += 1) {
+    const doc = await documents.getById("mari-kit", SHELL_APPEARANCE_ID);
+    if (shellAppearanceTheme(doc?.data) === theme) return theme;
+    const now = new Date().toISOString();
+    if (!doc) {
+      try {
+        await documents.create({
+          id: SHELL_APPEARANCE_ID,
+          packageId: "mari-kit",
+          kind: SHELL_APPEARANCE_KIND,
+          name: "Mari Kit shell appearance",
+          description: "",
+          data: { theme },
+          createdAt: now,
+          updatedAt: now,
+        });
+        return theme;
+      } catch {
+        continue; // A concurrent create is resolved by rereading on the next attempt.
+      }
+    }
+    const updated = await documents.update({
+      id: SHELL_APPEARANCE_ID,
+      packageId: "mari-kit",
+      expectedRevision: doc.revision,
+      name: doc.name,
+      description: doc.description,
+      data: { theme },
+      updatedAt: now,
+    });
+    if (updated) return theme;
+  }
+  throw Object.assign(new Error("Appearance changed while saving. Try again."), { statusCode: 409 });
+}
 
 /** What a character list needs — never the card body, which with a lorebook can be hundreds of KB a character. */
 export function slimCharacter(record) {
@@ -389,6 +447,23 @@ export async function shellRoutes(app, { runtime } = {}) {
     reply.header("Cache-Control", "private, max-age=3600");
     return engineSettings;
   });
+  app.put("/shell/appearance", async (request, reply) => {
+    const theme = request.body?.theme;
+    if (
+      !request.body ||
+      typeof request.body !== "object" ||
+      Array.isArray(request.body) ||
+      (theme !== "dark" && theme !== "light")
+    ) {
+      return reply.status(400).send({ error: "theme must be dark or light" });
+    }
+    try {
+      return { theme: await writeShellAppearance(runtime, theme) };
+    } catch (error) {
+      const statusCode = error?.statusCode === 409 ? 409 : 503;
+      return reply.status(statusCode).send({ error: error.message });
+    }
+  });
   // ── chat covers ──
   // A cover per chat, chosen in the shell: the browser shrinks and crops the picture to a 3:4 WebP before it is sent
   // (so an upload is ~100KB, not a phone photo), Mari Kit re-encodes it with sharp where it can and keeps it under
@@ -471,7 +546,14 @@ export async function shellRoutes(app, { runtime } = {}) {
       String(request.query?.name || "")
         .trim()
         .slice(0, 40) || "Marinara";
-    const color = request.query?.theme === "dark" ? "#000000" : "#ffffff";
+    let storedTheme = null;
+    try {
+      storedTheme = await readShellAppearance(runtime);
+    } catch {
+      // Keep manifest compatibility when runtime persistence is unavailable.
+    }
+    const resolvedTheme = storedTheme ?? (request.query?.theme === "dark" ? "dark" : "light");
+    const color = resolvedTheme === "dark" ? "#000000" : "#ffffff";
     reply.header("Cache-Control", "no-cache");
     reply.header("Content-Type", "application/manifest+json; charset=utf-8");
     return reply.send(
