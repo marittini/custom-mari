@@ -394,10 +394,21 @@ export function convoScreen({ mount, args, go, back }) {
       }
       const original = m.role === "assistant" ? stripCues(messageText(m)) : messageText(m);
       const { main, sub } = shownText(m, meta, original);
-      const parts = main
-        .split(/\n{2,}/)
-        .map((p) => p.trim())
-        .filter(Boolean);
+      const split = (t) =>
+        t
+          .split(/\n{2,}/)
+          .map((p) => p.trim())
+          .filter(Boolean);
+      const parts = split(main);
+      // The translation goes under the bubble it belongs to: piece by piece when it has as many pieces,
+      // otherwise all of it under the last bubble.
+      let subs = split(sub);
+      if (subs.length !== parts.length && parts.length > 1)
+        subs = sub
+          .split(/\n+/)
+          .map((p) => p.trim())
+          .filter(Boolean);
+      const each = parts.length > 1 && subs.length === parts.length;
       (parts.length ? parts : [""]).forEach((text, k, all) =>
         bubbles.push({
           m,
@@ -405,7 +416,7 @@ export function convoScreen({ mount, args, go, back }) {
           me: m.role === "user",
           first: k === 0,
           last: k === all.length - 1,
-          sub: k === all.length - 1 ? sub : "",
+          sub: each ? subs[k] : k === all.length - 1 ? sub : "",
         }),
       );
     }

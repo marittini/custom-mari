@@ -7,7 +7,7 @@ import { h, icon, I, setChildren, dots } from "../lib/h.js";
 import { api, characterCard } from "../lib/api.js";
 import { data, firstLetter } from "../lib/data.js";
 import { pageHead, toast, errorBox, sheet, popMenu, hbox, avatar } from "../lib/ui.js";
-import { syncVoiceSettings, patchVoice, voiceSettings } from "../lib/voice.js";
+import { voiceList, syncVoiceSettings, patchVoice, voiceSettings } from "../lib/voice.js";
 import * as tts from "../lib/tts.js";
 
 const chip = (label, on, onClick) =>
@@ -69,11 +69,7 @@ export function voiceScreen({ mount, args, go, back }) {
       if (view === "people" && config) {
         try {
           const res = await api.get("/tts/voices");
-          voices = (Array.isArray(res) ? res : res?.voices || [])
-            .map((x) =>
-              typeof x === "string" ? { id: x, name: x } : { id: x.id || x.voice_id || x.name, name: x.name || x.id },
-            )
-            .filter((x) => x.id);
+          voices = voiceList(res);
         } catch {
           voices = [];
         }

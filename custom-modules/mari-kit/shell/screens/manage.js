@@ -7,6 +7,7 @@ import { api, characterCard } from "../lib/api.js";
 import { data, characterIndex } from "../lib/data.js";
 import { toast, errorBox, openEngine, avatar } from "../lib/ui.js";
 import { groupsOf, splitByGroup, sectioned } from "../lib/groups.js";
+import { voiceList } from "../lib/voice.js";
 
 const PROVIDERS = [
   "openai",
@@ -488,11 +489,7 @@ export function voicePage(body) {
     let voices = [];
     try {
       const res = await api.get("/tts/voices");
-      voices = (Array.isArray(res) ? res : res?.voices || [])
-        .map((v) =>
-          typeof v === "string" ? { id: v, name: v } : { id: v.id || v.voice_id || v.name, name: v.name || v.id },
-        )
-        .filter((v) => v.id);
+      voices = voiceList(res);
     } catch {}
     const voiceOptions = [["", "기본 보이스"], ...voices.map((v) => [v.id, v.name])];
     const enabled = h("input", { type: "checkbox", checked: !!config.enabled });

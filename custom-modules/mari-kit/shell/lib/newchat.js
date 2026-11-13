@@ -3,7 +3,7 @@
 
 import { h, setChildren } from "./h.js";
 import { api, characterCard } from "./api.js";
-import { data, characterIndex, firstLetter } from "./data.js";
+import { data, characterIndex, firstLetter, textConnections } from "./data.js";
 import { sheet, toast, avatar } from "./ui.js";
 import { groupsOf, splitByGroup, groupedOptions, sectioned } from "./groups.js";
 import { pickPerson } from "./picker.js";
@@ -28,9 +28,7 @@ export async function openNewChat({ mode = "roleplay", characterId = null, go })
     groupsOf("presets"),
   ]);
   // Chat models only, like the Engine's chat connection picker.
-  const conns = allConns.filter(
-    (c) => !["image_generation", "video_generation", "audio_generation", "audio", "decision"].includes(c.provider),
-  );
+  const conns = textConnections(allConns);
   const index = characterIndex(chars);
   const body = h("div", {
     style: { display: "flex", flexDirection: "column", minHeight: "0", overflowY: "auto", padding: "4px 0 24px" },

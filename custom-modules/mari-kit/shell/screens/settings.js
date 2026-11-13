@@ -148,7 +148,7 @@ export function settingsScreen({ mount, args, go, back }) {
   const SHELL_ITEMS = [
     ["다크 모드", "설정 › 화면", "dark theme 테마 어둡게", () => setPrefs({ theme: isDark() ? "light" : "dark" })],
     ["글꼴", "설정 › 화면", "font 폰트", () => go("settings/font")],
-    ["읽기", "설정 › 화면", "글자 크기 줄 간격 정렬 reading", () => go("reader")],
+    ["읽기", "설정 › 화면", "글자 크기 줄 간격 정렬 글꼴 롤플레이 대화 대사 형광펜 reading", () => go("reader")],
     ["메시지 도구", "설정 › 화면", "버튼 tools 복사 수정", () => go("settings/tools")],
     ["앱 이름 · 아이콘", "설정 › 화면", "brand 홈 화면", () => go("settings/brand")],
     ["연결", "설정 › 모델", "connection api 모델 키", () => go("settings/connections")],
@@ -284,14 +284,37 @@ export function settingsScreen({ mount, args, go, back }) {
       } catch (error) {
         return toast(`저장하지 못했어요: ${error.message}`);
       }
-      setPrefs({ fontCss: css, families: families.filter((f) => f !== family), font: p.font === family ? "" : p.font });
+      setPrefs({
+        fontCss: css,
+        families: families.filter((f) => f !== family),
+        font: p.font === family ? "" : p.font,
+        fontRp: p.fontRp === family ? "" : p.fontRp,
+        fontConvo: p.fontConvo === family ? "" : p.fontConvo,
+      });
       draw();
     };
     return [
       h(
         "div",
         { style: { display: "flex", flexDirection: "column", gap: "24px", paddingTop: "8px" } },
-        h("label", { class: "fld" }, "사용할 글꼴", select),
+        h("label", { class: "fld" }, "사용할 글꼴 · 앱 전체", select),
+        [
+          ["fontRp", "롤플레이 본문"],
+          ["fontConvo", "대화 말풍선"],
+        ].map(([key, label]) =>
+          h(
+            "label",
+            { class: "fld" },
+            label,
+            h(
+              "select",
+              { class: "inp", onChange: (e) => setPrefs({ [key]: e.target.value }) },
+              [["", "앱과 같게"], ...families.map((f) => [f, f])].map(([value, text]) =>
+                h("option", { value, selected: (p[key] || "") === value }, text),
+              ),
+            ),
+          ),
+        ),
         families.length
           ? h(
               "div",

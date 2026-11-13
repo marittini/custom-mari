@@ -6,15 +6,13 @@
 
 import { h, icon, I, setChildren } from "../lib/h.js";
 import { api, download } from "../lib/api.js";
-import { data, characterIndex, chatMeta, chatTitle, coverOf } from "../lib/data.js";
+import { data, characterIndex, chatMeta, chatTitle, coverOf, textConnections } from "../lib/data.js";
 import { setPrefs, isDark, TOOL_DEFS, toolPlace } from "../lib/prefs.js";
 import { topBar, toast, errorBox, openEngine, sheet, avatar, thumb } from "../lib/ui.js";
 import { lorebookViews, REASON_LABEL } from "../lib/lorebooks.js";
 import { ENGINE_SECTIONS } from "../lib/engine-sections.js";
 import { pickPerson } from "../lib/picker.js";
 import { groupsOf, splitByGroup, groupedOptions, sectioned, forgetGroups } from "../lib/groups.js";
-
-const NOT_CHAT = ["image_generation", "video_generation", "audio_generation", "audio", "decision"];
 
 const VIEW_TITLES = {
   translation: "번역",
@@ -110,7 +108,7 @@ export function chatSettingsScreen({ mount, args, go, back }) {
       state = {
         chat,
         // Chat models only: image, video and audio connections are not for writing replies.
-        conns: conns.filter((c) => !NOT_CHAT.includes(c.provider)),
+        conns: textConnections(conns),
         presets,
         personas,
         index: characterIndex(chars),

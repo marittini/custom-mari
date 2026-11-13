@@ -4,7 +4,7 @@
 
 import { h, icon, dots, I, setChildren } from "../lib/h.js";
 import { api } from "../lib/api.js";
-import { data, characterIndex, chatTitle, chatMeta, messageText, messageWindow } from "../lib/data.js";
+import { data, characterIndex, chatTitle, chatMeta, messageText, messageWindow, charLabel } from "../lib/data.js";
 import { TOOL_DEFS, toolPlace, prefs } from "../lib/prefs.js";
 import { olderButton, topBar, toast, errorBox, fitMenus, jumpTo } from "../lib/ui.js";
 import { parseMessage, inline, buildPronunciations, applyPronunciations, pickVoice } from "../lib/render.js";
@@ -30,7 +30,7 @@ export function rpScreen({ mount, args, go, back }) {
   let index = new Map();
   let messages = [];
   const win = messageWindow(chatId);
-  let total = null; // whole-chat message count, for the header
+  let total = null; // characters in the whole chat, for the header
   let participants = [];
   let ttsConfig = null;
   let voiceSet = null; // Mari Kit voice settings (cue form, autoplay)
@@ -65,7 +65,7 @@ export function rpScreen({ mount, args, go, back }) {
     h("button", { type: "button", class: "ib", "aria-label": "채팅 설정", onClick: openSettings }, icon(I.sliders, 19)),
   );
   const page = h("main", { class: "rp" });
-  const scroller = h("div", { class: "scroll" }, page);
+  const scroller = h("div", { class: "scroll rpf" }, page);
   const input = h("textarea", {
     class: "cin",
     rows: 1,
@@ -138,21 +138,21 @@ export function rpScreen({ mount, args, go, back }) {
         data.chat(chatId),
         data.characters(),
         win.reload(tail),
-        api.get(`/chats/${encodeURIComponent(chatId)}/message-count`).catch(() => null),
+        api.get(`/mari-kit/shell/previews?ids=${encodeURIComponent(chatId)}`).catch(() => null),
       ]);
       if (!alive) return;
       chat = c;
       trBtn.hidden = chatMeta(chat).showInputTranslateButton !== true;
       index = characterIndex(chars);
       messages = win.list;
-      total = Number.isFinite(count?.count) ? count.count : null;
+      total = Number.isFinite(count?.[chatId]?.chars) ? count[chatId].chars : null;
       title.textContent = chatTitle(chat, index);
       sub.textContent = [
         (chat.characterIds || [])
           .map((id) => index.get(id)?.name)
           .filter(Boolean)
           .join(", "),
-        `메시지 ${total ?? messages.length}`,
+        total === null ? "" : charLabel(total),
       ]
         .filter(Boolean)
         .join(" · ");

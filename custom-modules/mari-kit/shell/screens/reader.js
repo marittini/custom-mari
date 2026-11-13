@@ -1,6 +1,7 @@
 import { h, icon, I, setChildren } from "../lib/h.js";
 import { prefs, setPrefs } from "../lib/prefs.js";
 import { topBar } from "../lib/ui.js";
+import { inline } from "../lib/render.js";
 
 const STEPS = [
   { key: "size", label: "크기", min: 12, max: 32, step: 1, fmt: (v) => `${v}px` },
@@ -18,7 +19,7 @@ const STEPS = [
 const round = (v) => Math.round(v * 100) / 100;
 
 export function readerScreen({ mount, back }) {
-  const body = h("div", { class: "scroll", style: { paddingBottom: "24px" } });
+  const body = h("div", { class: "scroll rpf", style: { paddingBottom: "24px" } });
   mount.append(topBar({ back: () => back("settings"), title: "읽기 설정" }), body);
   const draw = () => {
     const p = prefs();
@@ -39,23 +40,43 @@ export function readerScreen({ mount, back }) {
         h(
           "p",
           { class: "read", style: { margin: "0", textAlign: p.align } },
-          "“네가 젖으면 내가 곤란해.” 우산이 마리 쪽으로 기울었다. 그의 왼쪽 어깨에 빗방울이 하나둘 내려앉았다.",
+          inline(
+            "“네가 젖으면 내가 곤란해.” 우산이 마리 쪽으로 기울었다. 그의 왼쪽 어깨에 빗방울이 하나둘 내려앉았다.",
+          ),
         ),
       ),
       h(
         "div",
         { class: "list" },
-        h(
-          "label",
-          { class: "r two static" },
-          h("span", null, "글꼴"),
+        [
+          ["font", "글꼴 · 앱 전체", "기본"],
+          ["fontRp", "글꼴 · 롤플레이", "앱과 같게"],
+          ["fontConvo", "글꼴 · 대화", "앱과 같게"],
+        ].map(([key, label, none]) =>
           h(
-            "select",
-            { class: "sel", style: { width: "160px" }, onChange: (e) => setPrefs({ font: e.target.value }) },
-            [["", "기본"], ...families.map((f) => [f, f])].map(([value, label]) =>
-              h("option", { value, selected: (p.font || "") === value }, label),
+            "label",
+            { class: "r two static" },
+            h("span", null, label),
+            h(
+              "select",
+              { class: "sel", style: { width: "160px" }, onChange: (e) => setPrefs({ [key]: e.target.value }) },
+              [["", none], ...families.map((f) => [f, f])].map(([value, text]) =>
+                h("option", { value, selected: (p[key] || "") === value }, text),
+              ),
             ),
           ),
+        ),
+        h(
+          "button",
+          {
+            type: "button",
+            class: "r two",
+            role: "switch",
+            "aria-checked": p.highlight === true ? "true" : "false",
+            onClick: () => setPrefs({ highlight: p.highlight !== true }),
+          },
+          h("span", null, "대사 형광펜"),
+          h("span", { class: p.highlight === true ? "sw on" : "sw" }, h("span")),
         ),
         STEPS.map((s) => {
           const v = Number(p[s.key]);

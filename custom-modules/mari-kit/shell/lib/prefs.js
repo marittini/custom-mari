@@ -48,6 +48,9 @@ export const TOOL_DEFS = [
 const DEFAULTS = {
   theme: null, // null → follow the device
   font: "",
+  fontRp: "", // "" → same as font
+  fontConvo: "",
+  highlight: false, // 대사 형광펜
   fontCss: "",
   families: [],
   size: 16,
@@ -105,6 +108,10 @@ export function applyPrefs() {
   root.classList.toggle("dark", isDark());
   const style = root.style;
   style.setProperty("--user-font", p.font ? `${quote(p.font)}, system-ui, sans-serif` : "system-ui, sans-serif");
+  const family = (name) => (name ? `${quote(name)}, system-ui, sans-serif` : "var(--user-font)");
+  style.setProperty("--font-rp", family(p.fontRp));
+  style.setProperty("--font-convo", family(p.fontConvo));
+  root.classList.toggle("hl-dlg", p.highlight === true);
   style.setProperty("--read-size", `${p.size}px`);
   style.setProperty("--read-leading", String(p.leading));
   style.setProperty("--read-tracking", `${p.tracking}px`);

@@ -1,6 +1,7 @@
 {
   "note": "Engine routes the Mari shell calls (outside its own /api/mari-kit). scripts/check-engine-api.mjs checks each still exists on an Engine after an upstream update; scripts/check.mjs keeps this list in step with the shell code.",
   "routes": [
+    "PATCH /agents/type/mari-kit",
     "GET /app-settings/ui",
     "GET /characters/:id",
     "PATCH /characters/:id",
@@ -14,7 +15,6 @@
     "GET /chats/:id",
     "PATCH /chats/:id",
     "POST /chats/:id/branch",
-    "GET /chats/:id/message-count",
     "GET /chats/:id/messages",
     "POST /chats/:id/messages",
     "DELETE /chats/:id/messages/:id",

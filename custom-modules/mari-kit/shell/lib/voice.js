@@ -30,3 +30,16 @@ export async function patchVoice(patch) {
   cached = Promise.resolve(v);
   return v;
 }
+
+/**
+ * The Engine's voice list (GET /tts/voices) as [{ id, name }]: names come from voiceOptions (ElevenLabs voice ids
+ * are opaque codes); `voices` alone holds only ids.
+ */
+export function voiceList(res) {
+  const rows = Array.isArray(res) ? res : res?.voiceOptions?.length ? res.voiceOptions : res?.voices || [];
+  return rows
+    .map((x) =>
+      typeof x === "string" ? { id: x, name: x } : { id: x.id || x.voice_id || x.name, name: x.name || x.id },
+    )
+    .filter((x) => x.id);
+}

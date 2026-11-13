@@ -4,7 +4,8 @@
 
 import { h, icon, dots, I, setChildren } from "../lib/h.js";
 import { api } from "../lib/api.js";
-import { data, chatTitle, characterIndex } from "../lib/data.js";
+import { data, chatTitle, characterIndex, chatMeta, textConnections } from "../lib/data.js";
+import { groupsOf, groupedOptions, splitByGroup } from "../lib/groups.js";
 import { toast, errorBox, sheet } from "../lib/ui.js";
 
 const P = (d) => d;
@@ -41,8 +42,23 @@ const SETTINGS = [
         label: "묶음",
         help: "한 번 정리할 때 읽는 메시지 수 · 묶음마다 호출 1번",
         chips: [12, 24, 36, 48],
+        range: [6, 60],
       },
-      { key: "keepRecent", label: "최근 제외", help: "정리하지 않고 원문으로 남길 최근 메시지", chips: [4, 6, 10] },
+      {
+        key: "keepRecent",
+        label: "최근 제외",
+        help: "정리하지 않고 원문으로 남길 최근 메시지",
+        chips: [4, 6, 10],
+        range: [0, 40],
+      },
+      {
+        key: "context",
+        label: "AI가 읽을 최근 메시지",
+        help: "이보다 오래된 메시지는 AI에게 보내지 않아요 · 지난 일은 기억이 대신 알려줘요 · 엔진의 채팅 설정 › 컨텍스트와 같은 값",
+        chips: [0, 40, 80, 150],
+        range: [0, 2000],
+        fmt: (v) => (v ? String(v) : "전부"),
+      },
       { key: "connection", label: "기억 정리에 쓸 연결" },
       {
         key: "detail",
@@ -183,15 +199,27 @@ export function memoryScreen({ mount, args, go, back }) {
 
   async function load() {
     try {
-      const [d, chat, chars, conns, settings] = await Promise.all([
+      const [d, chat, chars, conns, settings, connGroups, presets] = await Promise.all([
         api.get(`/mari-kit/memory/${enc}/data`),
         data.chat(chatId),
         data.characters(),
         data.connections(),
         api.get("/mari-kit/settings").catch(() => null),
+        groupsOf("connections"),
+        api.get("/mari-kit/memory-presets").catch(() => ({ presets: [] })),
       ]);
       if (!alive) return;
-      state = { ...d, chat, conns, index: characterIndex(chars), kit: settings };
+      state = {
+        ...d,
+        chat,
+        allConns: conns,
+        // Organizing and translating write text: image, video and audio connections are left out.
+        conns: textConnections(conns),
+        connGroups,
+        presets: presets.presets || [],
+        index: characterIndex(chars),
+        kit: settings,
+      };
       sub.textContent = chatTitle(chat, state.index);
       draw();
     } catch (error) {
@@ -1319,25 +1347,72 @@ export function memoryScreen({ mount, args, go, back }) {
         toast(error.message);
       }
     };
-    const connOpts = [["", "채팅 연결 그대로"], ...state.conns.map((c) => [c.id, c.name])];
+    const contextLimit = Number(chatMeta(state.chat).contextMessageLimit) || 0;
+    const setContextLimit = async (v) => {
+      try {
+        await api.patch(`/chats/${enc}/metadata`, { contextMessageLimit: v > 0 ? v : null });
+        await load();
+      } catch (error) {
+        toast(error.message);
+      }
+    };
+    const connSelect = (value, empty, onPick) =>
+      h(
+        "select",
+        { class: "inp", onChange: (e) => onPick(e.target.value || null) },
+        groupedOptions(
+          h,
+          value,
+          [["", empty]],
+          splitByGroup(state.conns, state.connGroups, { folderOf: (c) => c.folderId }),
+          (c) => [c.id, c.name],
+        ),
+      );
     const control = (r) => {
       if (r.chips) {
-        const cur = r.key === "chunk" ? m.chunkMessages : s[r.key];
+        const cur = r.key === "chunk" ? m.chunkMessages : r.key === "context" ? contextLimit : s[r.key];
+        const set = (v) =>
+          r.key === "chunk"
+            ? save({ chunkMessages: v })
+            : r.key === "context"
+              ? setContextLimit(v)
+              : save({ settings: { [r.key]: v } });
+        const chips = r.chips.map((v) =>
+          h(
+            "button",
+            {
+              type: "button",
+              class: cur === v ? "chip on" : "chip",
+              "aria-pressed": cur === v ? "true" : "false",
+              onClick: (e) => (e.preventDefault(), set(v)),
+            },
+            r.fmt ? r.fmt(v) : String(v),
+          ),
+        );
+        if (!r.range) return h("span", { style: { display: "flex", gap: "6px", flexWrap: "wrap" } }, chips);
+        // Any number in the range: type it, then leave the box (or press Enter).
+        const [lo, hi] = r.range;
+        const box = h("input", {
+          class: "inp",
+          type: "number",
+          inputmode: "numeric",
+          min: lo,
+          max: hi,
+          value: cur ?? 0,
+          "aria-label": r.label,
+          style: { width: "88px", textAlign: "center" },
+          onChange: (e) => {
+            const v = Math.round(Number(e.target.value));
+            if (!Number.isFinite(v)) return;
+            const n = Math.min(hi, Math.max(lo, v));
+            if (n !== cur) set(n);
+          },
+        });
         return h(
           "span",
-          { style: { display: "flex", gap: "6px", flexWrap: "wrap" } },
-          r.chips.map((v) =>
-            h(
-              "button",
-              {
-                type: "button",
-                class: cur === v ? "chip on" : "chip",
-                "aria-pressed": cur === v ? "true" : "false",
-                onClick: () => save(r.key === "chunk" ? { chunkMessages: v } : { settings: { [r.key]: v } }),
-              },
-              r.fmt ? r.fmt(v) : String(v),
-            ),
-          ),
+          { style: { display: "flex", gap: "8px", flexWrap: "wrap", alignItems: "center" } },
+          box,
+          chips,
         );
       }
       if (r.toggle)
@@ -1368,24 +1443,48 @@ export function memoryScreen({ mount, args, go, back }) {
           : r.key === "translateConnection"
             ? s.translateConnectionId || ""
             : s[r.key];
-      const opts = r.key === "connection" || r.key === "translateConnection" ? connOpts : r.options;
+      if (r.key === "connection") return connSelect(value, "채팅 연결 그대로", (v) => save({ connectionId: v }));
+      if (r.key === "translateConnection")
+        return connSelect(value, "채팅 연결 그대로", (v) => save({ settings: { translateConnectionId: v } }));
+      const opts = r.options;
       return h(
         "select",
         {
           class: "inp",
-          onChange: (e) =>
-            save(
-              r.key === "connection"
-                ? { connectionId: e.target.value || null }
-                : r.key === "translateConnection"
-                  ? { settings: { translateConnectionId: e.target.value || null } }
-                  : { settings: { [r.key]: e.target.value } },
-            ),
+          onChange: (e) => save({ settings: { [r.key]: e.target.value } }),
         },
         opts.map(([v, t]) => h("option", { value: v, selected: String(value) === v }, t)),
       );
     };
     const emb = state.embedding;
+    // 임베딩 연결: the Engine's agent setting for Mari Kit picks the connection whose embedding model is used.
+    // Only connections with an embedding model set are offered; 엔진 기본 follows the app's default.
+    const embeddingPicker = () => {
+      const withModel = state.allConns.filter((c) => String(c.embeddingModel || "").trim());
+      return h(
+        "select",
+        {
+          class: "inp",
+          "aria-label": "임베딩 연결",
+          onChange: async (e) => {
+            try {
+              await api.patch("/agents/type/mari-kit", { connectionId: e.target.value || null });
+              toast("임베딩 연결을 바꿨어요 · 다시 색인을 눌러 주세요");
+              await load();
+            } catch (error) {
+              toast(error.message);
+            }
+          },
+        },
+        groupedOptions(
+          h,
+          emb.connectionId || "",
+          [["", "엔진 기본 (없으면 기기 안 무료 임베딩)"]],
+          splitByGroup(withModel, state.connGroups, { folderOf: (c) => c.folderId }),
+          (c) => [c.id, `${c.name} · ${c.embeddingModel}`],
+        ),
+      );
+    };
     const backup = async () => {
       try {
         const data = await api.get(`/mari-kit/memory/${enc}/export`);
@@ -1457,7 +1556,103 @@ export function memoryScreen({ mount, args, go, back }) {
         { label: "다른 방에서" },
       );
     };
+    // 프리셋: the 정리·회상 numbers and choices of this chat, saved under a name and applied to any chat.
+    const presets = state.presets || [];
+    const savePresets = async (list, done) => {
+      try {
+        state.presets = (await api.put("/mari-kit/memory-presets", { presets: list })).presets;
+        toast(done);
+        draw();
+      } catch (error) {
+        toast(error.message);
+      }
+    };
+    const current = () => ({
+      chunkMessages: m.chunkMessages,
+      contextMessageLimit: contextLimit || null,
+      settings: { ...s },
+    });
+    const applyPreset = async (p) => {
+      try {
+        await api.patch(`/mari-kit/memory/${enc}/settings`, {
+          chunkMessages: p.chunkMessages,
+          settings: { ...p.settings, translateConnectionId: s.translateConnectionId },
+        });
+        await api.patch(`/chats/${enc}/metadata`, { contextMessageLimit: p.contextMessageLimit || null });
+        toast(`'${p.name}' 적용`);
+        await load();
+      } catch (error) {
+        toast(error.message);
+      }
+    };
+    const same = (p) =>
+      p.chunkMessages === m.chunkMessages &&
+      (p.contextMessageLimit || 0) === contextLimit &&
+      Object.keys(p.settings).every((k) => p.settings[k] === s[k]);
+    const presetName = h("input", {
+      class: "inp",
+      placeholder: "프리셋 이름",
+      maxlength: 40,
+      "aria-label": "프리셋 이름",
+    });
+    const presetBlock = [
+      sec("프리셋", presets.length ? "눌러서 적용" : ""),
+      presets.length
+        ? h(
+            "div",
+            { style: { display: "flex", flexWrap: "wrap", gap: "8px", padding: "0 20px 12px" } },
+            presets.map((p) =>
+              h(
+                "button",
+                {
+                  type: "button",
+                  class: same(p) ? "chip on" : "chip",
+                  "aria-pressed": same(p) ? "true" : "false",
+                  onClick: () => applyPreset(p),
+                },
+                p.name,
+              ),
+            ),
+          )
+        : hint("자주 쓰는 설정을 이름 붙여 두면 다른 방에서도 한 번에 적용해요."),
+      h(
+        "div",
+        { class: "rowform", style: { padding: "0 20px" } },
+        presetName,
+        pill("지금 설정 저장", () => {
+          const name = presetName.value.trim();
+          if (!name) return toast("프리셋 이름을 적어 주세요");
+          const old = presets.find((p) => p.name === name);
+          const next = old
+            ? presets.map((p) => (p === old ? { ...p, ...current() } : p))
+            : [...presets, { id: Math.random().toString(36).slice(2, 10), name, ...current() }];
+          savePresets(next, old ? `'${name}'을 지금 설정으로 바꿨어요` : `'${name}' 저장`);
+        }),
+      ),
+      presets.length
+        ? h(
+            "details",
+            { style: { padding: "10px 20px 0" } },
+            h("summary", { class: "hint", style: { cursor: "pointer", minHeight: "32px" } }, "프리셋 지우기"),
+            h(
+              "div",
+              { style: { display: "flex", flexWrap: "wrap", gap: "8px", paddingTop: "8px" } },
+              presets.map((p) =>
+                pill(`${p.name} 지우기`, () =>
+                  confirm(`'${p.name}' 프리셋을 지울까요?`)
+                    ? savePresets(
+                        presets.filter((x) => x !== p),
+                        "지웠어요",
+                      )
+                    : null,
+                ),
+              ),
+            ),
+          )
+        : null,
+    ];
     return [
+      presetBlock,
       SETTINGS.map((g) => [
         sec(g.group),
         card(
@@ -1476,13 +1671,16 @@ export function memoryScreen({ mount, args, go, back }) {
               h("span", { style: { fontSize: "14px" } }, r.label),
               control(r),
               r.key === "embedding"
-                ? h(
-                    "span",
-                    { class: "hint" },
-                    emb.available
-                      ? `${emb.label || "임베딩"} · 색인된 장면 ${emb.indexed ?? 0}/${m.scenes.length} · 엔진의 에이전트 설정에서 Mari Kit에 임베딩 연결을 정하면 그걸 쓰고, 없으면 기기 안 무료 임베딩을 써요`
-                      : "임베딩을 쓸 수 없어요",
-                  )
+                ? [
+                    s.embedding ? embeddingPicker() : null,
+                    h(
+                      "span",
+                      { class: "hint" },
+                      emb.available
+                        ? `지금 쓰는 것: ${emb.label || "기기 안 무료 임베딩"} · 색인된 장면 ${emb.indexed ?? 0}/${m.scenes.length}`
+                        : "임베딩을 쓸 수 없어요",
+                    ),
+                  ]
                 : r.help
                   ? h("span", { class: "hint" }, r.help)
                   : null,

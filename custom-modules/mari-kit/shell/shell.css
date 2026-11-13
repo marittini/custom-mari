@@ -10,11 +10,14 @@
   --user-font: system-ui, sans-serif;
   --font-ui: var(--user-font);
   --font-read: var(--font-ui);
+  --font-rp: var(--font-ui);
+  --font-convo: var(--font-ui);
   /* The device's own fixed-width face (receipts): generic families only, nothing downloaded. */
   --font-mono: ui-monospace, monospace;
   --paper: #ffffff;
   --surface: #ffffff;
   --fill: #f2f2f4;
+  --hl: #e4e4e9;
   --ink: #1c1c1e;
   --ink-2: #3a3a3c;
   --ink-3: #6c6c70;
@@ -36,6 +39,7 @@
   --paper: #000000;
   --surface: #1c1c1e;
   --fill: #2c2c2e;
+  --hl: #3d3d40;
   --ink: #f2f2f7;
   --ink-2: #d1d1d6;
   --ink-3: #98989f;
@@ -865,6 +869,19 @@ a {
   cursor: pointer;
   white-space: pre-wrap;
   overflow-wrap: anywhere;
+}
+.rpf .read {
+  font-family: var(--font-rp);
+}
+.bub,
+.bub-tr {
+  font-family: var(--font-convo);
+}
+/* 대사 형광펜: a soft grey marker under spoken lines. */
+.hl-dlg .dlg {
+  background: linear-gradient(transparent 52%, var(--hl) 52%, var(--hl) 92%, transparent 92%);
+  -webkit-box-decoration-break: clone;
+  box-decoration-break: clone;
 }
 .bub.them {
   background: var(--fill);

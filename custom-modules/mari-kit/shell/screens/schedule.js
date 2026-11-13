@@ -4,6 +4,7 @@
 //   #/schedule/<key>/make/<chatId?>  AI로 만들기 · 실제 생활
 // <key> is the persona id ("default" when the chat has none); <chatId> lets "캐릭터 일정과 맞춰서" read the room.
 
+import { connectionSelect } from "../lib/connpick.js";
 import { h, icon, I, setChildren, dots } from "../lib/h.js";
 import { api } from "../lib/api.js";
 import { data } from "../lib/data.js";
@@ -571,13 +572,10 @@ export function scheduleScreen({ mount, args, go, back }) {
     ];
     const ta = (keyName, rows) =>
       h("textarea", { class: "bare", rows, onInput: (e) => (make[keyName] = e.target.value) }, make[keyName]);
-    const conn = h(
-      "select",
-      { class: "sel", style: { width: "170px" }, onChange: (e) => (make.connectionId = e.target.value) },
-      h("option", { value: "" }, "기본 연결"),
-    );
-    data.connections().then((list) => {
-      for (const c of list) conn.append(h("option", { value: c.id, selected: c.id === make.connectionId }, c.name));
+    const conn = connectionSelect({
+      value: make.connectionId,
+      onPick: (v) => (make.connectionId = v),
+      attrs: { class: "sel", style: { width: "170px" } },
     });
     const zone = h("input", {
       class: "inp",

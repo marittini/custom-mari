@@ -87,19 +87,27 @@ export function stripCues(text) {
 }
 
 /** Inline markdown (*em*, **strong**) and line breaks as DOM nodes; other markup is shown as text. */
+const DIALOGUE = /(“[^”\n]+”|"[^"\n]+"|「[^」\n]+」|『[^』\n]+』)/;
+const DIALOGUE_ONE = /^(“[^”\n]+”|"[^"\n]+"|「[^」\n]+」|『[^』\n]+』)$/;
+
 export function inline(text) {
   const out = [];
   const clean = String(text).replace(/<\/?[a-z][^>]*>/gi, "");
   const re = /\*\*([^*]+)\*\*|\*([^*\n]+)\*|\n/g;
+  // Spoken lines get a span so 보기 설정 › 대사 형광펜 can mark them.
+  const plain = (t) => {
+    for (const part of t.split(DIALOGUE))
+      if (part) out.push(DIALOGUE_ONE.test(part) ? h("span", { class: "dlg" }, part) : part);
+  };
   let at = 0;
   for (const m of clean.matchAll(re)) {
-    if (m.index > at) out.push(clean.slice(at, m.index));
+    if (m.index > at) plain(clean.slice(at, m.index));
     if (m[0] === "\n") out.push(h("br"));
     else if (m[1] !== undefined) out.push(h("strong", null, m[1]));
     else out.push(h("em", null, m[2]));
     at = m.index + m[0].length;
   }
-  if (at < clean.length) out.push(clean.slice(at));
+  if (at < clean.length) plain(clean.slice(at));
   return out;
 }
 
