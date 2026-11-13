@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "generatedAt": "2026-11-13T12:04:29.576Z",
+  "generatedAt": "2026-11-13T12:35:07.260Z",
   "packages": [
     {
       "manifest": {
@@ -4677,7 +4677,7 @@
         },
         "id": "mari-kit",
         "name": "Mari Kit",
-        "version": "0.16.5",
+        "version": "0.16.6",
         "description": "개인 기능 모음(TTS·번역·날씨·기억)을 엔진 소스 수정 없이 붙이는 패키지입니다.",
         "engine": {
           "min": "2.5.2",
@@ -4715,7 +4715,7 @@
         "restartRequired": true,
         "builtAgainst": {
           "engineVersion": "2.5.2",
-          "engineCommit": "0fa9d76244082c9078cf096df0ef2d7919b11e57"
+          "engineCommit": "4047f3def6ca2c89329238edf1d61fa292c8be6f"
         },
         "files": [
           {
@@ -4905,8 +4905,8 @@
           },
           {
             "path": "shell/lib/render.js",
-            "sha256": "78cc28d47f8ff33680bc2ca8a7f586aa1fb46692e13d3a22dee98db8b00128ca",
-            "bytes": 6346
+            "sha256": "738e58b0d92ea51644f19f81d8cc6e9f1639e77fb22700b7d3d5ed810d09d6f3",
+            "bytes": 7002
           },
           {
             "path": "shell/lib/scrolling.js",
@@ -4930,8 +4930,8 @@
           },
           {
             "path": "shell/lib/translate.js",
-            "sha256": "1ee8217b892300219fb77a0d3ae12324cb8afb43aa2377fea8f5ecc6057a38a4",
-            "bytes": 4955
+            "sha256": "a33d3b27615ed9ee5e645121e597da8e67347753e81f12df733a248d413a7ce9",
+            "bytes": 4979
           },
           {
             "path": "shell/lib/tts.js",
@@ -5030,8 +5030,8 @@
           },
           {
             "path": "shell/screens/rp.js",
-            "sha256": "7936f7ae505adf090e3c1b869f1e723296e1e24e987f037dcf09917b45ccc9e4",
-            "bytes": 27319
+            "sha256": "5f9e318e747f35770ce0fd77df01c949ff263c9c30c5e73ce783ffb8c50c6633",
+            "bytes": 27737
           },
           {
             "path": "shell/screens/schedule.js",
@@ -5067,9 +5067,9 @@
       },
       "category": "misc",
       "artifact": {
-        "url": "https://raw.githubusercontent.com/marittini/custom-mari/mari-catalog/artifacts/mari-kit-0.16.5.zip",
-        "sha256": "f2d36d82d3d27c6097e6e5d76e172756cf8bb09f460fd24b060f804e243085a6",
-        "bytes": 330860
+        "url": "https://raw.githubusercontent.com/marittini/custom-mari/mari-catalog/artifacts/mari-kit-0.16.6.zip",
+        "sha256": "f5765f8327a3b99f2166f358e191428add373cfb6b7a573f9d48cbba6304fc64",
+        "bytes": 331194
       },
       "documentationUrl": "https://github.com/marittini/custom-mari/tree/main/custom-modules"
     }
