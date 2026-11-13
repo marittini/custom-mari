@@ -1,6 +1,7 @@
 // ──────────────────────────────────────────────
 // Routes: Translation — multi-provider message translation
 // ──────────────────────────────────────────────
+import { randomBytes } from "node:crypto";
 import type { DB } from "../db/connection.js";
 import { z } from "zod";
 import { isDebugAgentsEnabled } from "../config/runtime-config.js";
@@ -44,19 +45,59 @@ const translateSchema = z.object({
     .optional(),
 });
 
+/** Keep speaker identity and delivery cues outside the translator's editable text. */
+function protectVoiceMarkup(text: string) {
+  if (!/<\/?audio_(?:character|persona)\b/i.test(text)) return null;
+  let prefix: string;
+  do {
+    prefix = `ZXMV${randomBytes(4).toString("hex").toUpperCase()}_`;
+  } while (text.includes(prefix));
+  const fragments: string[] = [];
+  const protectedText = text.replace(
+    /<\/?audio_(?:character|persona)\b[^>]*>|\[[a-z][a-z ,.'-]{0,79}\]/gi,
+    (fragment) => `${prefix}${fragments.push(fragment) - 1}XZ`,
+  );
+  const tokenPattern = new RegExp(`${prefix}(\\d+)XZ`, "g");
+  return {
+    text: protectedText,
+    instruction: `Formatting markers beginning with ${prefix} are not translatable text. Copy every marker exactly once in its original order and position. Do not alter, remove, duplicate or explain them.`,
+    restore(translated: string) {
+      const tokens = [...translated.matchAll(tokenPattern)];
+      if (
+        tokens.length !== fragments.length ||
+        tokens.some((token, index) => token[0] !== `${prefix}${index}XZ`) ||
+        /<\/?audio_(?:character|persona)\b/i.test(translated)
+      ) {
+        throw Object.assign(new Error("Translation changed voice markers. Please retry the translation."), {
+          statusCode: 422,
+        });
+      }
+      return translated.replace(tokenPattern, (_token, index: string) => fragments[Number(index)]!);
+    },
+  };
+}
+
 export async function translateText(db: DB, body: unknown, onFallback?: GenerationFallbackNotifier) {
   const input = translateSchema.parse(body);
+  const voice = protectVoiceMarkup(input.text);
+  if (voice) input.text = voice.text;
   const connections = createConnectionsStorage(db);
+  let result: { translatedText: string };
   switch (input.provider) {
     case "ai":
-      return translateWithAI(input, connections, onFallback);
+      result = await translateWithAI(input, connections, onFallback, voice?.instruction);
+      break;
     case "deeplx":
-      return translateWithDeepLX(input);
+      result = await translateWithDeepLX(input);
+      break;
     case "deepl":
-      return translateWithDeepL(input);
+      result = await translateWithDeepL(input);
+      break;
     case "google":
-      return translateWithGoogle(input);
+      result = await translateWithGoogle(input);
+      break;
   }
+  return { ...result, translatedText: voice ? voice.restore(result.translatedText) : result.translatedText };
 }
 
 /** Translate the saved, final swipe so closing the browser cannot skip translation or its persistence. */
@@ -131,6 +172,7 @@ async function translateWithAI(
   input: z.infer<typeof translateSchema>,
   connections: ReturnType<typeof createConnectionsStorage>,
   onFallback?: GenerationFallbackNotifier,
+  voiceInstruction?: string,
 ) {
   if (!input.connectionId) {
     throw Object.assign(new Error("Connection ID is required for AI translation"), { statusCode: 400 });
@@ -171,10 +213,11 @@ async function translateWithAI(
     category: "main",
     onFallback,
   });
-  const systemPrompt = resolveTranslationSystemPrompt(
+  const baseSystemPrompt = resolveTranslationSystemPrompt(
     input.systemPrompt?.trim() || DEFAULT_TRANSLATION_SYSTEM_PROMPT,
     input.targetLanguage,
   );
+  const systemPrompt = voiceInstruction ? `${baseSystemPrompt}\n\n${voiceInstruction}` : baseSystemPrompt;
   const { enabledParameters } = resolveStoredChatOptions(conn.defaultParameters, conn.provider, conn.model);
   logDebugOverride(
     input.debugMode === true || isDebugAgentsEnabled(),
