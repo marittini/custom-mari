@@ -140,6 +140,7 @@ export function settingsScreen({ mount, args, go, back }) {
         "div",
         { class: "list" },
         row(I.gear, "엔진 설정", val("엔진"), () => openEngine(null, { panel: "settings" })),
+        row(I.stop, "생성 요청 관리", val("중단 · 상태 확인"), () => go("generations")),
         row(I.square, "에이전트 · 업데이트", val("엔진"), () => openEngine(null, { panel: "agents" })),
         row(I.square, "엔진 화면", val("전체 기능"), () => openEngine()),
         row(
@@ -178,6 +179,7 @@ export function settingsScreen({ mount, args, go, back }) {
     ["읽기", "설정 › 화면", "글자 크기 줄 간격 정렬 글꼴 롤플레이 대화 대사 형광펜 reading", () => go("reader")],
     ["메시지 도구", "설정 › 화면", "버튼 tools 복사 수정", () => go("settings/tools")],
     ["Mari Kit 업데이트", "설정", "버전 update 새 버전 설치 다시 시작", () => go("settings/kit")],
+    ["생성 요청 관리", "설정 › 엔진", "생성 중단 멈춤 요청 kill progress 오류", () => go("generations")],
     ["빠른 설정", "설정 › 화면", "채팅 입력창 왼쪽 슬라이더 버튼 quick 순서 고르기", () => go("settings/quick")],
     ["앱 이름 · 아이콘", "설정 › 화면", "brand 홈 화면", () => go("settings/brand")],
     ["연결", "설정 › 모델", "connection api 모델 키", () => go("settings/connections")],

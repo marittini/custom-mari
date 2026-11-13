@@ -32,6 +32,7 @@
     "GET /connections/:id/models",
     "POST /generate",
     "POST /generate/abort",
+    "GET /generate/status/:id",
     "GET /library-folders/lorebooks",
     "GET /library-folders/presets",
     "GET /lorebooks",

@@ -75,11 +75,11 @@ export function parseVoiceLines(content) {
     const nextOpen = content.slice(start).search(/<audio_(?:character|persona)\s/i);
     const ends = [close, nextOpen].filter((at) => at >= 0);
     const body = content.slice(start, ends.length ? start + Math.min(...ends) : content.length);
-    const cueMatch = /^\s*["“]?\s*\[([^\]\n]{1,80})\]\s*/.exec(body);
+    const cueMatch = /^\s*["“「『]?\s*\[([^\]\n]{1,80})\]\s*/.exec(body);
     const cue = cueMatch ? cueMatch[1].trim() : "";
     const spoken = cueMatch ? body.slice(cueMatch[0].length) : body;
     const text = stripSpeechMarkdown(spoken)
-      .replace(/^["“”]+|["“”]+$/g, "")
+      .replace(/^["“”「『]+|["“”」』]+$/g, "")
       .trim();
     lines.push({ kind, id: match[2], cue, text });
   }

@@ -152,9 +152,14 @@ if (id === "mari-kit") {
   const guidance = tts.buildTtsGuidance([{ kind: "character", id: "c1", name: "Aya", phoneticName: "" }]);
   assert.match(guidance, /<audio_character id="ID">/);
   assert.match(guidance, /"id":"c1"/);
+  assert.match(guidance, /preserve its existing quotation marks and punctuation/);
+  assert.match(guidance, /「…」 and 『…』/);
+  assert.match(guidance, /<audio_character id="ID">「\[low, amused\].*」<\/audio_character>/);
+  assert.doesNotMatch(guidance, /<audio_(?:character|persona)[^>]*>"|<\/audio_(?:character|persona)>"/);
   assert.doesNotMatch(guidance, /phoneticName/, "phonetic names are not sent to the model");
   const tagged = tts.buildTtsGuidance([{ kind: "character", id: "c1", name: "Aya", phoneticName: "" }], "tags");
   assert.match(tagged, /\[short pause\]/, "tag mode asks for ElevenLabs audio tags");
+  assert.match(tagged, /<audio_character id="ID">「\[sighs\].*」<\/audio_character>/);
   assert.equal(
     tts.resolveCue(tts.normalizeVoiceSettings({ engine: { source: "elevenlabs", model: "eleven_v3" } })),
     "tags",
@@ -164,7 +169,11 @@ if (id === "mari-kit") {
     tts.resolveCue(tts.normalizeVoiceSettings({ cue: "free", engine: { source: "elevenlabs", model: "eleven_v3" } })),
     "free",
   );
-  assert.match(tts.buildConvoTtsGuidance("free"), /Start each message/);
+  const convoGuidance = tts.buildConvoTtsGuidance("free");
+  assert.match(convoGuidance, /Start each message/);
+  assert.match(convoGuidance, /preserve its existing quotation marks and punctuation/);
+  assert.match(convoGuidance, /「…」 and 『…』/);
+  assert.doesNotMatch(convoGuidance, /Example: "|Example:.*"/);
   const pub = tts.publicVoiceSettings(tts.normalizeVoiceSettings({ eleven: { key: "sk_abcdefghijklmnop1234" } }));
   assert.equal(pub.eleven.key, undefined, "the ElevenLabs key never goes back to the browser");
   assert.equal(pub.eleven.keyTail, "1234");
@@ -195,6 +204,23 @@ if (id === "mari-kit") {
     { kind: "persona", id: "p1", cue: "", text: "Sit." },
     { kind: "character", id: "c1", cue: "soft laugh", text: "Fine." },
   ]);
+
+  const { parseMessage } = await import(pathToFileURL(join(outDir, "shell", "lib", "render.js")).href);
+  const japaneseDialogue = '<audio_character id="c1">「こんにちは。」</audio_character>';
+  assert.deepEqual(client.parseVoiceLines('<audio_character id="c1">「[calm] こんにちは。」</audio_character>'), [
+    { kind: "character", id: "c1", cue: "calm", text: "こんにちは。" },
+  ]);
+  const japaneseParsed = parseMessage(japaneseDialogue, "c1");
+  assert.equal(
+    japaneseParsed.lines[0].text,
+    "「こんにちは。」",
+    "Japanese dialogue punctuation is preserved for display",
+  );
+  assert.equal(
+    japaneseParsed.lines[0].spoken,
+    "こんにちは。",
+    "only the outer Japanese quote marks are omitted from spoken text",
+  );
 
   // Display rules: accepted by the Engine's regex safety check, and they leave one span per parsed line.
   let shown = content;

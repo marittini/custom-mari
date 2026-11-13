@@ -2,7 +2,7 @@
 // Mari Kit TTS — server half
 //
 // The main model writes voice markup in the same reply, so no extra model call is made:
-//   <audio_character id="ID">"[low, amused] You came back."</audio_character>
+//   <audio_character id="ID">「[low, amused] You came back。」</audio_character>
 // The browser half reads that markup to play each line with the speaker's voice. Conversation messages
 // already belong to one speaker each, so there they only get delivery cues.
 //
@@ -107,7 +107,7 @@ export function resolveCue(v) {
 const TAG_RULE =
   "Add ElevenLabs audio tags in square brackets inside spoken dialogue, wherever the delivery changes: [sighs], [whispers], [laughs], [short pause], [annoyed], [thoughtful], [chuckles] and any other suitable English delivery, emotion or pacing tag. Keep tags brief, in English, and never in narration.";
 const FREE_RULE =
-  "Start each spoken line with one short English delivery cue in square brackets, inside the quotes, describing only audible voice quality, volume, pace or emotion in plain words, at most 80 characters. No visual actions, sound effects or music.";
+  "Start each spoken line with one short English delivery cue in square brackets, describing only audible voice quality, volume, pace or emotion in plain words, at most 80 characters. No visual actions, sound effects or music.";
 
 /** The instruction appended to a Roleplay turn. Returns null when there is nobody to tag. */
 export function buildTtsGuidance(participants, cue = "free") {
@@ -115,11 +115,12 @@ export function buildTtsGuidance(participants, cue = "free") {
   const list = participants.map(({ kind, id, name }) => ({ kind, id, name }));
   return [
     "<voice_markup>",
-    'Wrap every spoken line in <audio_character id="ID">"…"</audio_character>, or <audio_persona id="ID">"…"</audio_persona> for the persona, using the exact IDs from the participant list. Keep narration outside the wrappers. Do not nest wrappers or put any other markup inside them.',
+    'Wrap every spoken line in <audio_character id="ID">…</audio_character>, or <audio_persona id="ID">…</audio_persona> for the persona, using the exact IDs from the participant list. Follow the chat\'s language and preserve its existing quotation marks and punctuation, including Japanese 「…」 and 『…』. Do not add another layer of quotation marks. Keep narration outside the wrappers. Do not nest wrappers or put any other markup inside them.',
     cue === "tags"
-      ? `${TAG_RULE} Example: <audio_character id="ID">"[sighs] You came back. [short pause] Finally."</audio_character>`
-      : `${FREE_RULE} Example: <audio_character id="ID">"[low, amused] You came back."</audio_character>`,
+      ? `${TAG_RULE} Example: <audio_character id="ID">「[sighs] 戻ってきたのね。 [short pause] やっと。」</audio_character>`
+      : `${FREE_RULE} Example: <audio_character id="ID">「[low, amused] 戻ってきたのね。」</audio_character>`,
     "This markup does not change who may speak: write persona dialogue only where the existing rules allow it.",
+    "Participant names identify speakers for ID selection only. Preserve each character's existing nicknames and terms of address in dialogue; do not replace them with participant names.",
     `Participants: ${JSON.stringify(list)}`,
     "</voice_markup>",
   ].join("\n");
@@ -131,8 +132,9 @@ export function buildConvoTtsGuidance(cue = "free") {
     "<voice_cues>",
     "Your messages are read aloud.",
     cue === "tags"
-      ? `${TAG_RULE.replace("inside spoken dialogue", "inside your message")} Example: "[sighs] 진짜 늦었네. [short pause] 그래도 왔구나."`
-      : 'Start each message with one short English delivery cue in square brackets describing only audible voice quality, pace or emotion, at most 80 characters. Example: "[low, amused] 진짜 늦었네."',
+      ? `${TAG_RULE.replace("inside spoken dialogue", "inside your message")} Example: [sighs] 진짜 늦었네. [short pause] 그래도 왔구나.`
+      : "Start each message with one short English delivery cue in square brackets describing only audible voice quality, pace or emotion, at most 80 characters. Example: [low, amused] 진짜 늦었네.",
+    "Follow the chat's language and preserve its existing quotation marks and punctuation, including Japanese 「…」 and 『…』. Do not add another layer of quotation marks.",
     "</voice_cues>",
   ].join("\n");
 }

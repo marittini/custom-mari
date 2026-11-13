@@ -25,6 +25,7 @@ import * as tts from "../lib/tts.js";
 import { syncVoiceSettings } from "../lib/voice.js";
 import { callsAvailable, callScreen, callPrefs } from "../lib/call.js";
 import { shownText, translate } from "../lib/translate.js";
+import { watchGeneration, stopGeneration } from "../lib/generation.js";
 import { activeAutonomy, clearUnread } from "../lib/autonomy.js";
 import { runSlash } from "../lib/slash.js";
 import {
@@ -757,6 +758,7 @@ export function convoScreen({ mount, args, go, back }) {
         // 자동 재생: the character messages this turn added, in order.
         if (ttsConfig && voiceSet?.convo && voiceSet.autoplay !== "off")
           tts.speakSequence(messages.filter((m) => m.role === "assistant" && !before.has(m.id)).map(messageRequest));
+        await recovery.check();
       }
     }
     return produced;
@@ -764,9 +766,12 @@ export function convoScreen({ mount, args, go, back }) {
 
   async function stopGenerating() {
     try {
-      await api.post("/generate/abort", { chatId });
-    } catch {}
-    abort?.abort();
+      await stopGeneration(chatId);
+      abort?.abort();
+      await recovery.check();
+    } catch (error) {
+      toast(`중단하지 못했어요: ${error.message}`);
+    }
   }
 
   async function send() {
@@ -831,12 +836,29 @@ export function convoScreen({ mount, args, go, back }) {
     }
   });
   const off = tts.onTts(() => {});
+  let recoveredJob = null;
+  const recovery = watchGeneration(chatId, {
+    isAttached: () => !!abort,
+    onState: (state) => {
+      busy = state?.active === true;
+      if (busy && !recoveredJob)
+        recoveredJob = startJob("이 채팅에서 생성 중…", { label: "멈추기", fn: stopGenerating });
+      if (!busy) {
+        recoveredJob?.();
+        recoveredJob = null;
+      }
+      draw();
+    },
+    onSettled: () => load(false, true),
+  });
   load(true);
   return {
     dispose: () => {
       strip.dispose();
       scroll.dispose();
       alive = false;
+      recovery.dispose();
+      recoveredJob?.();
       off();
       tts.stop();
       abort?.abort();
