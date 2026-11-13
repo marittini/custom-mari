@@ -407,7 +407,7 @@ export function rpScreen({ mount, args, go, back }) {
             const text = tag === "t" ? hideCues(seg.text, m.content, false) : seg.text;
             if (seg.kind === "text") return inline(text);
             const line = speakAs(seg);
-            if (ttsConfig && !line?.spoken) return inline(text);
+            if (!line?.spoken) return inline(text);
             const key = `${m.id}:${tag}${seg.index}`;
             const on = picked === key;
             const node = h(
@@ -436,7 +436,7 @@ export function rpScreen({ mount, args, go, back }) {
     const translation = savedTranslation(m);
     const translated = parseMessage(translation, m.characterId);
     const translationSpeech = resolveTranslationSpeechLines(original, translated);
-    // 원문 대신 번역: the translation takes the original's place; its quoted lines read the original's lines in order.
+    // 원문 대신 번역: only matching voice wrappers link the translation to its original speech.
     const only = translation && chatMeta(chat).translationDisplayOnly === true;
     return h(
       "div",
@@ -595,7 +595,7 @@ export function rpScreen({ mount, args, go, back }) {
     const last = visible.filter((m) => m.role === "assistant").slice(-3);
     let changed = false;
     for (const m of last)
-      for (const line of parseMessage(messageText(m), m.characterId).lines) {
+      for (const line of parseMessage(m.content, m.characterId).lines.filter((line) => line.hasSpeakerTag)) {
         const { key } = speakRequest(line);
         if (!cachedLines.has(key) && (await tts.isCached(key))) {
           cachedLines.add(key);
@@ -711,8 +711,8 @@ export function rpScreen({ mount, args, go, back }) {
     if (!ttsConfig || !voiceSet || voiceSet.autoplay === "off" || !voiceSet.rp) return;
     const last = [...messages].reverse().find((m) => m.role === "assistant");
     if (!last) return;
-    const lines = parseMessage(messageText(last), last.characterId).lines.filter(
-      (l) => l.spoken && (voiceSet.autoplay === "all" || l.speakerKind !== "persona"),
+    const lines = parseMessage(last.content, last.characterId).lines.filter(
+      (l) => l.hasSpeakerTag && l.spoken && (voiceSet.autoplay === "all" || l.speakerKind !== "persona"),
     );
     tts.speakSequence(lines.map((l) => speakRequest(l)));
   }

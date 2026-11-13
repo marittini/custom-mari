@@ -21,6 +21,7 @@ const { createChatsStorage } = await import("../../packages/server/src/services/
 const { createConnectionsStorage } = await import("../../packages/server/src/services/storage/connections.storage.js");
 const { translateGeneratedMessage } = await import("../../packages/server/src/services/translation.service.js");
 const { getChatTranslationConfig } = await import("../../packages/shared/src/index.js");
+const { composeRoom, normalizeRoom } = await import("../../custom-modules/mari-kit/src/translation.server.mjs");
 
 const SOURCE = [
   "Narration: The room is dim.",
@@ -38,18 +39,19 @@ const TRANSLATED = [
 ].join("\n");
 const MARKER_RE = /ZXMV[0-9A-F]{8}_\d+XZ/gi;
 let providerBehavior: "normal" | "drop" | "duplicate" | "reorder" = "normal";
-const requests: Array<{ input: string; markers: string[] }> = [];
+const requests: Array<{ input: string; markers: string[]; system: string }> = [];
 const provider = createServer(async (request, response) => {
   const chunks: Buffer[] = [];
   for await (const chunk of request) chunks.push(Buffer.from(chunk));
   const body = JSON.parse(Buffer.concat(chunks).toString());
   const user = body.messages.findLast((message: { role: string }) => message.role === "user");
+  const system = body.messages.find((message: { role: string }) => message.role === "system");
   const input =
     String(user?.content ?? "")
       .split("\n\n")
       .at(-1) ?? "";
   const markers = input.match(MARKER_RE) ?? [];
-  requests.push({ input, markers });
+  requests.push({ input, markers, system: String(system?.content ?? "") });
   let translated = input
     .replace(/<\/?audio_(?:character|persona)\b[^>]*>/gi, "")
     .replace(/\[(?:whispers|sighs|angry|laughs)\]\s*/gi, "")
@@ -93,11 +95,29 @@ try {
   });
   assert(connection);
   const chat = await chats.create({ name: "Voice-markup translation", mode: "roleplay", characterIds: [] });
+  const room = normalizeRoom({
+    incomingPresetId: "builtin-roleplay",
+    outgoingPresetId: "builtin-english-korean",
+    glossary: [
+      { source: "char-aya", target: "Aya", notes: "speaker identifier" },
+      { source: "whispers", target: "속삭이며", notes: "voice cue" },
+    ],
+    speech: "Aya speaks softly and chooses short sentences.",
+    world: "This scene takes place in a quiet classroom.",
+  });
+  const composed = composeRoom(room, {
+    incoming: "Legacy incoming prompt that this preset replaces.",
+    outgoing: "Legacy outgoing prompt that this preset replaces.",
+  });
+  assert.match(composed.incoming.text, /expert literary and roleplay translator/i);
+  assert.doesNotMatch(composed.incoming.text, /Legacy incoming prompt/);
+  assert.match(composed.outgoing.text, /Korean Rendering Rules/);
   const config = getChatTranslationConfig(chat.id, {
     translationProvider: "ai",
     translationConnectionId: connection.id,
     translationOutputTargetLang: "Korean",
-    translationOutputPrompt: "Translate the dialogue and narration.",
+    translationOutputPrompt: composed.incoming.text,
+    translationInputPrompt: composed.outgoing.text,
   });
   const payload = {
     chatId: chat.id,
@@ -115,6 +135,27 @@ try {
   assert.equal(manual.json().translatedText, TRANSLATED, "manual API restores speaker IDs, cues, and narration");
   assert(requests.at(-1)!.markers.length >= 12, "markup and cue tokens reach the provider");
   assert(requests.at(-1)!.markers.every((marker) => /^ZXMV[0-9A-F]{8}_\d+XZ$/i.test(marker)));
+  const manualRequest = requests.at(-1)!;
+  const nonce = manualRequest.markers[0]!.replace(/\d+XZ$/i, "");
+  assert(!manualRequest.input.includes("char-aya"), "speaker IDs stay out of the provider's editable text");
+  assert(!manualRequest.input.includes("whispers"), "voice cues stay out of the provider's editable text");
+  assert(manualRequest.input.includes(nonce), "opaque markers, rather than original ID/cue text, reach the provider");
+  assert.match(
+    manualRequest.system,
+    /expert literary and roleplay translator/i,
+    "Mari's selected preset reaches the provider",
+  );
+  assert.match(manualRequest.system, /Fixed renderings[\s\S]*char-aya → Aya[\s\S]*whispers → 속삭이며/);
+  assert.match(manualRequest.system, /Character voice notes[\s\S]*Aya speaks softly/);
+  assert.match(manualRequest.system, /World reference[\s\S]*quiet classroom/);
+  assert.match(manualRequest.system, /Preserve every <audio_character[\s\S]*around the same dialogue/);
+  assert.match(manualRequest.system, /Square-bracket voice cues[\s\S]*copy each one exactly/);
+  assert.match(manualRequest.system, /Formatting markers beginning with ZXMV[0-9A-F]{8}_[\s\S]*exactly once/);
+  assert(
+    manualRequest.system.indexOf("Square-bracket voice cues") <
+      manualRequest.system.indexOf("Formatting markers beginning with"),
+    "the opaque marker instruction is appended alongside, not replaced by, Mari's prompt rules",
+  );
 
   const savedMessage = await chats.createMessage({ chatId: chat.id, role: "assistant", content: SOURCE });
   const savedSwipeBefore = await chats.getSwipes(savedMessage.id);
@@ -127,6 +168,11 @@ try {
     config,
   });
   assert.equal(requests.length, automaticStart + 1, "one provider request for automatic translation");
+  assert.equal(
+    requests.at(-1)!.system.replace(/ZXMV[0-9A-F]{8}_/g, "ZXMV_"),
+    manualRequest.system.replace(/ZXMV[0-9A-F]{8}_/g, "ZXMV_"),
+    "automatic translation receives the same composed prompt and protection instruction",
+  );
   const saved = await chats.getMessage(savedMessage.id);
   const savedExtra = JSON.parse(saved!.extra);
   assert.equal(savedExtra.translation, TRANSLATED);
