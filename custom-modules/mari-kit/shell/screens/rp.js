@@ -182,7 +182,7 @@ export function rpScreen({ mount, args, go, back }) {
         (await api.get(`/mari-kit/tts/participants/${encodeURIComponent(chatId)}`).catch(() => null))?.participants ||
         [];
     }
-    quick = quickReplies(ui, I.guide);
+    quick = quickReplies(ui, I.guide, "roleplay");
     qrBtn.hidden = quick.length === 0;
     if (settings?.features?.memory && usesKit) {
       memory = { waiting: 0, busy: false };

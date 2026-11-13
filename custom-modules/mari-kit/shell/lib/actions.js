@@ -10,19 +10,23 @@ export const GUIDE = (text) =>
   `[Guided generation instruction — do not include a reply from {{user}}. Instead, write the next generated message steering it toward the following: ${text.trim()}]`;
 
 /** Quick replies from the Engine's own synced settings: guide reply (when on) and the custom ones. */
-export function quickReplies(ui, guideIcon) {
+/**
+ * The Engine's quick-reply menu as the user set it up (설정 › 채팅 › 빠른 답장), in its order: post only, guide,
+ * impersonate (Roleplay only), then the user's own replies. Each built-in one follows its switch; the whole menu
+ * follows "빠른 답장 메뉴 보이기". Nothing is added that the Engine's menu does not have.
+ */
+export function quickReplies(ui, guideIcon, mode = "roleplay") {
+  if (ui.showQuickRepliesMenu === false) return [];
   const list = [];
+  if (ui.showQuickReplyPostOnly !== false)
+    list.push({ id: "post", label: "답 없이 보내기", icon: ["M4 12l16-8-6 16-2-6z"] });
   if (ui.showQuickReplyGuide !== false) list.push({ id: "guide", label: "방향 지시", icon: guideIcon });
-  // The Engine's composer buttons (continue, impersonate, post without a reply) next to the guide.
-  list.push(
-    { id: "continue", label: "이어쓰기", icon: ["M5 12h11", "M12 6l6 6-6 6"] },
-    {
+  if (mode === "roleplay" && ui.showQuickReplyImpersonate !== false)
+    list.push({
       id: "impersonate",
       label: "대신 써 줘",
       icon: ["M12 12a4 4 0 1 0 0-8 4 4 0 0 0 0 8z", "M4 21c1-4 4-6 8-6s7 2 8 6"],
-    },
-    { id: "post", label: "답 없이 보내기", icon: ["M4 12l16-8-6 16-2-6z"] },
-  );
+    });
   for (const entry of Array.isArray(ui.customQuickReplies) ? ui.customQuickReplies : []) {
     const content = String(entry?.content || "").trim();
     if (!content) continue;
@@ -33,8 +37,6 @@ export function quickReplies(ui, guideIcon) {
       content,
     });
   }
-  // Last: what the Engine's composer has and the shell does not draw (attachments, stickers, emoji, games).
-  list.push({ id: "engine", label: "첨부·스티커 · 엔진에서", icon: ENGINE_TOOL.icon });
   return list;
 }
 
@@ -45,13 +47,11 @@ export function quickReplies(ui, guideIcon) {
 export function composerTool(q, { chatId, input, grow, slash }) {
   const text = input.value.trim();
   const take = () => ((input.value = ""), grow());
-  if (q.id === "continue") slash("/continue");
-  else if (q.id === "impersonate") (take(), slash(text ? `/impersonate ${text}` : "/impersonate"));
+  if (q.id === "impersonate") (take(), slash(text ? `/impersonate ${text}` : "/impersonate"));
   else if (q.id === "post") {
     if (!text) toast("보낼 메시지를 먼저 적어 주세요");
     else (take(), slash(`/send ${text}`));
-  } else if (q.id === "engine") openEngine(chatId, { composer: true });
-  else return false;
+  } else return false;
   return true;
 }
 

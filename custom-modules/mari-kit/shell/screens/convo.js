@@ -191,7 +191,7 @@ export function convoScreen({ mount, args, go, back }) {
       messages = shown();
       if (first) {
         const [ui, config] = await Promise.all([data.engineUi(), api.get("/tts/config").catch(() => null)]);
-        quick = quickReplies(ui, I.guide);
+        quick = quickReplies(ui, I.guide, "conversation");
         qrBtn.hidden = !quick.length;
         ttsConfig = config?.enabled ? config : null;
         callAudio = config?.callAudioEnabled === true;
