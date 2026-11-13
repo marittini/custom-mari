@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "generatedAt": "2026-11-13T09:11:05.386Z",
+  "generatedAt": "2026-11-13T09:34:28.989Z",
   "packages": [
     {
       "manifest": {
@@ -4677,7 +4677,7 @@
         },
         "id": "mari-kit",
         "name": "Mari Kit",
-        "version": "0.15.2",
+        "version": "0.16.0",
         "description": "개인 기능 모음(TTS·번역·날씨·기억)을 엔진 소스 수정 없이 붙이는 패키지입니다.",
         "engine": {
           "min": "2.5.2",
@@ -4715,7 +4715,7 @@
         "restartRequired": true,
         "builtAgainst": {
           "engineVersion": "2.5.2",
-          "engineCommit": "707190ad8a9e0069242f3b89be7ed46195126a17"
+          "engineCommit": "e91af991124dbb4f2890f00f55223005dfec0074"
         },
         "files": [
           {
@@ -4780,8 +4780,8 @@
           },
           {
             "path": "translation.server.mjs",
-            "sha256": "b67280cb60c7cb50adf83b55a0e428fc5b24959bc837addb0d12a962c63e4f3f",
-            "bytes": 20900
+            "sha256": "5e45d9c942e3e27e4b5678c6fdcb2560aad49d60da0c85c23e35b76a64b5b973",
+            "bytes": 21194
           },
           {
             "path": "tts.server.mjs",
@@ -4925,13 +4925,13 @@
           },
           {
             "path": "shell/lib/swipes.js",
-            "sha256": "f90f049d0c186a8768810db22699550e574d6faa6054873803c6cc2d2230b2aa",
-            "bytes": 1461
+            "sha256": "4895aefb55a89bb1c6e5b814a4c9755d0aea0a24265c9573ce9b8e851e4fe1be",
+            "bytes": 1381
           },
           {
             "path": "shell/lib/translate.js",
-            "sha256": "3e077ea1552144614ab75864c9fe3585d049542b84918e71fe770b8cd467a892",
-            "bytes": 3573
+            "sha256": "c918c14e09e08efcba2fa66988383e561a720a87fdb693d33b2efcc5535e17a7",
+            "bytes": 4137
           },
           {
             "path": "shell/lib/tts.js",
@@ -4960,8 +4960,8 @@
           },
           {
             "path": "shell/screens/chat-settings.js",
-            "sha256": "a065690ea09e79f6a37ce3f61df5fbc7af4991d2b0d482d151d1babb7538cd6b",
-            "bytes": 49167
+            "sha256": "ef96b977bfe55b977ca7e9d1e94d5cb0000a8d40aee6cab2aac4077977a3ecf4",
+            "bytes": 58961
           },
           {
             "path": "shell/screens/convo.js",
@@ -4997,6 +4997,11 @@
             "path": "shell/screens/home.js",
             "sha256": "f939e0642c09871bef2d7670980155805b153d728b9f3c75877801fac9e7db5a",
             "bytes": 5837
+          },
+          {
+            "path": "shell/screens/kit-update.js",
+            "sha256": "11a84b9a20d24ba02ea3b7dc397bec3f5dbeadafcc23e22905850a2a9214ec6d",
+            "bytes": 5600
           },
           {
             "path": "shell/screens/library.js",
@@ -5040,8 +5045,8 @@
           },
           {
             "path": "shell/screens/settings.js",
-            "sha256": "3375456773832d094d114ff08e1733af5b985c6f6ecefe13e3af3fdb145724cc",
-            "bytes": 21319
+            "sha256": "215dfa889606384974c1e81abd060eed94ca20420516880516a1697665bc851a",
+            "bytes": 22147
           },
           {
             "path": "shell/screens/translation.js",
@@ -5055,16 +5060,16 @@
           },
           {
             "path": "shell/shell.css",
-            "sha256": "6eefec2d3bc616c41bd255c9bac911eaf6ed76d3499b72bbb5261b4ad22501ce",
-            "bytes": 52887
+            "sha256": "b637df3f667cf943ada061719643df577bea01fd5ab622f3d925fb4810f0e45e",
+            "bytes": 52960
           }
         ]
       },
       "category": "misc",
       "artifact": {
-        "url": "https://raw.githubusercontent.com/marittini/custom-mari/mari-catalog/artifacts/mari-kit-0.15.2.zip",
-        "sha256": "82f05d6619d2413e12b861a2ddafdbb27a9c4362650db93b70a023f459a11289",
-        "bytes": 324318
+        "url": "https://raw.githubusercontent.com/marittini/custom-mari/mari-catalog/artifacts/mari-kit-0.16.0.zip",
+        "sha256": "12e558d5213b4d3914f3e6c24730367d65d7063e35713e566e3b5edb84f5fa16",
+        "bytes": 329963
       },
       "documentationUrl": "https://github.com/marittini/custom-mari/tree/main/custom-modules"
     }
