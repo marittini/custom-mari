@@ -32,7 +32,7 @@ export function swipeNav({ chatId, message: m, reload, regenerate, busy = false 
           fn();
         },
       },
-      icon(path, 18, 1.8),
+      icon(path, 14, 1.8),
     );
   return h(
     "div",
@@ -42,6 +42,5 @@ export function swipeNav({ chatId, message: m, reload, regenerate, busy = false 
     last
       ? btn("새 답 만들기", "M9 5l7 7-7 7", busy || !regenerate, () => regenerate())
       : btn("다음 답", "M9 5l7 7-7 7", busy, () => set(i + 1)),
-    last && regenerate ? h("span", { class: "sw-hint" }, "› 새 답") : null,
   );
 }

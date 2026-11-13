@@ -34,8 +34,11 @@ export function translationBody(text, direction, meta, chatId) {
 
 const translated = new Map();
 /** One translation through the room's own settings; the same text is asked once per page. */
+// Voice cues ([whispers], [laughs softly]): spoken by the TTS, never shown, so never sent to be translated.
+const CUES = /\[[a-z][a-z ,.'-]{0,40}\]\s?/g;
+
 export async function translate(text, direction, meta, chatId) {
-  const body = translationBody(text, direction, meta, chatId);
+  const body = translationBody(String(text).replace(CUES, ""), direction, meta, chatId);
   const key = JSON.stringify(body);
   if (!translated.has(key))
     translated.set(
@@ -64,8 +67,11 @@ export function savedTranslation(m) {
   const text = typeof extra.translation === "string" ? extra.translation.trim() : "";
   if (!text || extra.translationHidden === true) return "";
   if (typeof extra.translationSource === "string" && extra.translationSource !== m.content) return "";
-  return text;
+  // A translator may have translated the voice cues too ([속삭이며]): they are hidden like the original's.
+  return text.replace(SHOWN_CUES, (_, before) => before || "").trim();
 }
+// A bracket cue at the start of a line or right after an opening quote, in any language; or an English cue anywhere.
+const SHOWN_CUES = /(^|["“「『])[ \t]*\[[^\]\n]{1,40}\]\s?|\[[a-z][a-z ,.'-]{0,40}\]\s?/gm;
 
 /** What a message shows: { main, sub } — the translation in place (display-only) or under the original. */
 export function shownText(m, meta, original) {

@@ -119,6 +119,12 @@
     "GET /characters/:id/export",
     "GET /characters/:id/export-png",
     "DELETE /chats/group/:id",
-    "POST /connections/:id/duplicate"
+    "POST /connections/:id/duplicate",
+    "POST /conversation/schedule/generate",
+    "GET /capability-packages/installed",
+    "GET /capability-packages/updates/pending",
+    "POST /capability-packages/:id/install",
+    "POST /admin/restart",
+    "GET /health"
   ]
 }
