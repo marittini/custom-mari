@@ -67,11 +67,25 @@ export function savedTranslation(m) {
   const text = typeof extra.translation === "string" ? extra.translation.trim() : "";
   if (!text || extra.translationHidden === true) return "";
   if (typeof extra.translationSource === "string" && extra.translationSource !== m.content) return "";
-  // A translator may have translated the voice cues too ([속삭이며]): they are hidden like the original's.
-  return text.replace(SHOWN_CUES, (_, before) => before || "").trim();
+  return hideCues(text, m.content);
 }
-// A bracket cue at the start of a line or right after an opening quote, in any language; or an English cue anywhere.
-const SHOWN_CUES = /(^|["“「『])[ \t]*\[[^\]\n]{1,40}\]\s?|\[[a-z][a-z ,.'-]{0,40}\]\s?/gm;
+
+// Voice cues are read by the TTS and never shown. The Engine's automatic translation sends a reply as written,
+// so a translator may keep, translate ([속삭이며]) or re-bracket ((속삭이며)) them anywhere in a sentence: the
+// screen hides every short bracketed piece of a translation, and short parenthesised ones too when the original
+// reply had cues. Only what is shown changes; the stored translation stays as the Engine saved it.
+const BRACKETED = /[ \t]*(?:\[[^\]\n]{1,40}\]|［[^］\n]{1,40}］|【[^】\n]{1,40}】)/g;
+const PARENS = /[ \t]*(?:\([^()\n]{1,20}\)|（[^（）\n]{1,20}）)/g;
+const HAS_CUES = /\[[a-z][a-z ,.'-]{0,40}\]/;
+export function hideCues(text, original = "") {
+  let out = String(text).replace(BRACKETED, "");
+  if (HAS_CUES.test(String(original))) out = out.replace(PARENS, "");
+  return out
+    .replace(/(["“「『])[ \t]+/g, "$1")
+    .replace(/[ \t]{2,}/g, " ")
+    .replace(/[ \t]+([,.!?…])/g, "$1")
+    .trim();
+}
 
 /** What a message shows: { main, sub } — the translation in place (display-only) or under the original. */
 export function shownText(m, meta, original) {
