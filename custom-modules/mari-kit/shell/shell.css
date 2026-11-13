@@ -2592,3 +2592,79 @@ button.toast {
   color: var(--ink-3);
   font-size: 14px;
 }
+
+/* avatar crop sheet (lib/avatar-edit.js) */
+.av-body {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  padding: 8px 16px 20px;
+  overflow-y: auto;
+}
+.av-title {
+  font-size: 16px;
+  color: var(--ink);
+}
+.av-stage {
+  position: relative;
+  width: min(100%, 360px);
+  aspect-ratio: 1;
+  margin: 0 auto;
+  overflow: hidden;
+  background: var(--fill);
+  border-radius: 12px;
+  touch-action: none;
+  user-select: none;
+  cursor: grab;
+}
+.av-img {
+  position: absolute;
+  left: 0;
+  top: 0;
+  max-width: none;
+  transform-origin: 0 0;
+  pointer-events: none;
+}
+.av-ring {
+  position: absolute;
+  left: 8%;
+  top: 8%;
+  width: 84%;
+  height: 84%;
+  border-radius: 50%;
+  border: 1.5px solid var(--paper);
+  box-shadow: 0 0 0 999px var(--scrim);
+  pointer-events: none;
+}
+.av-note {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--ink-3);
+  font-size: 14px;
+}
+.av-zoom {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-height: 44px;
+  color: var(--ink-2);
+  font-size: 14px;
+}
+.av-range {
+  flex: 1;
+  min-height: 44px;
+  accent-color: var(--ink);
+}
+.av-row {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.av-row .pill {
+  flex: 1;
+  min-height: 44px;
+  font-size: 14px;
+}
