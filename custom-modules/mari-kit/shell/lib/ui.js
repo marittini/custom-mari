@@ -142,6 +142,17 @@ export function toast(text, onClick = null) {
   toastTimer = setTimeout(() => el.remove(), 2600);
 }
 
+/** A notice that stays while something runs (번역 중…); returns close(). */
+export function busyNote(text) {
+  const frame = document.querySelector(".app");
+  if (!frame) return () => {};
+  frame.querySelector(".toast")?.remove();
+  clearTimeout(toastTimer);
+  const el = h("div", { class: "toast busy", role: "status", "aria-live": "polite" }, text);
+  frame.append(el);
+  return () => el.remove();
+}
+
 /** Bottom sheet over the current frame; returns { el, close }. */
 export function sheet(content, { onClose, label } = {}) {
   const frame = document.querySelector(".app");

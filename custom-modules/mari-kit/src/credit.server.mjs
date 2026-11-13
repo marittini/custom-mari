@@ -6,6 +6,7 @@
 // Engine's own balance route, with the keys the Engine already holds.
 
 import { createSign } from "node:crypto";
+import { readVoice } from "./tts.server.mjs";
 
 const PKG = "mari-kit";
 const DOC_ID = "mari-kit:credit";
@@ -117,6 +118,13 @@ export function normalizeCredit(raw) {
       error: str(g.error, 200),
     })),
     fxCache: d.fxCache && typeof d.fxCache === "object" ? d.fxCache : null,
+    deepseek: (Array.isArray(d.deepseek) ? d.deepseek : []).slice(0, 10).map((k) => ({
+      id: str(k.id, 40),
+      name: str(k.name) || "딥시크",
+      key: typeof k.key === "string" ? k.key.trim().slice(0, 200) : "",
+      cache: k.cache && typeof k.cache === "object" ? k.cache : null,
+    })),
+    eleven: d.eleven && typeof d.eleven === "object" ? d.eleven : null, // { at, value, error }
   };
 }
 
@@ -245,6 +253,60 @@ export async function refreshGoogle(g, { force = false, now = Date.now(), fetchF
   }
 }
 
+// ── other balances Mari Kit reads itself ────────
+// DeepSeek: keys typed in 설정 (for a DeepSeek the Engine does not read); ElevenLabs: the key in 음성 설정.
+
+/** DeepSeek `/user/balance`: the USD entry if any, else the first with money, else the first. */
+export function parseDeepSeekBalance(json) {
+  const infos = Array.isArray(json?.balance_infos) ? json.balance_infos : [];
+  const pick = infos.find((b) => b.currency === "USD") || infos.find((b) => Number(b.total_balance) > 0) || infos[0];
+  if (!pick) throw new Error("딥시크가 잔액을 알려 주지 않았어요");
+  return {
+    left: Number(pick.total_balance) || 0,
+    unit: pick.currency === "CNY" ? "CNY" : "USD",
+    granted: Number(pick.granted_balance) || 0,
+    toppedUp: Number(pick.topped_up_balance) || 0,
+    available: json?.is_available !== false,
+  };
+}
+
+/** ElevenLabs `/v1/user/subscription`: characters left of this period's allowance. */
+export function parseElevenSubscription(json) {
+  const limit = Number(json?.character_limit);
+  const count = Number(json?.character_count);
+  if (!Number.isFinite(limit) || !Number.isFinite(count)) throw new Error("ElevenLabs가 사용량을 알려 주지 않았어요");
+  const reset = Number(json?.next_character_count_reset_unix);
+  return {
+    left: Math.max(0, limit - count),
+    total: limit,
+    unit: "CHARS",
+    tier: typeof json?.tier === "string" ? json.tier : "",
+    resetAt: Number.isFinite(reset) && reset > 0 ? new Date(reset * 1000).toISOString() : "",
+  };
+}
+
+async function readJson(fetchFn, url, headers) {
+  const res = await fetchFn(url, { headers, signal: AbortSignal.timeout(20000) });
+  const json = await res.json().catch(() => ({}));
+  if (res.status === 401 || res.status === 403) throw new Error("키를 받아 주지 않았어요");
+  if (!res.ok) throw new Error(`읽지 못했어요 (${res.status})`);
+  return json;
+}
+
+/** A cached reading, asked again after CHECK_MS or when forced. */
+async function cached(entry, force, now, read) {
+  if (!force && entry?.at && now - Date.parse(entry.at) < CHECK_MS) return entry;
+  try {
+    return { at: new Date(now).toISOString(), value: await read(), error: "" };
+  } catch (error) {
+    return {
+      at: new Date(now).toISOString(),
+      value: entry?.value || null,
+      error: String(error.message || error).slice(0, 160),
+    };
+  }
+}
+
 // ── exchange rates ──────────────────────────────
 /** KRW and CNY per USD, read once a day (a typed ₩ rate wins for KRW). */
 async function rates(credit, fetchFn = fetch) {
@@ -319,6 +381,18 @@ export const creditFeature = {
         rates: { KRW, CNY },
         hidden: credit.hidden,
         google: credit.google.map(publicGoogle),
+        // Never the keys: the name, the tail and the reading.
+        deepseek: credit.deepseek.map((k) => ({
+          id: k.id,
+          name: k.name,
+          keyTail: k.key.slice(-4),
+          ...(k.cache?.value || {}),
+          checkedAt: k.cache?.at || "",
+          error: k.cache?.error || "",
+        })),
+        eleven: credit.eleven
+          ? { ...(credit.eleven.value || {}), checkedAt: credit.eleven.at, error: credit.eleven.error }
+          : null,
       };
     };
 
@@ -328,6 +402,40 @@ export const creditFeature = {
       let credit = await read();
       const counting = credit.google.some((g) => g.sa && g.balance !== null);
       const fx = await rates(credit);
+      // DeepSeek keys and ElevenLabs, each at most every 30 minutes (↻ asks now).
+      const now = Date.now();
+      const deepseek = await Promise.all(
+        credit.deepseek.map(async (k) => ({
+          id: k.id,
+          cache: await cached(k.cache, force, now, async () =>
+            parseDeepSeekBalance(
+              await readJson(fetch, "https://api.deepseek.com/user/balance", {
+                Authorization: `Bearer ${k.key}`,
+                Accept: "application/json",
+              }),
+            ),
+          ),
+        })),
+      );
+      const { voice } = await readVoice(runtime).catch(() => ({ voice: null }));
+      const elevenKey = voice?.eleven?.key || "";
+      const eleven = elevenKey
+        ? await cached(credit.eleven, force, now, async () => {
+            const root = String(voice.engine?.baseUrl || "https://api.elevenlabs.io")
+              .replace(/\/+$/, "")
+              .replace(/\/v1$/, "");
+            return parseElevenSubscription(
+              await readJson(fetch, `${root}/v1/user/subscription`, { "xi-api-key": elevenKey }),
+            );
+          })
+        : null;
+      const extraChanged = deepseek.some((k, i) => k.cache !== credit.deepseek[i].cache) || eleven !== credit.eleven;
+      if (extraChanged)
+        credit = await save((c) => ({
+          ...c,
+          eleven,
+          deepseek: c.deepseek.map((k) => ({ ...k, cache: deepseek.find((x) => x.id === k.id)?.cache ?? k.cache })),
+        }));
       if (counting || fx.cache !== credit.fxCache) {
         const updated = await Promise.all(credit.google.map((g) => refreshGoogle(g, { force })));
         const changed = updated.some((g, i) => g !== credit.google[i]) || fx.cache !== credit.fxCache;
@@ -408,6 +516,32 @@ export const creditFeature = {
       });
       return view(credit);
     });
+    app.post("/credit/deepseek", async (request) => {
+      const b = request.body && typeof request.body === "object" ? request.body : {};
+      const key = typeof b.key === "string" ? b.key.trim() : "";
+      if (!/^sk-[A-Za-z0-9_-]{16,200}$/.test(key)) throw httpError(400, "딥시크 API 키(sk-로 시작)를 넣어 주세요.");
+      const id = `d${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}`;
+      return view(
+        await save((c) => ({
+          ...c,
+          deepseek: [...c.deepseek, { id, name: str(b.name) || "딥시크", key, cache: null }].slice(0, 10),
+        })),
+      );
+    });
+    app.patch("/credit/deepseek/:id", async (request) => {
+      const b = request.body && typeof request.body === "object" ? request.body : {};
+      return view(
+        await save((c) => ({
+          ...c,
+          deepseek: c.deepseek.map((k) =>
+            k.id === request.params.id && b.name !== undefined ? { ...k, name: str(b.name) || "딥시크" } : k,
+          ),
+        })),
+      );
+    });
+    app.delete("/credit/deepseek/:id", async (request) =>
+      view(await save((c) => ({ ...c, deepseek: c.deepseek.filter((k) => k.id !== request.params.id) }))),
+    );
     app.delete("/credit/google/:id", async (request) =>
       view(await save((c) => ({ ...c, google: c.google.filter((x) => x.id !== request.params.id) }))),
     );

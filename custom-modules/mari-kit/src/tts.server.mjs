@@ -140,7 +140,7 @@ export function buildConvoTtsGuidance(cue = "free") {
 const usesKit = (meta) =>
   meta?.enableAgents === true && Array.isArray(meta?.activeAgentIds) && meta.activeAgentIds.includes("mari-kit");
 
-async function readVoice(runtime) {
+export async function readVoice(runtime) {
   const doc = await runtime.persistence.documents.getById("mari-kit", VOICE_DOC);
   return { doc, voice: normalizeVoiceSettings(doc?.data) };
 }

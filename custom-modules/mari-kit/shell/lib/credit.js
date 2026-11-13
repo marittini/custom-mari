@@ -169,6 +169,39 @@ export function creditCard({ view, accounts, google, list = [] }, { go, onRefres
   }
   if (gRows.length) groups.push({ label: "구글 클라우드", rows: gRows, count: google.filter((g) => g.hasKey).length });
 
+  // DeepSeek keys Mari Kit reads itself (설정 › 크레딧).
+  const dRows = [];
+  for (const k of view.deepseek || []) {
+    if (Number.isFinite(k.left)) {
+      const usd = toUsd(k.left, k.unit, view.rates);
+      if (usd !== null) totalUsd += usd;
+      dRows.push(leader(named(k.name, usd, view), native(k.left, k.unit)));
+      if (k.available === false) dRows.push(h("div", { class: "rcnote" }, "잔액이 모자라 지금은 못 써요"));
+    } else dRows.push(leader(k.name, k.error ? "읽지 못했어요" : "—"));
+  }
+  if (dRows.length) groups.push({ label: "딥시크", rows: dRows, count: (view.deepseek || []).length });
+
+  // ElevenLabs: characters left this period (the key in 음성 설정); not money, so not in the total.
+  const e = view.eleven;
+  if (e && (Number.isFinite(e.left) || e.error)) {
+    const eRows = [];
+    if (Number.isFinite(e.left)) {
+      eRows.push(
+        leader(
+          "글자" + (e.tier ? " · " + e.tier : ""),
+          Math.round(e.left).toLocaleString("ko-KR") + " / " + Math.round(e.total).toLocaleString("ko-KR"),
+        ),
+      );
+      if (e.total) eRows.push(bar(e.left, e.total));
+      if (e.resetAt) {
+        const d = dday(e.resetAt.slice(0, 10));
+        if (d !== null && d >= 0)
+          eRows.push(h("div", { class: "rcm" }, d === 0 ? "오늘 다시 채워져요" : d + "일 뒤 다시 채워져요"));
+      }
+    } else eRows.push(leader("글자", "읽지 못했어요"));
+    groups.push({ label: "일레븐랩스", rows: eRows, count: 1 });
+  }
+
   // Engine accounts: with a balance (not hidden in 설정) or with a model in use.
   const byFolder = new Map(); // folderId or "" -> { rows, count }
   const balanceOf = new Map(accounts.map((a) => [a.id, a]));
@@ -220,10 +253,6 @@ export function creditCard({ view, accounts, google, list = [] }, { go, onRefres
     .filter((x) => x.d !== null && x.d >= 0)
     .sort((a, b) => a.d - b.d)[0];
   const empty = !groups.length;
-  const other =
-    view.display === "USD"
-      ? "₩" + Math.round(totalUsd * view.rates.KRW).toLocaleString("ko-KR")
-      : "$" + totalUsd.toFixed(2);
   const body = groups.map((g) =>
     g.label
       ? foldGroup(h, "credit", g.label, g.count, h("div", { class: "rcg" }, g.rows))
@@ -235,11 +264,7 @@ export function creditCard({ view, accounts, google, list = [] }, { go, onRefres
     h("div", { class: "rchd" }, "연결 · 크레딧"),
     empty
       ? h("div", { class: "rcsub", style: { padding: "8px 0" } }, "아직 보여 줄 계정이 없어요")
-      : [
-          h("div", { class: "rcbig" }, money(totalUsd, view)),
-          h("div", { class: "rcsub" }, "남은 크레딧 합계 · 약 " + other),
-          spentLine(google, view),
-        ],
+      : spentLine(google, view),
     h("div", { class: "rccut" }),
     body,
     body.length ? h("div", { class: "rccut" }) : null,

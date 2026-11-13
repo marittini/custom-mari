@@ -101,11 +101,7 @@ export function libraryScreen({ mount, go, args = [] }) {
       h(
         "span",
         { style: { display: "flex", flexDirection: "column", gap: "4px", minWidth: "0" } },
-        h(
-          "span",
-          { class: "hint", style: { fontSize: "11px" } },
-          `이어 읽기 · ${shortTime(c.lastMessageAt || c.updatedAt)}`,
-        ),
+        h("span", { class: "hint", style: { fontSize: "11px" } }, "이어 읽기"),
         h("span", { style: { fontSize: "16px", fontWeight: "600" } }, title),
         line,
       ),
@@ -177,14 +173,9 @@ export function libraryScreen({ mount, go, args = [] }) {
         const grouped = parts.length > 1 || parts[0]?.label;
         const engineLine = h(
           "button",
-          {
-            type: "button",
-            class: "grow linkline",
-            style: { marginTop: "16px" },
-            onClick: () => openEngine(null, { chats: true }),
-          },
-          h("span", null, "폴더 만들기·옮기기 · 분기 · 가져오기·내보내기"),
-          h("span", null, "엔진 ›"),
+          { type: "button", class: "grow linkline", style: { marginTop: "16px" }, onClick: () => go("folders/rp") },
+          h("span", null, "폴더 관리 · 채팅 가져오기"),
+          h("span", null, "›"),
         );
         const book = (c) => {
           const who = index.get(c.characterIds?.[0]);
@@ -200,7 +191,6 @@ export function libraryScreen({ mount, go, args = [] }) {
                 .filter(Boolean)
                 .join(", "),
               c.branches.length > 1 ? `분기 ${c.branches.length}` : "",
-              shortTime(c.lastMessageAt || c.updatedAt),
             ]
               .filter(Boolean)
               .join(" · "),
@@ -278,13 +268,7 @@ export function libraryScreen({ mount, go, args = [] }) {
                     "div",
                     { class: "grid" },
                     part.items.map((c) =>
-                      card(
-                        `#/character/${encodeURIComponent(c.id)}`,
-                        firstLetter(c.name),
-                        c.avatar,
-                        c.name,
-                        lastUse.has(c.id) ? shortTime(lastUse.get(c.id)) : "",
-                      ),
+                      card(`#/character/${encodeURIComponent(c.id)}`, firstLetter(c.name), c.avatar, c.name, ""),
                     ),
                   ),
                 ),

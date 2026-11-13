@@ -559,6 +559,31 @@ if (id === "mari-kit") {
     assert.equal(two.folded.usd, 11.25);
     assert.equal(publicGoogle(two).left, 300 - 22.5);
   }
+  // DeepSeek and ElevenLabs readings.
+  {
+    const { parseDeepSeekBalance, parseElevenSubscription } = await import(
+      pathToFileURL(join(outDir, "credit.server.mjs")).href
+    );
+    assert.deepEqual(
+      parseDeepSeekBalance({
+        is_available: true,
+        balance_infos: [
+          { currency: "CNY", total_balance: "10.00", granted_balance: "0", topped_up_balance: "10" },
+          { currency: "USD", total_balance: "4.20", granted_balance: "1.00", topped_up_balance: "3.20" },
+        ],
+      }),
+      { left: 4.2, unit: "USD", granted: 1, toppedUp: 3.2, available: true },
+    );
+    const e = parseElevenSubscription({
+      character_count: 2500,
+      character_limit: 10000,
+      tier: "starter",
+      next_character_count_reset_unix: 1800000000,
+    });
+    assert.equal(e.left, 7500);
+    assert.equal(e.total, 10000);
+    assert.equal(e.tier, "starter");
+  }
   // 메시지 검색: every word, newest first, hidden ones skipped, a translation counts.
   {
     const { searchMessages } = await import(pathToFileURL(join(outDir, "shell.server.mjs")).href);

@@ -2127,3 +2127,24 @@ button.toast {
   color: var(--ink-3);
   font-size: 11px;
 }
+/* Roomy screens (editors, folder management): more space between rows and larger text. */
+.roomy .hbox {
+  padding: 22px 18px 16px;
+}
+.roomy .r,
+.roomy .grow {
+  min-height: 56px;
+}
+.rowform {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-top: 12px;
+}
+.rowform:first-child {
+  margin-top: 0;
+}
+.rowform > .inp {
+  flex: 1;
+  min-width: 0;
+}

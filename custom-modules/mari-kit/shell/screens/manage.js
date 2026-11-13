@@ -94,6 +94,7 @@ export function connectionsPage(body, go) {
             })
           : h("div", { class: "empty" }, "연결이 아직 없어요."),
         actions(
+          h("button", { type: "button", class: "pill", onClick: () => go("folders/connections") }, "폴더 관리"),
           h(
             "button",
             { type: "button", class: "pill", onClick: () => openEngine(null, { panel: "connections" }) },
@@ -269,6 +270,7 @@ export function presetsPage(body, go) {
             ),
           "presets",
         ),
+        actions(h("button", { type: "button", class: "pill", onClick: () => go("folders/presets") }, "폴더 관리")),
       ),
     );
   });
@@ -289,10 +291,22 @@ export function presetPage(body, go, id) {
     }
   };
   const draw = async () => {
-    const [preset, sections] = await Promise.all([
+    const [preset, listed] = await Promise.all([
       api.get(`/prompts/${encodeURIComponent(id)}`),
       api.get(`/prompts/${encodeURIComponent(id)}/sections`),
     ]);
+    // The preset's own order (sectionOrder), as the Engine shows and sends it; the section list comes back in
+    // another order. Sections not named there keep their place after.
+    let order = preset.sectionOrder;
+    try {
+      if (typeof order === "string") order = JSON.parse(order || "[]");
+    } catch {
+      order = [];
+    }
+    const rank = new Map((Array.isArray(order) ? order : []).map((sid, i) => [sid, i]));
+    const sections = [...listed].sort(
+      (a, b) => (rank.has(a.id) ? rank.get(a.id) : 1e9) - (rank.has(b.id) ? rank.get(b.id) : 1e9),
+    );
     const params =
       typeof preset.parameters === "string" ? JSON.parse(preset.parameters || "{}") : preset.parameters || {};
     const inputs = {};

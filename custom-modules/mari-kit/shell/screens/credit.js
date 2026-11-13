@@ -11,7 +11,7 @@ const field = (label, input, hint) =>
   h("label", { class: "fld flush" }, label, input, hint ? h("span", { class: "hint" }, hint) : null);
 const input = (value, attrs = {}) => h("input", { class: "inp", value: value ?? "", ...attrs });
 
-export function creditScreen({ mount, back }) {
+export function creditScreen({ mount, back, go }) {
   let alive = true;
   let model = null;
   let outside = null; // the Engine's "read outside sites" switch: balances need it
@@ -165,6 +165,69 @@ export function creditScreen({ mount, back }) {
     );
   }
 
+  // DeepSeek keys Mari Kit keeps (for a DeepSeek the Engine does not read): name, key tail, balance.
+  function deepseekBox(view) {
+    const name = input("", { placeholder: "이름 (예: 딥시크 본계정)", "aria-label": "딥시크 이름" });
+    const key = input("", {
+      type: "password",
+      placeholder: "sk-…",
+      autocomplete: "off",
+      "aria-label": "딥시크 API 키",
+    });
+    return h(
+      "div",
+      { style: { display: "flex", flexDirection: "column", gap: "12px" } },
+      (view.deepseek || []).map((k) =>
+        h(
+          "div",
+          { class: "gcard grow", style: { gridTemplateColumns: "minmax(0,1fr) auto auto", gap: "12px" } },
+          h(
+            "span",
+            null,
+            k.name,
+            h(
+              "small",
+              null,
+              `키 …${k.keyTail}` + (k.error ? ` · ${k.error}` : k.available === false ? " · 잔액이 모자라요" : ""),
+            ),
+          ),
+          h("span", { class: "val" }, Number.isFinite(k.left) ? `${k.left.toFixed(2)} ${k.unit}` : "—"),
+          h(
+            "button",
+            {
+              type: "button",
+              class: "pill",
+              onClick: () =>
+                confirm(`'${k.name}' 키를 지울까요?`) &&
+                run(() => api.delete(`/mari-kit/credit/deepseek/${encodeURIComponent(k.id)}`), "지웠어요"),
+            },
+            "지우기",
+          ),
+        ),
+      ),
+      field("이름", name),
+      field(
+        "API 키",
+        key,
+        "platform.deepseek.com › API keys. 엔진에 딥시크 연결이 있고 잔액이 보이면 넣지 않아도 돼요.",
+      ),
+      h(
+        "div",
+        { style: { display: "flex", justifyContent: "flex-end" } },
+        h(
+          "button",
+          {
+            type: "button",
+            class: "pill main",
+            onClick: () =>
+              run(() => api.post("/mari-kit/credit/deepseek", { name: name.value, key: key.value }), "키를 넣었어요"),
+          },
+          "+ 딥시크 키 추가",
+        ),
+      ),
+    );
+  }
+
   function draw() {
     const { view, accounts } = model;
     const fx = input(view.fx ?? "", {
@@ -236,6 +299,34 @@ export function creditScreen({ mount, back }) {
           "+ JSON 키 파일로 계정 추가",
         ),
       ),
+
+      h("div", { class: "gsec" }, h("span", null, "딥시크"), h("span", null, "키로 직접 읽어요")),
+      deepseekBox(view),
+
+      h("div", { class: "gsec" }, h("span", null, "일레븐랩스"), h("span", null, "음성 설정의 키")),
+      view.eleven && Number.isFinite(view.eleven.left)
+        ? h(
+            "div",
+            { class: "gcard grow", style: { gridTemplateColumns: "minmax(0,1fr) auto" } },
+            h("span", null, "남은 글자", h("small", null, view.eleven.tier ? `요금제 ${view.eleven.tier}` : "")),
+            h(
+              "span",
+              { class: "val" },
+              `${Math.round(view.eleven.left).toLocaleString("ko-KR")} / ${Math.round(view.eleven.total).toLocaleString("ko-KR")}`,
+            ),
+          )
+        : h(
+            "button",
+            { type: "button", class: "gcard grow", onClick: () => go("voice/tune") },
+            h(
+              "span",
+              null,
+              view.eleven?.error
+                ? `읽지 못했어요: ${view.eleven.error}`
+                : "음성 설정에 ElevenLabs 키를 넣으면 남은 글자가 보여요",
+            ),
+            h("span", { class: "val" }, "음성 설정 ›"),
+          ),
 
       h("div", { class: "gsec" }, h("span", null, "엔진 연결"), h("span", null, "엔진에 넣은 키로 읽어요")),
       outside !== "on"

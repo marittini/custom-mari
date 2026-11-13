@@ -28,7 +28,6 @@ import {
   quickReplies,
   runTool,
   streamGenerate,
-  ENGINE_TOOL,
   hiddenFromAI,
   toolLabel,
   composerTool,
@@ -289,7 +288,7 @@ export function convoScreen({ mount, args, go, back }) {
     );
     return {
       shown: usable.filter((t) => toolPlace(t) === "show"),
-      more: [...usable.filter((t) => toolPlace(t) === "more"), ENGINE_TOOL],
+      more: usable.filter((t) => toolPlace(t) === "more"),
     };
   }
 
@@ -749,7 +748,9 @@ export function convoScreen({ mount, args, go, back }) {
 
   async function send() {
     let text = input.value.trim();
-    if (!text || busy) return;
+    if (busy) return;
+    // Nothing typed: like the Engine, the character goes on (a reply without a new message of mine).
+    if (!text) return generate({});
     input.value = "";
     grow();
     if (text.startsWith("/")) return slash(text);

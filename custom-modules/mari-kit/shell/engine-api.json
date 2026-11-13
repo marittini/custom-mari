@@ -71,6 +71,20 @@
     "DELETE /characters/groups/:id",
     "POST /characters/persona-groups",
     "PATCH /characters/persona-groups/:id",
-    "DELETE /characters/persona-groups/:id"
+    "DELETE /characters/persona-groups/:id",
+    "POST /connection-folders/move-connection",
+    "POST /connection-folders",
+    "PATCH /connection-folders/:id",
+    "DELETE /connection-folders/:id",
+    "POST /connection-folders/reorder",
+    "PATCH /chat-folders/:id",
+    "DELETE /chat-folders/:id",
+    "POST /chat-folders/reorder",
+    "POST /library-folders/presets",
+    "PATCH /library-folders/presets/:id",
+    "DELETE /library-folders/presets/:id",
+    "POST /library-folders/presets/move",
+    "POST /import/st-chat",
+    "GET /chats/:id/export"
   ]
 }

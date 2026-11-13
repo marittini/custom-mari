@@ -16,7 +16,6 @@ import {
   quickReplies,
   runTool as sharedTool,
   streamGenerate,
-  ENGINE_TOOL,
   composerTool,
   slashNote,
   hiddenFromAI,
@@ -412,7 +411,9 @@ export function rpScreen({ mount, args, go, back }) {
       (t) => !t.convoOnly && !(t.assistantOnly && m.role !== "assistant") && !(compact && t.id === "regen"),
     );
     const shown = compact ? [] : usable.filter((t) => toolPlace(t) === "show");
-    const more = [...(compact ? usable : usable.filter((t) => toolPlace(t) === "more")), ENGINE_TOOL];
+    // Every message follows 설정 › 메시지 도구: 숨김 never shows; on older messages 표시 and 더보기 share the ⋯.
+    const placed = usable.filter((t) => toolPlace(t) !== "hidden");
+    const more = compact ? placed : placed.filter((t) => toolPlace(t) === "more");
     const open = moreFor === m.id;
     return h(
       "div",
@@ -653,7 +654,9 @@ export function rpScreen({ mount, args, go, back }) {
 
   async function send() {
     let text = input.value.trim();
-    if (!text || busy) return;
+    if (busy) return;
+    // Nothing typed: like the Engine, the character goes on (a reply without a new message of mine).
+    if (!text) return generate({});
     input.value = "";
     grow();
     if (text.startsWith("/")) return slash(text);

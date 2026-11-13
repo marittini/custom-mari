@@ -36,6 +36,7 @@ const SCREENS = {
   credit: () => import("./screens/credit.js").then((m) => m.creditScreen),
   groups: () => import("./screens/groups.js").then((m) => m.groupsScreen),
   search: () => import("./screens/search.js").then((m) => m.searchScreen),
+  folders: () => import("./screens/folders.js").then((m) => m.foldersScreen),
 };
 
 export function go(path) {

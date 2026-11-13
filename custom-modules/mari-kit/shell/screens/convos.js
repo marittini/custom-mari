@@ -1,7 +1,7 @@
 import { h, icon, I, setChildren } from "../lib/h.js";
 import { openNewChat } from "../lib/newchat.js";
 import { data, characterIndex, chatTitle, firstLetter, shortTime, coverOf, byBranchGroup } from "../lib/data.js";
-import { pageHead, avatar, avatarStack, errorBox, timeAndUnread, openEngine } from "../lib/ui.js";
+import { pageHead, avatar, avatarStack, errorBox, timeAndUnread } from "../lib/ui.js";
 import { groupsOf, splitByGroup, foldGroup } from "../lib/groups.js";
 
 // 대화: Convo chats split by the Engine's chat folders (folding), branches of one chat folded under it, searchable
@@ -132,9 +132,9 @@ export function convosScreen({ mount, go }) {
     const groups = byBranchGroup(all.filter(match));
     const engineLine = h(
       "button",
-      { type: "button", class: "grow linkline", onClick: () => openEngine(null, { chats: true }) },
-      h("span", null, "폴더 만들기·옮기기 · 가져오기·내보내기"),
-      h("span", null, "엔진 ›"),
+      { type: "button", class: "grow linkline", onClick: () => go("folders/convo") },
+      h("span", null, "폴더 관리 · 채팅 가져오기"),
+      h("span", null, "›"),
     );
     if (!all.length) return setChildren(body, h("div", { class: "empty" }, "Convo 대화가 아직 없어요."), engineLine);
     if (!groups.length) return setChildren(body, h("div", { class: "empty" }, "찾는 대화가 없어요."));
