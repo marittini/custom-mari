@@ -51,6 +51,13 @@ export async function buildCatalog({ out, baseUrl, id = "mari-kit" }) {
 
   const built = await buildPackage(id);
   let manifest = built.manifest;
+  const dir = join(out, "catalog", lane);
+  const previous = JSON.parse(await readFile(join(dir, "catalog.json"), "utf8").catch(() => "null"));
+  const publishedVersion = previous?.packages?.find((p) => p?.manifest?.id === id)?.manifest?.version;
+  assert.ok(
+    !publishedVersion || shared.compareCapabilityPackageVersions(manifest.version, publishedVersion) >= 0,
+    `Refusing to replace published ${id} ${publishedVersion} with older ${manifest.version}`,
+  );
   let archive = await zipPackage(built.outDir, manifest);
   const name = `${manifest.id}-${manifest.version}.zip`;
   await mkdir(join(out, "artifacts"), { recursive: true });
@@ -82,8 +89,6 @@ export async function buildCatalog({ out, baseUrl, id = "mari-kit" }) {
   assert.ok(parsed.success, `Mari Kit catalog entry rejected: ${parsed.error?.message}`);
 
   const packages = [...official.packages.filter((p) => p?.manifest?.id !== manifest.id), entry];
-  const dir = join(out, "catalog", lane);
-  const previous = JSON.parse(await readFile(join(dir, "catalog.json"), "utf8").catch(() => "null"));
   // Unchanged packages keep the old date, so a day with nothing new leaves the published files as they are.
   const same = previous && JSON.stringify(previous.packages) === JSON.stringify(packages);
   const catalog = { schemaVersion: 1, generatedAt: same ? previous.generatedAt : new Date().toISOString(), packages };

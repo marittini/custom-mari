@@ -38,7 +38,14 @@ const translated = new Map();
 const CUES = /\[[a-z][a-z ,.'-]{0,40}\]\s?/g;
 
 export async function translate(text, direction, meta, chatId) {
-  const body = translationBody(String(text).replace(CUES, ""), direction, meta, chatId);
+  const source = String(text);
+  // Keep RP cues with their speaker wrappers: the Engine protects and restores them during translation.
+  const body = translationBody(
+    /<\/?audio_(?:character|persona)\b/i.test(source) ? source : source.replace(CUES, ""),
+    direction,
+    meta,
+    chatId,
+  );
   const key = JSON.stringify(body);
   if (!translated.has(key))
     translated.set(
