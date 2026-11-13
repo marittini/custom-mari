@@ -36,6 +36,12 @@ export const TOOL_DEFS = [
     ],
     def: "more",
   },
+  {
+    id: "engine",
+    label: "엔진에서 열기",
+    icon: ["M14 4h6v6", "M20 4l-9 9", "M18 14v5a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V7a1 1 0 0 1 1-1h5"],
+    def: "more",
+  },
   { id: "del", label: "삭제", icon: ["M4 7h16M10 11v6M14 11v6", "M6 7l1 13h10l1-13M9 7V4h6v3"], def: "more" },
 ];
 

@@ -112,3 +112,36 @@ export function parseJson(value, fallback) {
     return fallback;
   }
 }
+
+/** POST a FormData (a file) to the Engine; the browser sets the multipart boundary. */
+export async function upload(path, form) {
+  const res = await fetch(`/api${path}`, {
+    method: "POST",
+    headers: { ...CSRF },
+    credentials: "same-origin",
+    body: form,
+  });
+  const text = await res.text();
+  let data = null;
+  try {
+    data = text ? JSON.parse(text) : null;
+  } catch {
+    data = text;
+  }
+  if (!res.ok || (data && data.error))
+    throw new ApiError(res.status, (data && (data.error || data.message)) || `${res.status}`);
+  return data;
+}
+
+/** Saves what an Engine route answers as a file on the device. */
+export async function download(path, filename) {
+  const res = await fetch(`/api${path}`, { headers: { ...CSRF }, credentials: "same-origin" });
+  if (!res.ok) throw new ApiError(res.status, `${res.status}`);
+  const blob = await res.blob();
+  const url = URL.createObjectURL(blob);
+  const a = Object.assign(document.createElement("a"), { href: url, download: filename });
+  document.body.append(a);
+  a.click();
+  a.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 30000);
+}

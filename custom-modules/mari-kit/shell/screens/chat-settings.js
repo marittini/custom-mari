@@ -5,7 +5,7 @@
 // the shell draws open here; the rest open the Engine at that section (Mari Kit's Engine-side script, with a pill back).
 
 import { h, icon, I, setChildren } from "../lib/h.js";
-import { api } from "../lib/api.js";
+import { api, download } from "../lib/api.js";
 import { data, characterIndex, chatMeta, chatTitle, coverOf } from "../lib/data.js";
 import { setPrefs, isDark, TOOL_DEFS, toolPlace } from "../lib/prefs.js";
 import { topBar, toast, errorBox, openEngine, sheet, avatar, thumb } from "../lib/ui.js";
@@ -523,6 +523,7 @@ export function chatSettingsScreen({ mount, args, go, back }) {
         { class: "list" },
         linkRow(I.square, "표지", coverOf(chat) ? "있음" : "캐릭터 사진", () => go(here("cover"))),
         linkRow(I.search, "메시지 검색", "", () => go(`search/${encodeURIComponent(chatId)}`)),
+        linkRow(I.list, "내보내기", "jsonl · 글 · 마크다운 · HTML", exportSheet),
         linkRow(
           I.list,
           "폴더",
@@ -580,6 +581,48 @@ export function chatSettingsScreen({ mount, args, go, back }) {
     } catch (error) {
       toast(`지우지 못했어요: ${error.message}`);
     }
+  }
+
+  // 내보내기: the Engine's own chat export, saved on this device.
+  function exportSheet() {
+    const name = (chatTitle(state.chat, state.index) || "chat").replace(/[\\/:*?"<>|]+/g, " ").trim();
+    const formats = [
+      ["jsonl", ".jsonl", "다시 가져올 수 있는 형식"],
+      ["text", ".txt", "글로"],
+      ["markdown", ".md", "마크다운"],
+      ["html", ".html", "읽기 좋은 웹 페이지"],
+    ];
+    const s = sheet(
+      h(
+        "div",
+        { style: { display: "flex", flexDirection: "column", gap: "8px", padding: "6px 0 24px" } },
+        h("b", { style: { padding: "0 20px 6px", fontSize: "16px" } }, "내보내기"),
+        h(
+          "div",
+          { class: "list" },
+          formats.map(([format, ext, sub]) =>
+            h(
+              "button",
+              {
+                type: "button",
+                class: "r two",
+                onClick: async () => {
+                  s.close();
+                  try {
+                    await download(`/chats/${encodeURIComponent(chatId)}/export?format=${format}`, name + ext);
+                  } catch (error) {
+                    toast(`내보내지 못했어요: ${error.message}`);
+                  }
+                },
+              },
+              h("span", null, ext, h("small", null, sub)),
+              h("span", { class: "val" }, "저장 ›"),
+            ),
+          ),
+        ),
+      ),
+      { label: "내보내기" },
+    );
   }
 
   // 폴더: the Engine's chat folders of this chat's mode; move this chat, or make a folder and move it there.

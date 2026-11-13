@@ -224,6 +224,25 @@ export function radioScreen({ mount, args, go, back }) {
             "button",
             {
               type: "button",
+              class: "txtbtn",
+              style: { padding: "0 10px" },
+              onClick: async () => {
+                if (!confirm(`${ep.no}회 방송을 지울까요?`)) return;
+                try {
+                  await api.post("/mari-kit/radio/episodes", { ids: [ep.id], action: "delete" });
+                  toast("방송을 지웠어요");
+                  back("radio/shelf");
+                } catch (er) {
+                  toast(er.message);
+                }
+              },
+            },
+            "지우기",
+          ),
+          h(
+            "button",
+            {
+              type: "button",
               class: "ib",
               "aria-label": "북마크",
               "aria-pressed": ep.starred ? "true" : "false",
