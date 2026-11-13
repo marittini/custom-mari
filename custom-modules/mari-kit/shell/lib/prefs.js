@@ -1,8 +1,30 @@
-// Viewer preferences of the shell (this browser only): theme, fonts, reading layout, message tools, app name.
+// Viewer preferences stay in this browser; the resolved theme is also published for the installed-app manifest.
 // Nothing here names a font: the default is the device's own UI font.
+
+import { api } from "./api.js";
 
 const KEY = "mari-shell";
 const PENDING_THEME_KEY = "mari-kit:pending-theme";
+let requestedAppearance = null;
+let savedAppearance = null;
+let appearanceQueue = Promise.resolve();
+
+/** Publish the install theme at a stable manifest URL; coalesce rapid choices without reordering writes. */
+export function syncAppearance(theme) {
+  if (!["dark", "light"].includes(theme) || requestedAppearance === theme) return appearanceQueue;
+  requestedAppearance = theme;
+  appearanceQueue = appearanceQueue
+    .then(async () => {
+      if (requestedAppearance !== theme || savedAppearance === theme) return;
+      await api.put("/mari-kit/shell/appearance", { theme });
+      savedAppearance = theme;
+    })
+    .catch(() => {
+      savedAppearance = null; // A lost response may still have committed the write.
+      if (requestedAppearance === theme) requestedAppearance = null;
+    });
+  return appearanceQueue;
+}
 
 export const TOOL_DEFS = [
   { id: "regen", label: "다시 생성", icon: "M20 12a8 8 0 1 1-2.3-5.7M20 4v5h-5", def: "show", assistantOnly: true },
@@ -179,11 +201,13 @@ export function applyPrefs() {
   document.title = p.appName || "Marinara";
   const manifest = document.querySelector('link[rel="manifest"]');
   if (manifest) {
-    const params = new URLSearchParams({ theme: mode });
+    const params = new URLSearchParams();
     if (p.appName) params.set("name", p.appName);
-    const href = `/api/mari-kit/manifest?${params}`;
+    const query = params.toString();
+    const href = `/api/mari-kit/manifest${query ? `?${query}` : ""}`;
     if (manifest.getAttribute("href") !== href) manifest.setAttribute("href", href);
   }
+  void syncAppearance(mode);
   let fav = document.querySelector('link[rel="icon"]');
   if (p.icon) {
     if (!fav) {
