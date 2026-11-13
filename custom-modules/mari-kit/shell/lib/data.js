@@ -77,8 +77,8 @@ export const data = {
    * (with __updatedAt) and this browser's, like the Engine's own sync decides. A reply added in the Engine on this
    * phone shows even when its server copy has not caught up.
    */
-  engineUi: () =>
-    uiP ||
+  engineUi: (fresh = false) =>
+    (!fresh && uiP) ||
     (uiP = api
       .get("/app-settings/ui")
       .then((res) => {

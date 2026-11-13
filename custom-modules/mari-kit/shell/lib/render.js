@@ -89,20 +89,23 @@ export function parseMessage(content, fallbackSpeakerId) {
   return { paragraphs: paragraphs.filter((p) => p.some((s) => s.kind === "line" || s.text.trim())), lines };
 }
 
-/** Play the original only when the translated dialogue still has an unambiguous correspondence. */
+/** Only explicit voice wrappers identify playable dialogue; surrounding quotes may change in translation. */
 export function resolveTranslationSpeechLines(original, translation) {
-  if (original.lines.length !== translation.lines.length) return [];
+  const source = original.lines.filter((line) => line.hasSpeakerTag);
+  const translated = translation.lines.filter((line) => line.hasSpeakerTag);
+  if (!source.length || source.length !== translated.length) return [];
   if (
-    translation.lines.some((line, index) => {
-      const source = original.lines[index];
-      return (
-        (line.hasSpeakerTag && (line.speakerKind !== source.speakerKind || line.speakerId !== source.speakerId)) ||
-        (line.cue && line.cue !== source.cue)
-      );
-    })
+    translated.some(
+      (line, index) =>
+        line.speakerKind !== source[index].speakerKind ||
+        line.speakerId !== source[index].speakerId ||
+        line.cue !== source[index].cue,
+    )
   )
     return [];
-  return original.lines;
+  const lines = [];
+  translated.forEach((line, index) => (lines[line.index] = source[index]));
+  return lines;
 }
 
 // ElevenLabs-style audio tags ([sighs], [short pause]) are read aloud by the TTS but not shown.

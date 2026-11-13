@@ -100,7 +100,8 @@ export async function runTool(id, { chatId, chat, message, reload, generate, go,
       if (savedTranslation(message)) {
         await api.patch(`${base}/extra`, { translationHidden: true });
       } else {
-        const translation = await translate(text, "output", chatMeta(chat), chatId);
+        // Translate the stored source, including voice wrappers, even when displayText hides them.
+        const translation = await translate(String(message.content ?? ""), "output", chatMeta(chat), chatId);
         await api.patch(`${base}/extra`, { translation, translationSource: message.content, translationHidden: false });
       }
       await reload();
@@ -168,19 +169,20 @@ function editMessage(message, base, reload) {
 
 /** Runs one /generate stream; onToken gets the text so far, onSaved each saved message. */
 export async function streamGenerate({ chatId, body, signal, onToken, onSaved }) {
+  const streaming = (await data.engineUi(true)).enableStreaming !== false;
   let text = "";
   for await (const event of api.stream(
     "/generate",
     {
       chatId,
       connectionId: null,
-      streaming: true,
       userTimeZone: Intl.DateTimeFormat().resolvedOptions().timeZone || "",
       ...body,
+      streaming,
     },
     signal,
   )) {
-    if (event.type === "token" && typeof event.data === "string") {
+    if (streaming && event.type === "token" && typeof event.data === "string") {
       text += event.data;
       onToken?.(text);
     } else if (event.type === "message_saved") {
