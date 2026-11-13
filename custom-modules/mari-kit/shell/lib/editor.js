@@ -39,6 +39,7 @@ export function createEditor({ mount, title, label, back, record, save, more = n
   const paths = new Set(); // every path a field edits
   let saving = null;
   let disposed = false;
+  const syncers = []; // put server values back into text boxes after a save (unless being typed in)
 
   const status = h("span", { class: "ed-status", "aria-live": "polite" });
   const saveBtn = h("button", { type: "button", class: "pill main", onClick: () => doSave() }, "저장");
@@ -75,12 +76,16 @@ export function createEditor({ mount, title, label, back, record, save, more = n
     saving = (async () => {
       refresh();
       try {
+        const sent = clone(draft);
         const saved = await save({ draft: clone(draft), changed: list });
-        // Keep what was typed meanwhile: only the saved paths take the server's values.
-        const fresh = clone(saved ?? draft);
-        for (const p of paths) if (!list.includes(p)) setPath(fresh, p, clone(getPath(draft, p)));
+        // The server's values win (it may bump the version, trim, normalize), except where the user typed
+        // something new while the save was on its way.
+        const fresh = clone(saved ?? sent);
+        for (const p of paths)
+          if (!same(getPath(draft, p), getPath(sent, p))) setPath(fresh, p, clone(getPath(draft, p)));
         orig = clone(saved ?? draft);
         draft = fresh;
+        for (const sync of syncers) sync();
         if (!quiet) toast("저장했어요");
         return true;
       } catch (error) {
@@ -124,8 +129,10 @@ export function createEditor({ mount, title, label, back, record, save, more = n
       placeholder,
       maxlength: max,
       onInput: (e) => put(path, e.target.value),
-      onBlur: (e) => trim && e.target.value !== e.target.value.trim() && put(path, (e.target.value = e.target.value.trim())),
+      onBlur: (e) =>
+        trim && e.target.value !== e.target.value.trim() && put(path, (e.target.value = e.target.value.trim())),
     });
+    syncers.push(() => document.activeElement !== input && (input.value = getPath(draft, path) ?? ""));
     return frame(path, labelText, input, { hint });
   }
 
@@ -146,9 +153,16 @@ export function createEditor({ mount, title, label, back, record, save, more = n
       },
     });
     area.value = bind(path);
+    syncers.push(() => {
+      if (document.activeElement === area) return;
+      area.value = getPath(draft, path) ?? "";
+      counted();
+    });
     const counted = () => {
       const v = area.value;
-      count.textContent = v ? `${v.length.toLocaleString("ko-KR")}자 · 약 ${tokensOf(v).toLocaleString("ko-KR")}토큰` : "비어 있음";
+      count.textContent = v
+        ? `${v.length.toLocaleString("ko-KR")}자 · 약 ${tokensOf(v).toLocaleString("ko-KR")}토큰`
+        : "비어 있음";
     };
     counted();
     const insert = (snippet) => {
@@ -173,7 +187,8 @@ export function createEditor({ mount, title, label, back, record, save, more = n
                 const draftText = String((await ai()) || "").trim();
                 if (!draftText) return toast("초안이 비어 있어요");
                 aiSheet(labelText, draftText, (mode) => {
-                  area.value = mode === "add" && area.value.trim() ? `${area.value.trimEnd()}\n\n${draftText}` : draftText;
+                  area.value =
+                    mode === "add" && area.value.trim() ? `${area.value.trimEnd()}\n\n${draftText}` : draftText;
                   put(path, area.value);
                   counted();
                 });
@@ -226,7 +241,11 @@ export function createEditor({ mount, title, label, back, record, save, more = n
           { class: "ed-actions" },
           h("button", { type: "button", class: "pill", onClick: () => s.close() }, "버리기"),
           h("button", { type: "button", class: "pill", onClick: () => (s.close(), apply("add")) }, "아래에 덧붙이기"),
-          h("button", { type: "button", class: "pill main", onClick: () => (s.close(), apply("replace")) }, "이걸로 바꾸기"),
+          h(
+            "button",
+            { type: "button", class: "pill main", onClick: () => (s.close(), apply("replace")) },
+            "이걸로 바꾸기",
+          ),
         ),
       ),
       { label: "AI 초안" },
@@ -344,7 +363,13 @@ export function createEditor({ mount, title, label, back, record, save, more = n
               type: "button",
               class: "chip on ed-tag",
               "aria-label": `${t} 태그 빼기`,
-              onClick: () => (put(path, list().filter((x) => x !== t)), draw()),
+              onClick: () => (
+                put(
+                  path,
+                  list().filter((x) => x !== t),
+                ),
+                draw()
+              ),
             },
             t,
             " ✕",
@@ -357,7 +382,11 @@ export function createEditor({ mount, title, label, back, record, save, more = n
   }
 
   /** A list of texts (alternate greetings, aliases): add, remove, move up and down. */
-  function list(path, labelText, { addLabel = "+ 추가", rows = 3, hint, itemLabel = (i) => `${i + 1}`, oneLine = false } = {}) {
+  function list(
+    path,
+    labelText,
+    { addLabel = "+ 추가", rows = 3, hint, itemLabel = (i) => `${i + 1}`, oneLine = false } = {},
+  ) {
     bind(path, (v) => v);
     const items = () => (Array.isArray(getPath(draft, path)) ? getPath(draft, path) : []);
     const box = h("div", { class: "ed-stack" });
@@ -375,10 +404,26 @@ export function createEditor({ mount, title, label, back, record, save, more = n
               h(
                 "span",
                 { class: "ed-item-tools" },
-                h("button", { type: "button", class: "ed-mini", disabled: i === 0, "aria-label": "위로", onClick: () => move(i, -1) }, "↑"),
                 h(
                   "button",
-                  { type: "button", class: "ed-mini", disabled: i === all.length - 1, "aria-label": "아래로", onClick: () => move(i, 1) },
+                  {
+                    type: "button",
+                    class: "ed-mini",
+                    disabled: i === 0,
+                    "aria-label": "위로",
+                    onClick: () => move(i, -1),
+                  },
+                  "↑",
+                ),
+                h(
+                  "button",
+                  {
+                    type: "button",
+                    class: "ed-mini",
+                    disabled: i === all.length - 1,
+                    "aria-label": "아래로",
+                    onClick: () => move(i, 1),
+                  },
                   "↓",
                 ),
                 h(
@@ -387,7 +432,13 @@ export function createEditor({ mount, title, label, back, record, save, more = n
                     type: "button",
                     class: "ed-mini",
                     "aria-label": "지우기",
-                    onClick: () => (put(path, items().filter((_, j) => j !== i)), draw()),
+                    onClick: () => (
+                      put(
+                        path,
+                        items().filter((_, j) => j !== i),
+                      ),
+                      draw()
+                    ),
                   },
                   "지우기",
                 ),
@@ -397,19 +448,36 @@ export function createEditor({ mount, title, label, back, record, save, more = n
               ? h("input", {
                   class: "inp ed-inp",
                   value: v,
-                  onInput: (e) => put(path, items().map((x, j) => (j === i ? e.target.value : x))),
+                  onInput: (e) =>
+                    put(
+                      path,
+                      items().map((x, j) => (j === i ? e.target.value : x)),
+                    ),
                 })
               : Object.assign(
                   h("textarea", {
                     class: "inp ed-area",
                     rows,
-                    onInput: (e) => put(path, items().map((x, j) => (j === i ? e.target.value : x))),
+                    onInput: (e) =>
+                      put(
+                        path,
+                        items().map((x, j) => (j === i ? e.target.value : x)),
+                      ),
                   }),
                   { value: v },
                 ),
           ),
         ),
-        h("button", { type: "button", class: "pill", style: { alignSelf: "flex-start" }, onClick: () => (put(path, [...items(), ""]), draw()) }, addLabel),
+        h(
+          "button",
+          {
+            type: "button",
+            class: "pill",
+            style: { alignSelf: "flex-start" },
+            onClick: () => (put(path, [...items(), ""]), draw()),
+          },
+          addLabel,
+        ),
       );
     const move = (i, d) => {
       const next = [...items()];

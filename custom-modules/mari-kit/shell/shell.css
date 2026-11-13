@@ -2668,3 +2668,12 @@ button.toast {
   min-height: 44px;
   font-size: 14px;
 }
+.ed-load {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+.ed-avatar {
+  flex-wrap: wrap;
+}

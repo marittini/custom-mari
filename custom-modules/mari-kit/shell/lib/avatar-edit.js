@@ -13,11 +13,7 @@ export async function pickImageWebp() {
     input.addEventListener("change", () => resolve(input.files?.[0] || null));
     input.addEventListener("cancel", () => resolve(null));
     // Browsers without the cancel event: when the page gets focus back and no file came, it was cancelled.
-    addEventListener(
-      "focus",
-      () => setTimeout(() => !input.files?.length && resolve(null), 800),
-      { once: true },
-    );
+    addEventListener("focus", () => setTimeout(() => !input.files?.length && resolve(null), 800), { once: true });
     input.click();
   });
   if (!file) return null;
