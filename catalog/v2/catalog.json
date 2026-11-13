@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "generatedAt": "2026-11-13T10:57:37.726Z",
+  "generatedAt": "2026-11-13T11:38:01.432Z",
   "packages": [
     {
       "manifest": {
@@ -4677,7 +4677,7 @@
         },
         "id": "mari-kit",
         "name": "Mari Kit",
-        "version": "0.16.3",
+        "version": "0.16.4",
         "description": "개인 기능 모음(TTS·번역·날씨·기억)을 엔진 소스 수정 없이 붙이는 패키지입니다.",
         "engine": {
           "min": "2.5.2",
@@ -4715,7 +4715,7 @@
         "restartRequired": true,
         "builtAgainst": {
           "engineVersion": "2.5.2",
-          "engineCommit": "875125eb9743cc702fcaadf369fac8992348d6f2"
+          "engineCommit": "d56bc837f8cf5394373b75deabe388b6c203ab11"
         },
         "files": [
           {
@@ -4760,8 +4760,8 @@
           },
           {
             "path": "server.mjs",
-            "sha256": "6bea575256ec5fe13a0d8fac7222a8d8df2df18d2a2563d972e604c05d543f8a",
-            "bytes": 7222
+            "sha256": "bacf136c93f6e61028d244288347fe5d4197c0155d8c4ce79c9ab4a2411bae8f",
+            "bytes": 7962
           },
           {
             "path": "shell.server.mjs",
@@ -5067,9 +5067,9 @@
       },
       "category": "misc",
       "artifact": {
-        "url": "https://raw.githubusercontent.com/marittini/custom-mari/mari-catalog/artifacts/mari-kit-0.16.3.zip",
-        "sha256": "455309872232b6e20cf69069e9f1692dff8b5dc7065eaef59e09f60dc3ce3f23",
-        "bytes": 330469
+        "url": "https://raw.githubusercontent.com/marittini/custom-mari/mari-catalog/artifacts/mari-kit-0.16.4.zip",
+        "sha256": "6f2d90a22b5bf1ec99b3240cddb1c819981373d3e0e97f9a2fa8eedfb44355f0",
+        "bytes": 330756
       },
       "documentationUrl": "https://github.com/marittini/custom-mari/tree/main/custom-modules"
     }
