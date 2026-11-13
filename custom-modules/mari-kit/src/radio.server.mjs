@@ -138,6 +138,14 @@ export const radioFeature = {
   id: "radio",
   routes(app, { runtime, httpError }) {
     const docs = () => runtime.persistence.documents;
+    // A host is a character or one of the user's personas.
+    async function hostRecord(id) {
+      if (!id) return null;
+      const [character] = await runtime.resources.listCharacters([id]).catch(() => []);
+      if (character) return character;
+      const [persona] = await runtime.resources.listPersonas([id]).catch(() => []);
+      return persona ?? null;
+    }
     async function upsert(id, kind, name, mutate) {
       for (let attempt = 0; attempt < 4; attempt += 1) {
         const doc = await docs().getById(PKG, id);
@@ -187,13 +195,13 @@ export const radioFeature = {
     async function write(id, input) {
       const settings = input.settings;
       try {
-        const [djRec] = await runtime.resources.listCharacters([input.djId]);
+        const djRec = await hostRecord(input.djId);
         if (!djRec) throw new Error("DJ character not found.");
         const djCard = cardOf(djRec);
         const dj = { name: str(djCard.name, 80) || "DJ", brief: brief(djCard) };
         let co = null;
         if (input.coDjId) {
-          const [coRec] = await runtime.resources.listCharacters([input.coDjId]);
+          const coRec = await hostRecord(input.coDjId);
           if (coRec) co = { name: str(cardOf(coRec).name, 80) || "DJ", brief: brief(cardOf(coRec)) };
         }
         let poster = null;
@@ -332,11 +340,11 @@ export const radioFeature = {
       const id = randomUUID();
       const createdAt = new Date().toISOString();
       let no = 1;
-      const [djRec] = await runtime.resources.listCharacters([djId]);
+      const djRec = await hostRecord(djId);
       if (!djRec) throw httpError(404, "DJ character not found.");
       const djName = str(cardOf(djRec).name, 80) || "DJ";
       const coId = str(request.body?.coDjId, 200);
-      const [coRec] = coId && coId !== djId ? await runtime.resources.listCharacters([coId]) : [];
+      const coRec = coId && coId !== djId ? await hostRecord(coId) : null;
       const coDjId = coRec ? coId : "";
       const coDjName = coRec ? str(cardOf(coRec).name, 80) || "DJ" : "";
       await saveIndex((idx) => {

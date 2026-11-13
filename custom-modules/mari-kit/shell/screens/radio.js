@@ -35,7 +35,14 @@ function onAirLabel(zone) {
     return "";
   }
 }
-const showName = (dj) => `${dj}의 심야 라디오`;
+// "A의 심야 라디오", or with two hosts "A와 B의 심야 라디오" (와 after a vowel, 과 after a final consonant).
+const withAnd = (name) => {
+  const last = String(name).trim().slice(-1);
+  const code = last.charCodeAt(0) - 0xac00;
+  const batchim = code >= 0 && code < 11172 ? code % 28 !== 0 : /[bcdfgjklmnpqstvxz]$/i.test(last);
+  return `${name}${batchim ? "과" : "와"}`;
+};
+const showName = (dj, co) => `${co ? `${withAnd(dj)} ${co}` : dj}의 심야 라디오`;
 
 export function radioScreen({ mount, args, go, back }) {
   const view = args[0] || "home";
@@ -49,9 +56,16 @@ export function radioScreen({ mount, args, go, back }) {
 
   async function load() {
     try {
-      const [radio, chars] = await Promise.all([api.get("/mari-kit/radio"), data.characters()]);
+      const [radio, chars, personas] = await Promise.all([
+        api.get("/mari-kit/radio"),
+        data.characters(),
+        data.personas(),
+      ]);
       state = radio;
+      // Hosts: characters first, then the user's personas (a persona can host too).
       index = characterIndex(chars);
+      for (const p of personas)
+        index.set(p.id, { id: p.id, name: p.name || "이름 없음", avatar: p.avatarPath || null, persona: true });
       if (alive) draw();
     } catch (error) {
       if (alive) setChildren(body, errorBox(error));
@@ -70,7 +84,7 @@ export function radioScreen({ mount, args, go, back }) {
   let letter = "";
   function homeView() {
     const s = state.settings;
-    const djId = s.djId && index.has(s.djId) ? s.djId : [...index.keys()][0];
+    const djId = s.djId && index.has(s.djId) ? s.djId : [...index.values()].find((c) => !c.persona)?.id;
     const dj = index.get(djId);
     // 둘이 진행: the second host, when one is chosen.
     const co = s.coDjId && s.coDjId !== djId ? index.get(s.coDjId) : null;
@@ -121,9 +135,16 @@ export function radioScreen({ mount, args, go, back }) {
         h(
           "div",
           { style: { display: "flex", gap: co ? "28px" : "0", alignItems: "flex-start", justifyContent: "center" } },
-          host(dj, co ? 72 : 88, "DJ 바꾸기", () => pickDj(djId)),
-          co ? host(co, 72, "함께 진행할 사람 바꾸기", () => pickDj(co.id, { co: true, djId })) : null,
+          host(dj, co ? 72 : 88, "DJ 바꾸기", () => pickDj(djId), co ? dj.name : showName(dj.name)),
+          co ? host(co, 72, "함께 진행할 사람 바꾸기", () => pickDj(co.id, { co: true, djId }), co.name) : null,
         ),
+        co
+          ? h(
+              "span",
+              { style: { marginTop: "14px", fontFamily: "var(--font-read)", fontSize: "18px", fontWeight: "600" } },
+              showName(dj.name, co.name),
+            )
+          : null,
         h(
           "button",
           {
@@ -145,12 +166,12 @@ export function radioScreen({ mount, args, go, back }) {
       ),
     ];
   }
-  function host(c, size, label, onClick) {
+  function host(c, size, label, onClick, title) {
     return h(
       "button",
       { type: "button", class: "plain", style: { alignItems: "center", gap: "12px" }, "aria-label": label, onClick },
       avatar(c.avatar, firstLetter(c.name), size),
-      h("span", { style: { fontFamily: "var(--font-read)", fontSize: "17px", fontWeight: "600" } }, c.name),
+      h("span", { style: { fontFamily: "var(--font-read)", fontSize: "17px", fontWeight: "600" } }, title),
     );
   }
   // pickDj(current) picks the DJ; with { co: true, djId } it picks the second host (or 혼자 진행).
@@ -181,36 +202,51 @@ export function radioScreen({ mount, args, go, back }) {
               h("span", { style: { fontSize: "12px" } }, "혼자 진행"),
             )
           : null,
-        [...index.values()]
-          .filter((c) => !co || c.id !== djId)
-          .map((c) =>
+        [
+          ["캐릭터", [...index.values()].filter((c) => !c.persona)],
+          ["페르소나", [...index.values()].filter((c) => c.persona)],
+        ]
+          .map(([label, list]) => [label, list.filter((c) => !co || c.id !== djId)])
+          .filter(([, list]) => list.length)
+          .map(([label, list]) =>
             h(
-              "button",
-              {
-                type: "button",
-                class: "plain",
-                style: {
-                  alignItems: "center",
-                  width: "64px",
-                  gap: "8px",
-                  color: c.id === cur ? "var(--ink)" : "var(--ink-3)",
-                },
-                "aria-pressed": c.id === cur ? "true" : "false",
-                onClick: () => (s.close(), saveSettings(co ? { coDjId: c.id } : { djId: c.id })),
-              },
-              avatar(c.avatar, firstLetter(c.name), 52),
+              "div",
+              { style: { width: "100%", display: "flex", flexDirection: "column", gap: "12px" } },
+              h("div", { class: "gsec", style: { margin: "4px 0 0" } }, h("span", null, label)),
               h(
-                "span",
-                {
-                  style: {
-                    fontSize: "12px",
-                    maxWidth: "64px",
-                    overflow: "hidden",
-                    textOverflow: "ellipsis",
-                    whiteSpace: "nowrap",
-                  },
-                },
-                c.name,
+                "div",
+                { style: { display: "flex", flexWrap: "wrap", justifyContent: "center", gap: "20px" } },
+                list.map((c) =>
+                  h(
+                    "button",
+                    {
+                      type: "button",
+                      class: "plain",
+                      style: {
+                        alignItems: "center",
+                        width: "64px",
+                        gap: "8px",
+                        color: c.id === cur ? "var(--ink)" : "var(--ink-3)",
+                      },
+                      "aria-pressed": c.id === cur ? "true" : "false",
+                      onClick: () => (s.close(), saveSettings(co ? { coDjId: c.id } : { djId: c.id })),
+                    },
+                    avatar(c.avatar, firstLetter(c.name), 52),
+                    h(
+                      "span",
+                      {
+                        style: {
+                          fontSize: "12px",
+                          maxWidth: "64px",
+                          overflow: "hidden",
+                          textOverflow: "ellipsis",
+                          whiteSpace: "nowrap",
+                        },
+                      },
+                      c.name,
+                    ),
+                  ),
+                ),
               ),
             ),
           ),
@@ -246,7 +282,7 @@ export function radioScreen({ mount, args, go, back }) {
       topBar({
         back: () => back("radio"),
         title: ep.title ? `${ep.no}회 · ${ep.title}` : `${ep.no}회`,
-        sub: `${showName(ep.coDjName ? `${ep.djName} × ${ep.coDjName}` : ep.djName)} · ${freq(ep.djName)} MHz`,
+        sub: `${showName(ep.djName, ep.coDjName)} · ${freq(ep.djName)} MHz`,
         actions: [
           h(
             "button",
