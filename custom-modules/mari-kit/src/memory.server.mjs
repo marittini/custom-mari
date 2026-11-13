@@ -55,7 +55,8 @@ export const SETTING_CHOICES = Object.freeze({
   chapterLength: ["short", "normal", "long", "full"],
   recallStyle: ["quiet", "natural", "active"],
   writeLanguage: ["auto", "ko", "en", "zh"],
-  memoryLanguage: ["auto", "ko", "en", "zh"],
+  // 내게 보여줄 언어: memory is shown on screen translated into this; the model always gets the original.
+  showLanguage: ["auto", "ko", "en", "zh"],
 });
 export const DEFAULT_SETTINGS = Object.freeze({
   keepRecent: KEEP_RECENT,
@@ -67,7 +68,7 @@ export const DEFAULT_SETTINGS = Object.freeze({
   chapterLength: "normal",
   recallStyle: "natural",
   writeLanguage: "auto",
-  memoryLanguage: "auto",
+  showLanguage: "auto",
   translateConnectionId: null,
   embedding: false,
 });
@@ -77,6 +78,9 @@ export function normalizeSettings(raw) {
   const out = { ...DEFAULT_SETTINGS };
   for (const [key, choices] of Object.entries(SETTING_CHOICES))
     if (choices.includes(source[key])) out[key] = source[key];
+  // Before 0.15 this was "memoryLanguage" and the translation went to the model; it was always meant for the screen.
+  if (source.showLanguage === undefined && SETTING_CHOICES.showLanguage.includes(source.memoryLanguage))
+    out.showLanguage = source.memoryLanguage;
   // 최근 제외: any whole number from 0 to 40 (the newest replies can still be swiped or edited).
   const keep = Number(source.keepRecent);
   if (Number.isInteger(keep) && keep >= 0 && keep <= 40) out.keepRecent = keep;
@@ -612,8 +616,8 @@ export function trackerLine(t, storyDate, today) {
 export function buildRecall(memory, { recentText, speakers, budget, nearIds = [], today = "" }) {
   const settings = normalizeSettings(memory.settings);
   const cap = budget ?? settings.budget ?? TOKEN_BUDGET;
-  const lang = settings.memoryLanguage;
-  const tr = (item, key) => (lang !== "auto" && item?.tr?.[lang]?.[key]) || item?.[key];
+  // The model reads the original memory; translations (item.tr) are only for the screen.
+  const tr = (item, key) => item?.[key];
   const text = String(recentText ?? "").toLowerCase();
   const single = speakers.length === 1;
   const live = (item) => !item?.excluded;
@@ -1137,9 +1141,9 @@ export const memoryFeature = {
           // The chunk is still saved; the chapter is tried again on the next press.
         }
       }
-      // Memory written in another language than the one it should be read in: translated once, here.
-      const lang = next.settings.memoryLanguage;
-      if (lang !== "auto") {
+      // 내게 보여줄 언어: new items are translated once, here, for the screen only.
+      const lang = next.settings.showLanguage;
+      if (lang !== "auto" && lang !== next.settings.writeLanguage) {
         const items = untranslated(next, lang);
         if (items.length) {
           const tm = next.settings.translateConnectionId
@@ -1480,8 +1484,8 @@ export const memoryFeature = {
       const chat = await chatOf(request);
       const debug = request.body?.debugMode === true || runtime.isDebugAgentsEnabled();
       const { result } = await mutate(chat, async (memory) => {
-        const lang = memory.settings.memoryLanguage;
-        if (lang === "auto") return { translated: 0, calls: 0 };
+        const lang = memory.settings.showLanguage;
+        if (lang === "auto" || lang === memory.settings.writeLanguage) return { translated: 0, calls: 0 };
         const items = untranslated(memory, lang);
         let translated = 0;
         let calls = 0;

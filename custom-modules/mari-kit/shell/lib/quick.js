@@ -11,6 +11,40 @@ import { groupsOf } from "./groups.js";
 import { pickPerson } from "./picker.js";
 import { voiceSettings, patchVoice } from "./voice.js";
 import { profileSheet } from "./profiles.js";
+import { prefs } from "./prefs.js";
+
+const RP = "roleplay";
+
+/**
+ * Every row the sheet can show. def: shown until the owner chooses (prefs.quick === null). modes: omitted → all.
+ * Order here is the default order. 모든 채팅 설정 and 빠른 설정 고르기 are always at the bottom, not listed.
+ */
+export const QUICK_ITEMS = [
+  { id: "connection", label: "연결", def: true },
+  { id: "preset", label: "프리셋", def: true },
+  { id: "persona", label: "페르소나", def: true },
+  { id: "profile", label: "채팅 프로필", def: true },
+  { id: "autoTranslate", label: "자동 번역", def: true },
+  { id: "inputTranslate", label: "보낼 말 번역 버튼", def: true },
+  { id: "voice", label: "음성 자동 재생", def: true },
+  { id: "memoryOrganize", label: "기억 정리", def: true },
+  { id: "reader", label: "읽기 설정", def: true },
+  { id: "cast", label: "등장 캐릭터", def: false },
+  { id: "lorebooks", label: "로어북", def: false },
+  { id: "author", label: "작가 노트", modes: [RP], def: false },
+  { id: "translation", label: "번역 설정", def: false },
+  { id: "cover", label: "표지", def: false },
+  { id: "search", label: "메시지 검색", def: false },
+  { id: "memoryLibrary", label: "기억 서재", modes: [RP], def: false },
+  { id: "presetChoices", label: "프리셋 선택지", modes: [RP], def: false },
+];
+
+/** The ids to draw, in order: the saved choice (unknown ids dropped) or the defaults. */
+export function quickIds() {
+  const known = new Set(QUICK_ITEMS.map((i) => i.id));
+  const saved = prefs().quick;
+  return Array.isArray(saved) ? saved.filter((id) => known.has(id)) : QUICK_ITEMS.filter((i) => i.def).map((i) => i.id);
+}
 
 let presetsP = null;
 const presetList = () => presetsP || (presetsP = api.get("/prompts").catch(() => ((presetsP = null), [])));
@@ -140,36 +174,57 @@ function openQuick({ getChat, getMemory, organize, go, changed }) {
     const meta = chatMeta(chat);
     const memory = getMemory?.();
     const personaName = chat.personaId ? personaNames.get(chat.personaId) || "고름" : "없음";
+    const cs = (view) => () => (s.close(), go(`chat-settings/${enc()}${view ? `/${view}` : ""}`));
+    const vOn = voice && voice.autoplay && voice.autoplay !== "off";
+    const make = {
+      connection: () => row(I.link, "연결", connName(chat.connectionId), pickConnection),
+      preset: () => row(I.list, "프리셋", "", pickPreset),
+      persona: () => row(I.person, "페르소나", personaName, pickPersona),
+      profile: () => row(I.sliders, "채팅 프로필", "", () => profileSheet({ chat: getChat(), changed: () => after() })),
+      autoTranslate: () =>
+        sw(I.translate, "자동 번역", meta.autoTranslate === true, () =>
+          patchMeta({ autoTranslate: meta.autoTranslate !== true }),
+        ),
+      inputTranslate: () =>
+        sw(I.translate, "보낼 말 번역 버튼", meta.showInputTranslateButton === true, () =>
+          patchMeta({ showInputTranslateButton: meta.showInputTranslateButton !== true }),
+        ),
+      voice: () =>
+        voice
+          ? sw(I.voice, "음성 자동 재생", vOn, async () => {
+              try {
+                voice = await patchVoice({ autoplay: vOn ? "off" : "chars" });
+                draw();
+              } catch (error) {
+                toast(error.message);
+              }
+            })
+          : null,
+      memoryOrganize: () =>
+        memory
+          ? row(I.memory, "기억 정리", memory.busy ? "정리 중" : `대기 ${memory.waiting}`, () => {
+              s.close();
+              organize();
+            })
+          : null,
+      reader: () => row(I.reader, "읽기 설정", "", () => (s.close(), go("reader"))),
+      cast: () => row(I.person, "등장 캐릭터", "", cs("cast")),
+      lorebooks: () => row(I.lore, "로어북", "", cs("lorebooks")),
+      author: () => row(I.edit, "작가 노트", "", cs("author")),
+      translation: () => row(I.translate, "번역 설정", "", cs("translation")),
+      cover: () => row(I.square, "표지", "", cs("cover")),
+      search: () => row(I.search, "메시지 검색", "", () => (s.close(), go(`search/${enc()}`))),
+      memoryLibrary: () => row(I.book, "기억 서재", "", () => (s.close(), go(`memory/${enc()}`))),
+      presetChoices: () => row(I.list, "프리셋 선택지", "", cs("")),
+    };
+    const items = new Map(QUICK_ITEMS.map((i) => [i.id, i]));
     setChildren(
       body,
-      row(I.link, "연결", connName(chat.connectionId), pickConnection),
-      row(I.list, "프리셋", "", pickPreset),
-      row(I.person, "페르소나", personaName, pickPersona),
-      row(I.sliders, "채팅 프로필", "", () => profileSheet({ chat: getChat(), changed: () => after() })),
-      sw(I.translate, "자동 번역", meta.autoTranslate === true, () =>
-        patchMeta({ autoTranslate: meta.autoTranslate !== true }),
-      ),
-      sw(I.translate, "보낼 말 번역 버튼", meta.showInputTranslateButton === true, () =>
-        patchMeta({ showInputTranslateButton: meta.showInputTranslateButton !== true }),
-      ),
-      voice
-        ? sw(I.voice, "음성 자동 재생", voice.autoplay && voice.autoplay !== "off", async () => {
-            try {
-              voice = await patchVoice({ autoplay: voice.autoplay && voice.autoplay !== "off" ? "off" : "chars" });
-              draw();
-            } catch (error) {
-              toast(error.message);
-            }
-          })
-        : null,
-      memory
-        ? row(I.memory, "기억 정리", memory.busy ? "정리 중" : `대기 ${memory.waiting}`, () => {
-            s.close();
-            organize();
-          })
-        : null,
-      row(I.reader, "읽기 설정", "", () => (s.close(), go("reader"))),
-      row(I.gear, "모든 채팅 설정", "", () => (s.close(), go(`chat-settings/${enc()}`))),
+      ...quickIds()
+        .filter((id) => !items.get(id).modes || items.get(id).modes.includes(chat.mode))
+        .map((id) => make[id]?.()),
+      row(I.sliders, "빠른 설정 고르기", "", () => (s.close(), go("settings/quick"))),
+      row(I.gear, "모든 채팅 설정", "", cs("")),
     );
   }
 

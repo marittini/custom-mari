@@ -59,6 +59,7 @@ const DEFAULTS = {
   stroke: 0,
   align: "start",
   tools: {},
+  quick: null, // 빠른 설정 rows: null → defaults (QUICK_ITEMS in quick.js); else the chosen ids in order
   appName: "",
   icon: "",
 };

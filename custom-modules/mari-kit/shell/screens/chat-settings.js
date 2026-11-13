@@ -886,11 +886,12 @@ export function chatSettingsScreen({ mount, args, go, back }) {
         class: raw ? "ph cov-pick" : "ph",
         style: {
           position: "relative",
-          width: "180px",
+          width: "min(100%, 340px)",
           aspectRatio: "3 / 4",
           margin: "20px auto 8px",
           borderRadius: "12px",
-          backgroundSize: "cover",
+          // A cover shows whole, in its own shape, so the focus can be anywhere on it.
+          backgroundSize: raw ? "100% 100%" : "cover",
           backgroundPosition: "center",
           backgroundImage: bg,
           touchAction: raw ? "none" : "auto",
@@ -918,9 +919,14 @@ export function chatSettingsScreen({ mount, args, go, back }) {
     const show = () => {
       dot.style.left = `${at.x}%`;
       dot.style.top = `${at.y}%`;
-      for (const el of [preview, ...(preview.parentNode?.querySelectorAll?.(".cov-small") || [])])
+      for (const el of preview.parentNode?.querySelectorAll?.(".cov-small") || [])
         el.style.backgroundPosition = `${at.x}% ${at.y}%`;
     };
+    if (raw) {
+      const probe = new Image();
+      probe.onload = () => (preview.style.aspectRatio = `${probe.naturalWidth} / ${probe.naturalHeight}`);
+      probe.src = raw;
+    }
     if (raw) {
       const move = (e) => {
         const r = preview.getBoundingClientRect();
@@ -965,7 +971,9 @@ export function chatSettingsScreen({ mount, args, go, back }) {
       h(
         "p",
         { class: "hint", style: { textAlign: "center", margin: "0 0 12px" } },
-        raw ? "사진을 눌러 목록에서 보일 곳을 고르세요" : "표지가 없어서 첫 캐릭터 사진(엔진에서 자른 모양)을 써요",
+        raw
+          ? "사진에서 목록·카드에 보일 중심을 눌러 고르세요. 아래 미리 보기로 확인해요"
+          : "표지가 없어서 첫 캐릭터 사진(엔진에서 자른 모양)을 써요",
       ),
       raw
         ? h(
@@ -1265,19 +1273,13 @@ export function chatSettingsScreen({ mount, args, go, back }) {
 
 /** A picked photo as a 3:4, 600×800 (at most) WebP, base64 — cropped from the middle, made in the browser. */
 async function coverWebp(file) {
+  // The whole picture in its own shape (wide stays wide), longest side up to 1200px; lists crop around the focus.
   const bitmap = await createImageBitmap(file);
-  const want = 3 / 4;
-  let sw = bitmap.width;
-  let sh = bitmap.height;
-  if (sw / sh > want) sw = Math.round(sh * want);
-  else sh = Math.round(sw / want);
-  const scale = Math.min(1, 600 / sw);
+  const scale = Math.min(1, 1200 / Math.max(bitmap.width, bitmap.height));
   const canvas = document.createElement("canvas");
-  canvas.width = Math.round(sw * scale);
-  canvas.height = Math.round(sh * scale);
-  canvas
-    .getContext("2d")
-    .drawImage(bitmap, (bitmap.width - sw) / 2, (bitmap.height - sh) / 2, sw, sh, 0, 0, canvas.width, canvas.height);
+  canvas.width = Math.max(1, Math.round(bitmap.width * scale));
+  canvas.height = Math.max(1, Math.round(bitmap.height * scale));
+  canvas.getContext("2d").drawImage(bitmap, 0, 0, canvas.width, canvas.height);
   const blob = await new Promise((resolve) => canvas.toBlob(resolve, "image/webp", 0.82));
   const bytes = new Uint8Array(await blob.arrayBuffer());
   let bin = "";
