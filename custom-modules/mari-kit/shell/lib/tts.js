@@ -5,6 +5,8 @@ const memory = new Map();
 const CACHE = "mari-shell-tts";
 let audio = null;
 let activeKey = null;
+let phase = null; // "loading" (the Engine is making the clip) | "playing" | null
+let label = ""; // who is speaking, for the status strip
 const listeners = new Set();
 
 export function onTts(fn) {
@@ -15,6 +17,11 @@ const emit = () => listeners.forEach((fn) => fn(activeKey));
 
 export function activeLine() {
   return activeKey;
+}
+
+/** { key, phase: "loading"|"playing"|null, label } for status displays. */
+export function ttsState() {
+  return { key: activeKey, phase: activeKey ? phase : null, label };
 }
 
 async function cached(key) {
@@ -63,12 +70,15 @@ function end() {
   }
   audio = null;
   activeKey = null;
+  phase = null;
   emit();
 }
 
-export async function speak(key, request) {
+export async function speak(key, request, who = "") {
   end();
   activeKey = key;
+  label = who || request?.speaker || "";
+  phase = "loading";
   emit();
   try {
     let blob = await cached(key);
@@ -96,6 +106,10 @@ export async function speak(key, request) {
       if (activeKey === key) end();
     });
     await audio.play();
+    if (activeKey === key) {
+      phase = "playing";
+      emit();
+    }
   } catch (error) {
     if (activeKey === key) end();
     throw error;

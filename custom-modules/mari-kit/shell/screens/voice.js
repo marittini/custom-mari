@@ -7,7 +7,15 @@ import { h, icon, I, setChildren, dots } from "../lib/h.js";
 import { api, characterCard } from "../lib/api.js";
 import { data, firstLetter } from "../lib/data.js";
 import { pageHead, toast, errorBox, sheet, popMenu, hbox, avatar } from "../lib/ui.js";
-import { voiceList, syncVoiceSettings, patchVoice, voiceSettings } from "../lib/voice.js";
+import {
+  voiceList,
+  syncVoiceSettings,
+  patchVoice,
+  voiceSettings,
+  loadVoices,
+  voiceGroups,
+  voiceOptions,
+} from "../lib/voice.js";
 import * as tts from "../lib/tts.js";
 import { groupsOf, splitByGroup, foldGroup } from "../lib/groups.js";
 
@@ -69,8 +77,7 @@ export function voiceScreen({ mount, args, go, back }) {
       v = (await syncVoiceSettings(cfg)) || (await voiceSettings());
       if (view === "people" && config) {
         try {
-          const res = await api.get("/tts/voices");
-          voices = voiceList(res);
+          voices = await loadVoices();
         } catch {
           voices = [];
         }
@@ -152,8 +159,11 @@ export function voiceScreen({ mount, args, go, back }) {
         "div",
         { class: "vc-vlist" },
         h("span", { class: "vc-vtitle" }, title),
-        row("", "기본 목소리로"),
-        ...voices.map((x) => row(x.id, x.name)),
+        row("", "정하지 않음 (기본 목소리)"),
+        ...voiceGroups(voices).map((g) => [
+          g.label ? h("span", { class: "vc-vtitle", style: { fontSize: "13px", marginTop: "10px" } }, g.label) : null,
+          ...g.items.map((x) => row(x.id, x.name)),
+        ]),
         free
           ? [
               free,
@@ -336,12 +346,7 @@ export function voiceScreen({ mount, args, go, back }) {
     });
     const cur = voiceOf(p.id);
     const pick = voices.length
-      ? h(
-          "select",
-          { class: "sel" },
-          h("option", { value: "" }, "기본 목소리"),
-          voices.map((x) => h("option", { value: x.id, selected: x.id === cur }, x.name)),
-        )
+      ? h("select", { class: "sel" }, voiceOptions(h, voices, cur))
       : h("input", { class: "uline", type: "text", value: cur, placeholder: "목소리 ID" });
     const s = sheet(
       h(

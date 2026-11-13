@@ -8,7 +8,7 @@ import { h, icon, I, setChildren } from "../lib/h.js";
 import { api, download } from "../lib/api.js";
 import { data, characterIndex, chatMeta, chatTitle, coverOf, coverPos, textConnections } from "../lib/data.js";
 import { setPrefs, isDark, TOOL_DEFS, toolPlace } from "../lib/prefs.js";
-import { topBar, toast, errorBox, openEngine, sheet, avatar, thumb } from "../lib/ui.js";
+import { topBar, toast, errorBox, openEngine, sheet, avatar, thumb, ask } from "../lib/ui.js";
 import { lorebookViews, REASON_LABEL } from "../lib/lorebooks.js";
 import { ENGINE_SECTIONS } from "../lib/engine-sections.js";
 import { pickPerson } from "../lib/picker.js";
@@ -569,16 +569,57 @@ export function chatSettingsScreen({ mount, args, go, back }) {
   // Deletes this chat (this branch only, like the Engine's single-chat delete) and its shell cover.
   async function removeChat() {
     const { chat, index } = state;
-    if (!confirm(`'${chatTitle(chat, index)}' 채팅을 지울까요? 메시지도 함께 지워지고 되돌릴 수 없어요.`)) return;
+    const title = chatTitle(chat, index);
+    // A chat with branches: this branch only, or every branch (the Engine's group delete).
+    const branches = chat.groupId ? (await data.chats(true)).filter((c) => c.groupId === chat.groupId) : [chat];
+    let all = false;
+    if (branches.length > 1) {
+      const pick = await new Promise((resolve) => {
+        const done = (v) => (resolve(v), s.close());
+        const s = sheet(
+          h(
+            "div",
+            { style: { display: "flex", flexDirection: "column", gap: "12px", padding: "8px 20px 24px" } },
+            h(
+              "p",
+              { style: { margin: "0 0 4px", fontSize: "16px", lineHeight: "1.6" } },
+              `'${title}'에는 분기가 ${branches.length}개 있어요. 무엇을 지울까요? 되돌릴 수 없어요.`,
+            ),
+            h(
+              "button",
+              { type: "button", class: "pill", style: { minHeight: "48px" }, onClick: () => done("one") },
+              "이 분기만 지우기",
+            ),
+            h(
+              "button",
+              { type: "button", class: "pill main", style: { minHeight: "48px" }, onClick: () => done("all") },
+              `분기 ${branches.length}개 모두 지우기`,
+            ),
+            h(
+              "button",
+              { type: "button", class: "pill", style: { minHeight: "48px" }, onClick: () => done(null) },
+              "취소",
+            ),
+          ),
+          { label: "채팅 지우기", onClose: () => resolve(null) },
+        );
+      });
+      if (!pick) return;
+      all = pick === "all";
+    } else if (!(await ask(`'${title}' 채팅을 지울까요? 메시지도 함께 지워지고 되돌릴 수 없어요.`, { ok: "지우기" })))
+      return;
     try {
-      const cover = coverOf(chat);
-      if (cover)
-        await api
-          .delete(`/mari-kit/shell/cover/${encodeURIComponent(cover.replace(/#.*$/, "").split("/").pop())}`)
-          .catch(() => {});
-      await api.delete(`/chats/${encodeURIComponent(chatId)}`);
+      for (const c of all ? branches : [chat]) {
+        const cover = coverOf(c);
+        if (cover)
+          await api
+            .delete(`/mari-kit/shell/cover/${encodeURIComponent(cover.replace(/#.*$/, "").split("/").pop())}`)
+            .catch(() => {});
+      }
+      if (all) await api.delete(`/chats/group/${encodeURIComponent(chat.groupId)}`);
+      else await api.delete(`/chats/${encodeURIComponent(chatId)}`);
       await data.chats(true);
-      toast("채팅을 지웠어요");
+      toast(all ? `분기 ${branches.length}개를 모두 지웠어요` : "채팅을 지웠어요");
       location.replace(`#/${chat.mode === "conversation" ? "convos" : "library"}`);
     } catch (error) {
       toast(`지우지 못했어요: ${error.message}`);

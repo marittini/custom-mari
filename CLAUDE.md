@@ -61,6 +61,13 @@ Lessons from earlier sessions. They are the owner's standing expectations.
   with its label on the border; character profile English tags stay.
 - Back always returns where the user came from. A fresh open starts on 홈; a reload or a return from the Engine
   keeps the screen.
+- Never use the browser's confirm()/alert()/prompt(): Android WebView wrappers answer them silently. Ask with
+  `ask()` from `shell/lib/ui.js` (an in-app sheet).
+- Anything that takes time shows it while it runs, with a way to stop it: writing a reply, translating, organizing
+  memory, making or playing a voice clip (`startJob` / `activityStrip` in `shell/lib/activity.js`).
+- Do not wrap a row that holds several buttons in a `<label>`: a tap on its text presses the first button.
+- Check every screen at 360px wide: nothing cut off, names wrap to two lines rather than vanishing, no tab or chip
+  hidden in a sideways scroll. Settings the user might want to change are chosen by the user, not hard-coded.
 - Screens that imitate a real action must feel like it (the call screen looks and behaves like a phone call; typing
   first; no accidental hang-up while typing).
 - Settings live where they are used (this chat → chat settings; the whole app → 설정), with search for the rest.

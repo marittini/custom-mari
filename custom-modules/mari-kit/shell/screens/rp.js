@@ -3,6 +3,7 @@
 // (guide reply + the Engine's own custom quick replies).
 
 import { quickButton } from "../lib/quick.js";
+import { activityStrip, startJob } from "../lib/activity.js";
 import { h, icon, dots, I, setChildren } from "../lib/h.js";
 import { api } from "../lib/api.js";
 import { data, characterIndex, chatTitle, chatMeta, messageText, messageWindow, charLabel } from "../lib/data.js";
@@ -135,7 +136,9 @@ export function rpScreen({ mount, args, go, back }) {
     },
   });
   const composer = h("div", { class: "cmp" }, quickBtn, input, trBtn, qrBtn, sendBtn);
-  mount.append(head, scroller, quickLayer, composer);
+  // 지금 하는 일 (reply being written, translating, voice) with a stop button, right above the composer.
+  const strip = activityStrip();
+  mount.append(head, scroller, quickLayer, strip.el, composer);
 
   function grow() {
     input.style.height = "auto";
@@ -230,6 +233,7 @@ export function rpScreen({ mount, args, go, back }) {
     memory.busy = true;
     drawMemory();
     let calls = 0;
+    const done = startJob("기억 정리 중…");
     try {
       for (let i = 0; i < 20; i += 1) {
         const res = await api.post(`/mari-kit/memory/${encodeURIComponent(chatId)}/organize`, { force: true });
@@ -241,6 +245,7 @@ export function rpScreen({ mount, args, go, back }) {
     } catch (error) {
       toast(`정리하지 못했어요: ${error.message}`);
     } finally {
+      done();
       memory.busy = false;
       drawMemory();
     }
@@ -269,6 +274,49 @@ export function rpScreen({ mount, args, go, back }) {
     };
   }
 
+  function lineButton(line) {
+    const req = speakRequest(line);
+    const state = tts.ttsState();
+    const mine = state.key === req.key;
+    return h(
+      "button",
+      {
+        type: "button",
+        class: mine ? "lb on" : "lb",
+        "aria-label": mine ? "멈춤" : "대사 듣기",
+        onClick: async (e) => {
+          e.stopPropagation();
+          if (mine) return tts.stop();
+          try {
+            await tts.speak(req.key, req.body, req.body.speaker);
+            cachedLines.add(req.key);
+          } catch (error) {
+            toast(`재생하지 못했어요: ${error.message}`);
+          }
+        },
+      },
+      mine && state.phase === "loading" ? h("span", { class: "act-dot" }) : icon(mine ? I.stop : I.play, 11, 2),
+    );
+  }
+
+  // TTS is off in the Engine: say so where the user tapped, with the way to turn it on.
+  function voiceOffPopover() {
+    return h(
+      "span",
+      { class: "host" },
+      h(
+        "span",
+        { class: "pop", role: "group", style: { padding: "6px 10px", fontSize: "13px", gap: "8px" } },
+        "엔진 음성(TTS)이 꺼져 있어요",
+        h(
+          "button",
+          { type: "button", class: "pill", style: { minHeight: "32px" }, onClick: () => go("voice") },
+          "켜기 ›",
+        ),
+      ),
+    );
+  }
+
   function linePopover(m, line) {
     const req = speakRequest(line);
     const playing = tts.activeLine() === req.key;
@@ -278,7 +326,7 @@ export function rpScreen({ mount, args, go, back }) {
       if (!line.spoken) return toast("읽을 대사가 없어요");
       try {
         if (fresh) await tts.forget(req.key);
-        await tts.speak(req.key, req.body);
+        await tts.speak(req.key, req.body, req.body.speaker);
         cachedLines.add(req.key);
       } catch (error) {
         toast(`재생하지 못했어요: ${error.message}`);
@@ -337,20 +385,21 @@ export function rpScreen({ mount, args, go, back }) {
             "span",
             {
               class: on ? "line on" : "line",
-              role: ttsConfig ? "button" : false,
-              tabindex: ttsConfig ? 0 : false,
-              "aria-expanded": ttsConfig ? (on ? "true" : "false") : false,
-              onClick: ttsConfig
-                ? (e) => {
-                    e.stopPropagation();
-                    picked = on ? null : key;
-                    draw();
-                  }
-                : null,
+              role: "button",
+              tabindex: 0,
+              "aria-expanded": on ? "true" : "false",
+              onClick: (e) => {
+                e.stopPropagation();
+                picked = on ? null : key;
+                draw();
+              },
             },
             inline(seg.text),
           );
-          return on && ttsConfig ? [node, linePopover(m, seg)] : node;
+          // A small play/stop right after each spoken line (설정 › 음성 › 대사 옆 재생 버튼), so voice is one tap.
+          const quick = ttsConfig && voiceSet?.lineButtons !== false && seg.spoken ? lineButton(seg) : null;
+          if (!on) return quick ? [node, quick] : node;
+          return [node, quick, ttsConfig ? linePopover(m, seg) : voiceOffPopover()];
         }),
       ),
     );
@@ -611,6 +660,7 @@ export function rpScreen({ mount, args, go, back }) {
     draw();
     scroller.scrollTop = scroller.scrollHeight;
     abort = new AbortController();
+    const done = startJob("답장 쓰는 중…", { label: "멈추기", fn: () => stopGenerating() });
     try {
       await streamGenerate({
         chatId,
@@ -633,6 +683,7 @@ export function rpScreen({ mount, args, go, back }) {
     } catch (error) {
       if (error.name !== "AbortError") toast(`생성하지 못했어요: ${error.message}`);
     } finally {
+      done();
       busy = false;
       live = null;
       abort = null;
@@ -737,6 +788,7 @@ export function rpScreen({ mount, args, go, back }) {
     dispose: () => {
       alive = false;
       off();
+      strip.dispose();
       tts.stop();
       abort?.abort();
     },

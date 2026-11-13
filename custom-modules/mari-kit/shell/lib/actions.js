@@ -3,7 +3,7 @@
 import { h } from "./h.js";
 import { api } from "./api.js";
 import { data, chatMeta, messageText } from "./data.js";
-import { toast, sheet, openEngine } from "./ui.js";
+import { toast, sheet, openEngine, ask } from "./ui.js";
 import { translate, savedTranslation } from "./translate.js";
 
 export const GUIDE = (text) =>
@@ -117,7 +117,7 @@ export async function runTool(id, { chatId, chat, message, reload, generate, go,
     } else if (id === "engine") {
       openEngine(chatId, { message: message.id });
     } else if (id === "del") {
-      if (!confirm("이 메시지를 지울까요?")) return;
+      if (!(await ask("이 메시지를 지울까요?"))) return;
       await api.delete(base);
       await reload();
     }

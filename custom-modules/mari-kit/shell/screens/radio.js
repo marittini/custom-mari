@@ -8,7 +8,7 @@ import { connectionSelect } from "../lib/connpick.js";
 import { h, icon, I, setChildren, dots } from "../lib/h.js";
 import { api } from "../lib/api.js";
 import { data, characterIndex, chatTitle, firstLetter } from "../lib/data.js";
-import { pageHead, topBar, toast, errorBox, sheet, popMenu, hbox, avatar } from "../lib/ui.js";
+import { pageHead, topBar, toast, errorBox, sheet, popMenu, hbox, avatar, ask } from "../lib/ui.js";
 
 const chip = (label, on, onClick) =>
   h(
@@ -291,7 +291,7 @@ export function radioScreen({ mount, args, go, back }) {
               class: "txtbtn",
               style: { padding: "0 10px" },
               onClick: async () => {
-                if (!confirm(`${ep.no}회 방송을 지울까요?`)) return;
+                if (!(await ask(`${ep.no}회 방송을 지울까요?`))) return;
                 try {
                   await api.post("/mari-kit/radio/episodes", { ids: [ep.id], action: "delete" });
                   toast("방송을 지웠어요");

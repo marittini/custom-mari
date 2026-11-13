@@ -7,7 +7,7 @@
 import { h, setChildren } from "../lib/h.js";
 import { api, upload } from "../lib/api.js";
 import { data, characterIndex, chatTitle, byBranchGroup } from "../lib/data.js";
-import { pageHead, toast, errorBox, hbox, sheet } from "../lib/ui.js";
+import { pageHead, toast, errorBox, hbox, sheet, ask } from "../lib/ui.js";
 import { forgetGroups, foldGroup, splitByGroup } from "../lib/groups.js";
 
 const KINDS = {
@@ -57,18 +57,27 @@ export function foldersScreen({ mount, args, back }) {
           api.get("/connections"),
         ]);
         folders = list.sort((a, b) => (a.sortOrder ?? 0) - (b.sortOrder ?? 0));
-        // An account sits where its models are; moving it moves every model row.
-        items = accounts.map((a) => {
-          const rows = conns.filter((c) => c.accountId === a.id);
-          return {
-            id: a.id,
-            name: a.name,
-            folderId: rows.find((c) => c.folderId)?.folderId || null,
-            ids: rows.map((c) => c.id),
-          };
-        });
-        for (const c of conns.filter((c) => !c.accountId))
-          items.push({ id: c.id, name: c.name, folderId: c.folderId || null, ids: [c.id] });
+        // An account sits where its models are. Models of one account can sit in different folders (or none), so
+        // an account shows once per place its models are, carrying only the models there; moving it moves those.
+        const known = new Set(accounts.map((a) => a.id));
+        const places = new Map();
+        for (const c of conns) {
+          const acc = c.accountId && known.has(c.accountId) ? c.accountId : `c:${c.id}`;
+          const key = `${acc}|${c.folderId || ""}`;
+          if (!places.has(key)) places.set(key, { acc, folderId: c.folderId || null, rows: [] });
+          places.get(key).rows.push(c);
+        }
+        const nameOf = new Map(accounts.map((a) => [a.id, a.name]));
+        items = [...places.values()].map((p) => ({
+          id: `${p.acc}|${p.folderId || ""}`,
+          name: (nameOf.get(p.acc) ?? p.rows[0].name) + (p.rows.length > 1 ? ` · 모델 ${p.rows.length}개` : ""),
+          folderId: p.folderId,
+          ids: p.rows.map((c) => c.id),
+        }));
+        // An account with no models yet has nothing to move, but still shows.
+        for (const a of accounts)
+          if (![...places.values()].some((p) => p.acc === a.id))
+            items.push({ id: a.id, name: `${a.name} · 모델 없음`, folderId: null, ids: [] });
       } else {
         const [list, rows] = await Promise.all([
           api.get(base),
@@ -194,8 +203,8 @@ export function foldersScreen({ mount, args, back }) {
           {
             type: "button",
             class: "pill",
-            onClick: () =>
-              confirm(`'${f.name}' 폴더를 지울까요? 안에 있던 ${count}개는 지워지지 않고 '폴더 없음'으로 가요.`) &&
+            onClick: async () =>
+              (await ask(`'${f.name}' 폴더를 지울까요? 안에 있던 ${count}개는 지워지지 않고 '폴더 없음'으로 가요.`)) &&
               run(() => api.delete(`${base}/${encodeURIComponent(f.id)}`), "폴더를 지웠어요"),
           },
           "폴더 지우기",
@@ -244,8 +253,8 @@ export function foldersScreen({ mount, args, back }) {
         : h("p", { class: "hint", style: { margin: "8px 0 0" } }, "폴더가 아직 없어요."),
       h("div", { class: "gsec" }, h("span", null, "옮기기"), h("span", null, "눌러서 폴더 고르기")),
       items.length
-        ? parts.map((p) =>
-            foldGroup(
+        ? parts.map((p) => {
+            const section = foldGroup(
               h,
               `move-${kind}`,
               p.label || "폴더 없음",
@@ -257,13 +266,15 @@ export function foldersScreen({ mount, args, back }) {
                   h(
                     "button",
                     { type: "button", class: "r two", onClick: () => moveSheet(x) },
-                    h("span", null, x.name),
+                    h("span", { style: { overflowWrap: "anywhere", lineHeight: 1.45 } }, x.name),
                     h("span", { class: "val" }, "옮기기 ›"),
                   ),
                 ),
               ),
-            ),
-          )
+            );
+            if (!p.label) section.open = true; // 폴더 없음 is always open on arrival
+            return section;
+          })
         : h("div", { class: "empty" }, "옮길 것이 없어요."),
       k.chat ? importBox() : null,
     );

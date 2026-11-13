@@ -2331,11 +2331,10 @@ button.toast {
 /* Editors (character, persona): one page of sections, roomy and easy to read. */
 .ed-chips {
   display: flex;
+  flex-wrap: wrap;
   gap: 8px;
-  overflow-x: auto;
   padding: 4px 20px 12px;
   border-bottom: 1px solid var(--line);
-  scrollbar-width: none;
   flex-shrink: 0;
 }
 .ed-chips::-webkit-scrollbar {
@@ -2343,17 +2342,21 @@ button.toast {
 }
 .ed-chips .chip {
   flex-shrink: 0;
-  min-height: 36px;
-  padding: 0 14px;
-  font-size: 14px;
+  min-height: 40px;
+  padding: 0 16px;
+  font-size: 15px;
+}
+.ed-chips .chip.on {
+  background: var(--ink);
+  border-color: var(--ink);
+  color: var(--paper);
+  font-weight: 600;
 }
 .ed-body {
   padding: 8px 20px 40px;
 }
 .ed-sec {
-  padding: 28px 0 36px;
-  border-bottom: 1px solid var(--line);
-  scroll-margin-top: 8px;
+  padding: 24px 0 36px;
 }
 .ed-sec:last-child {
   border-bottom: 0;
@@ -2676,4 +2679,134 @@ button.toast {
 }
 .ed-avatar {
   flex-wrap: wrap;
+}
+
+/* What is happening now (writing, translating, voice), right above the composer. */
+.act {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 8px 16px;
+  border-top: 1px solid var(--line);
+  background: var(--paper);
+  flex-shrink: 0;
+}
+.act-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 36px;
+}
+.act-dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  border: 2px solid var(--ink-3);
+  border-top-color: transparent;
+  animation: act-spin 0.9s linear infinite;
+  flex-shrink: 0;
+}
+.act-dot.play {
+  border: 0;
+  background: var(--ink);
+  animation: act-pulse 1.2s ease-in-out infinite;
+}
+.act-t {
+  flex: 1;
+  min-width: 0;
+  font-size: 14px;
+  color: var(--ink);
+  overflow-wrap: anywhere;
+}
+.act-stop {
+  min-height: 36px;
+  padding: 0 14px;
+  border: 1px solid var(--line-2);
+  border-radius: 999px;
+  background: var(--surface);
+  color: var(--ink);
+  font-size: 13px;
+}
+@keyframes act-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+@keyframes act-pulse {
+  50% {
+    opacity: 0.35;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .act-dot,
+  .act-dot.play {
+    animation: none;
+  }
+}
+/* The play/stop button right after a spoken line (RP). */
+.lb {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 26px;
+  margin: 0 2px 0 4px;
+  padding: 0;
+  vertical-align: middle;
+  border: 1px solid var(--line-2);
+  border-radius: 50%;
+  background: var(--surface);
+  color: var(--ink-2);
+  cursor: pointer;
+  position: relative;
+}
+/* 44px touch area around the small circle. */
+.lb::after {
+  content: "";
+  position: absolute;
+  inset: -9px;
+}
+.lb.on {
+  background: var(--ink);
+  border-color: var(--ink);
+  color: var(--paper);
+}
+.lb .act-dot {
+  width: 8px;
+  height: 8px;
+}
+
+/* Readable on narrow phones (360px): names and titles take two lines instead of being cut, long words and links
+   wrap inside messages, and small icon buttons are wide enough for what they hold. */
+.ttl .h,
+.ttl .sub,
+.book .n,
+.vc-name {
+  white-space: normal;
+  overflow: hidden;
+  text-overflow: clip;
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  overflow-wrap: anywhere;
+}
+.read,
+.read p,
+.bub,
+.bub-tr {
+  overflow-wrap: anywhere;
+}
+.cb {
+  width: 40px;
+  height: 40px;
+}
+.t2 {
+  padding-left: 4px;
+  padding-right: 4px;
+  white-space: nowrap;
+}
+.chip {
+  white-space: nowrap;
+  padding-left: 14px;
+  padding-right: 14px;
 }

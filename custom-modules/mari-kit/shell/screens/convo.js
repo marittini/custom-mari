@@ -3,6 +3,7 @@
 // Convo rooms keep the Engine's own memory system; Mari Kit's memory button is RP only.
 
 import { quickButton } from "../lib/quick.js";
+import { activityStrip, startJob } from "../lib/activity.js";
 import { h, icon, dots, I, setChildren } from "../lib/h.js";
 import { api } from "../lib/api.js";
 import {
@@ -168,10 +169,12 @@ export function convoScreen({ mount, args, go, back }) {
     icon(I.send, 16, 2),
   );
   const quickLayer = h("div");
+  const strip = activityStrip();
   mount.append(
     head,
     scroller,
     quickLayer,
+    strip.el,
     h(
       "div",
       { class: "cmp", style: { background: "var(--paper)" } },
@@ -727,6 +730,9 @@ export function convoScreen({ mount, args, go, back }) {
     draw();
     scroller.scrollTop = scroller.scrollHeight;
     abort = new AbortController();
+    const done = body?.autonomous
+      ? () => {}
+      : startJob("답장 쓰는 중…", { label: "멈추기", fn: () => stopGenerating() });
     try {
       await streamGenerate({
         chatId,
@@ -750,6 +756,7 @@ export function convoScreen({ mount, args, go, back }) {
       // A character's own (autonomous) message failing is not the user's error to see.
       if (error.name !== "AbortError" && !body?.autonomous) toast(`생성하지 못했어요: ${error.message}`);
     } finally {
+      done();
       busy = false;
       live = null;
       abort = null;
@@ -838,6 +845,7 @@ export function convoScreen({ mount, args, go, back }) {
   load(true);
   return {
     dispose: () => {
+      strip.dispose();
       alive = false;
       off();
       tts.stop();

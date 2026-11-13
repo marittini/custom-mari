@@ -5,7 +5,7 @@
 //   translationDisplayOnly   a translated message shows only the translation
 
 import { api, parseJson } from "./api.js";
-import { busyNote } from "./ui.js";
+import { startJob } from "./activity.js";
 
 /** Engine translation request for one direction ("input": my words → theirs; "output": theirs → mine). */
 export function translationBody(text, direction, meta, chatId) {
@@ -47,7 +47,7 @@ export async function translate(text, direction, meta, chatId) {
       }),
     );
   // 번역 중…: shown while the translation is being made (not for one already made).
-  const done = busyNote(direction === "input" ? "보낼 말 번역 중…" : "번역 중…");
+  const done = startJob(direction === "input" ? "보낼 말 번역 중…" : "번역 중…");
   try {
     return await translated.get(key);
   } catch (error) {

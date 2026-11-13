@@ -5,7 +5,7 @@
 import { h, setChildren } from "../lib/h.js";
 import { api } from "../lib/api.js";
 import { data, characterIndex, firstLetter } from "../lib/data.js";
-import { pageHead, toast, errorBox, avatar, hbox } from "../lib/ui.js";
+import { pageHead, toast, errorBox, avatar, hbox, ask } from "../lib/ui.js";
 import { forgetGroups } from "../lib/groups.js";
 
 const KINDS = {
@@ -113,10 +113,10 @@ export function groupsScreen({ mount, args, back }) {
           {
             type: "button",
             class: "pill",
-            onClick: () =>
-              confirm(
+            onClick: async () =>
+              (await ask(
                 `'${g.name}' 그룹을 지울까요? 들어 있던 ${kind === "characters" ? "캐릭터" : "페르소나"}는 지워지지 않아요.`,
-              ) && run(() => api.delete(`${k.base}/${encodeURIComponent(g.id)}`), "그룹을 지웠어요"),
+              )) && run(() => api.delete(`${k.base}/${encodeURIComponent(g.id)}`), "그룹을 지웠어요"),
           },
           "그룹 지우기",
         ),

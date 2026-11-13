@@ -6,7 +6,7 @@ import { h, icon, dots, I, setChildren } from "../lib/h.js";
 import { api } from "../lib/api.js";
 import { data, chatTitle, characterIndex, chatMeta, textConnections } from "../lib/data.js";
 import { groupsOf, groupedOptions, splitByGroup } from "../lib/groups.js";
-import { toast, errorBox, sheet } from "../lib/ui.js";
+import { toast, errorBox, sheet, ask } from "../lib/ui.js";
 
 const P = (d) => d;
 const SECTIONS = [
@@ -606,8 +606,8 @@ export function memoryScreen({ mount, args, go, back }) {
             [
               "처음부터 다시 정리",
               "직접 고친 장면·사실도 사라져요 · 백업 먼저",
-              () => {
-                if (confirm("이 방의 기억을 비우고 처음부터 다시 정리할까요? 먼저 설정 → 백업에서 내보내 두세요."))
+              async () => {
+                if (await ask("이 방의 기억을 비우고 처음부터 다시 정리할까요? 먼저 설정 → 백업에서 내보내 두세요."))
                   run("비우기", async () => {
                     await api.post(`/mari-kit/memory/${enc}/reset`, { confirm: true });
                     return "비웠어요. 정리를 눌러 다시 시작하세요";
@@ -1689,8 +1689,8 @@ export function memoryScreen({ mount, args, go, back }) {
               "div",
               { style: { display: "flex", flexWrap: "wrap", gap: "8px", paddingTop: "8px" } },
               presets.map((p) =>
-                pill(`${p.name} 지우기`, () =>
-                  confirm(`'${p.name}' 프리셋을 지울까요?`)
+                pill(`${p.name} 지우기`, async () =>
+                  (await ask(`'${p.name}' 프리셋을 지울까요?`))
                     ? savePresets(
                         presets.filter((x) => x !== p),
                         "지웠어요",
