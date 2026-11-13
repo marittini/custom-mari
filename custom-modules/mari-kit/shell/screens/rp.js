@@ -3,6 +3,8 @@
 // (guide reply + the Engine's own custom quick replies).
 
 import { quickButton } from "../lib/quick.js";
+import { swipeNav } from "../lib/swipes.js";
+import { chatScrolling } from "../lib/scrolling.js";
 import { activityStrip, startJob } from "../lib/activity.js";
 import { h, icon, dots, I, setChildren } from "../lib/h.js";
 import { api } from "../lib/api.js";
@@ -138,7 +140,8 @@ export function rpScreen({ mount, args, go, back }) {
   const composer = h("div", { class: "cmp" }, quickBtn, input, trBtn, qrBtn, sendBtn);
   // 지금 하는 일 (reply being written, translating, voice) with a stop button, right above the composer.
   const strip = activityStrip();
-  mount.append(head, scroller, quickLayer, strip.el, composer);
+  const scroll = chatScrolling(scroller);
+  mount.append(head, scroller, scroll.anchor, quickLayer, strip.el, composer);
 
   function grow() {
     input.style.height = "auto";
@@ -376,48 +379,48 @@ export function rpScreen({ mount, args, go, back }) {
 
   function assistantBlock(m, isLast) {
     const parsed = parseMessage(messageText(m), m.characterId);
-    const paragraphs = parsed.paragraphs.map((para) =>
-      h(
-        "p",
-        { style: { textAlign: prefs().align } },
-        para.map((seg) => {
-          if (seg.kind === "text") return inline(seg.text);
-          const key = `${m.id}:${seg.index}`;
-          const on = picked === key;
-          const node = h(
-            "span",
-            {
-              class: on ? "line on" : "line",
-              role: "button",
-              tabindex: 0,
-              "aria-expanded": on ? "true" : "false",
-              onClick: (e) => {
-                e.stopPropagation();
-                picked = on ? null : key;
-                draw();
+    // speakAs(seg): the line of the ORIGINAL that a shown line reads aloud (itself, or for a translation shown in
+    // the original's place, the original line at the same position).
+    const draw_ = (shown, speakAs, tag) =>
+      shown.paragraphs.map((para) =>
+        h(
+          "p",
+          { style: { textAlign: prefs().align } },
+          para.map((seg) => {
+            if (seg.kind === "text") return inline(seg.text);
+            const line = speakAs(seg);
+            const key = `${m.id}:${tag}${seg.index}`;
+            const on = picked === key;
+            const node = h(
+              "span",
+              {
+                class: on ? "line on" : "line",
+                role: "button",
+                tabindex: 0,
+                "aria-expanded": on ? "true" : "false",
+                onClick: (e) => {
+                  e.stopPropagation();
+                  picked = on ? null : key;
+                  draw();
+                },
               },
-            },
-            inline(seg.text),
-          );
-          // A small play/stop right after each spoken line (설정 › 음성 › 대사 옆 재생 버튼), so voice is one tap.
-          const quick = ttsConfig && voiceSet?.lineButtons !== false && seg.spoken ? lineButton(seg) : null;
-          if (!on) return quick ? [node, quick] : node;
-          return [node, quick, ttsConfig ? linePopover(m, seg) : voiceOffPopover()];
-        }),
-      ),
-    );
+              inline(seg.text),
+            );
+            // A small play/stop right after each spoken line (설정 › 음성 › Mari 화면 대사 옆 ▶), one tap to listen.
+            const quick = ttsConfig && prefs().lineVoice !== false && line?.spoken ? lineButton(line) : null;
+            if (!on) return quick ? [node, quick] : node;
+            return [node, quick, !ttsConfig ? voiceOffPopover() : line ? linePopover(m, line) : null];
+          }),
+        ),
+      );
+    const paragraphs = draw_(parsed, (seg) => seg, "");
     const translation = savedTranslation(m);
-    // 원문 대신 번역: the translation takes the original's place (its spoken lines then have no voice buttons).
+    // 원문 대신 번역: the translation takes the original's place; its quoted lines read the original's lines in order.
     const only = translation && chatMeta(chat).translationDisplayOnly === true;
     return h(
       "div",
       { class: hiddenFromAI(m) ? "read hid" : "read", "data-message-id": m.id },
-      only
-        ? translation
-            .split(/\n{2,}/)
-            .filter((t) => t.trim())
-            .map((t) => h("p", { style: { textAlign: prefs().align } }, inline(t.trim())))
-        : paragraphs,
+      only ? draw_(parseMessage(translation, m.characterId), (seg) => parsed.lines[seg.index], "t") : paragraphs,
       translation && !only
         ? h(
             "div",
@@ -433,38 +436,17 @@ export function rpScreen({ mount, args, go, back }) {
             translation,
           )
         : null,
-      (m.swipeCount || 1) > 1 ? swipeNav(m) : null,
+      // Other replies to this turn; on the newest reply always, so › can ask for a new one.
+      (m.swipeCount || 1) > 1 || (isLast && m.role === "assistant")
+        ? swipeNav({
+            chatId,
+            message: m,
+            reload: () => load(),
+            regenerate: isLast ? () => generate({ regenerateMessageId: m.id }) : null,
+            busy,
+          })
+        : null,
       busy ? null : tools(m, !isLast),
-    );
-  }
-
-  function swipeNav(m) {
-    const i = m.activeSwipeIndex ?? 0;
-    const n = m.swipeCount || 1;
-    const set = async (to) => {
-      try {
-        await api.put(`/chats/${encodeURIComponent(chatId)}/messages/${encodeURIComponent(m.id)}/active-swipe`, {
-          index: to,
-        });
-        await load();
-      } catch (error) {
-        toast(error.message);
-      }
-    };
-    return h(
-      "div",
-      { class: "hint", style: { display: "flex", alignItems: "center", gap: "4px", marginTop: "8px" } },
-      h(
-        "button",
-        { type: "button", class: "ma", "aria-label": "이전 답", disabled: i <= 0, onClick: () => set(i - 1) },
-        icon(I.back, 14),
-      ),
-      h("span", { style: { fontVariantNumeric: "tabular-nums" } }, `${i + 1} / ${n}`),
-      h(
-        "button",
-        { type: "button", class: "ma", "aria-label": "다음 답", disabled: i >= n - 1, onClick: () => set(i + 1) },
-        icon("M9 5l7 7-7 7", 14),
-      ),
     );
   }
 
@@ -671,10 +653,11 @@ export function rpScreen({ mount, args, go, back }) {
         signal: abort.signal,
         onToken: (text) => {
           if (!alive) return;
+          // Follow the new text only for a reader at the bottom (checked before the screen grows).
+          const follow = scroll.nearBottom();
           live = text;
           draw();
-          if (scroller.scrollHeight - scroller.scrollTop - scroller.clientHeight < 160)
-            scroller.scrollTop = scroller.scrollHeight;
+          if (follow) scroller.scrollTop = scroller.scrollHeight;
         },
         onSaved: (saved) => {
           if (alive && saved?.role === "user") {
@@ -691,9 +674,11 @@ export function rpScreen({ mount, args, go, back }) {
       live = null;
       abort = null;
       if (alive) {
+        const follow = scroll.nearBottom();
         await load(false, true);
         refreshMemory();
-        scroller.scrollTop = scroller.scrollHeight;
+        // A reader who scrolled up to older lines is left where they are.
+        if (follow) scroller.scrollTop = scroller.scrollHeight;
         autoplay();
       }
     }
@@ -792,6 +777,7 @@ export function rpScreen({ mount, args, go, back }) {
       alive = false;
       off();
       strip.dispose();
+      scroll.dispose();
       tts.stop();
       abort?.abort();
     },

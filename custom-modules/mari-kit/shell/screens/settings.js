@@ -484,89 +484,94 @@ export function settingsScreen({ mount, args, go, back }) {
 
   function quickPage() {
     const ids = quickIds();
-    const rest = QUICK_ITEMS.filter((i) => !ids.includes(i.id)).map((i) => i.id);
     const byId = new Map(QUICK_ITEMS.map((i) => [i.id, i]));
+    const hidden = QUICK_ITEMS.filter((i) => !ids.includes(i.id));
     const save = (next) => (setPrefs({ quick: next }), draw());
     const move = (i, d) => {
       const next = [...ids];
       [next[i], next[i + d]] = [next[i + d], next[i]];
       save(next);
     };
-    const arrow = (label, text, disabled, onClick) =>
+    const rowStyle = {
+      display: "flex",
+      alignItems: "center",
+      gap: "8px",
+      minHeight: "60px",
+      padding: "6px 12px 6px 20px",
+      borderBottom: "1px solid var(--line)",
+    };
+    const small = (label, text, disabled, onClick) =>
       h(
         "button",
         {
           type: "button",
+          class: "pill",
           "aria-label": label,
           disabled,
           onClick,
-          style: {
-            width: "44px",
-            height: "44px",
-            flex: "none",
-            fontSize: "18px",
-            opacity: disabled ? "0.25" : "1",
-            background: "none",
-            border: "0",
-            color: "inherit",
-          },
+          style: { minWidth: "44px", minHeight: "44px", padding: "0 12px", fontSize: "15px" },
         },
         text,
       );
-    const line = (id, on, i) => {
-      const it = byId.get(id);
-      return h(
-        "div",
-        { class: "r static", style: { minHeight: "52px", gap: "4px" } },
-        h(
-          "button",
-          {
-            type: "button",
-            role: "switch",
-            "aria-checked": on ? "true" : "false",
-            "aria-label": it.label,
-            onClick: () => save(on ? ids.filter((x) => x !== id) : [...ids, id]),
-            style: {
-              display: "flex",
-              alignItems: "center",
-              flex: "1",
-              minWidth: "0",
-              minHeight: "52px",
-              gap: "12px",
-              background: "none",
-              border: "0",
-              color: "inherit",
-              textAlign: "left",
-              font: "inherit",
-              fontSize: "15px",
-            },
-          },
-          h(
-            "span",
-            { style: { flex: "1", whiteSpace: "normal", overflowWrap: "anywhere" } },
-            it.label,
-            it.modes ? " (RP)" : "",
-          ),
-          sw(on),
-        ),
-        arrow("위로", "↑", !on || i === 0, () => move(i, -1)),
-        arrow("아래로", "↓", !on || i === ids.length - 1, () => move(i, 1)),
+    const name = (it) =>
+      h(
+        "span",
+        { style: { flex: "1", minWidth: "0", fontSize: "16px", lineHeight: "1.4", overflowWrap: "anywhere" } },
+        it.label,
+        it.modes ? h("small", { class: "hint", style: { marginLeft: "6px" } }, "RP만") : null,
       );
-    };
     return [
       h(
-        "div",
-        { class: "hint", style: { padding: "4px 20px 12px" } },
-        "채팅 입력창 왼쪽 ⚙에 보일 것을 고르고 순서를 정해요",
+        "p",
+        { class: "hint", style: { margin: "0", padding: "4px 20px 16px", fontSize: "14px", lineHeight: "1.6" } },
+        "채팅 입력창 왼쪽 ⚙를 누르면 나오는 목록이에요. 위에서부터 이 순서로 보여요.",
       ),
-      h("div", { class: "list" }, ...ids.map((id, i) => line(id, true, i)), ...rest.map((id) => line(id, false, -1))),
+      h("div", { class: "gsec", style: { margin: "8px 20px 8px" } }, h("span", null, `보이는 것 · ${ids.length}개`)),
       h(
         "div",
-        { style: { padding: "16px 20px 0" } },
+        { style: { borderTop: "1px solid var(--line)" } },
+        ids.length
+          ? ids.map((id, i) =>
+              h(
+                "div",
+                { style: rowStyle },
+                h(
+                  "span",
+                  { class: "hint", style: { width: "20px", fontVariantNumeric: "tabular-nums" } },
+                  String(i + 1),
+                ),
+                name(byId.get(id)),
+                small("위로", "↑", i === 0, () => move(i, -1)),
+                small("아래로", "↓", i === ids.length - 1, () => move(i, 1)),
+                small("빼기", "빼기", false, () => save(ids.filter((x) => x !== id))),
+              ),
+            )
+          : h(
+              "p",
+              { class: "hint", style: { padding: "16px 20px", margin: "0" } },
+              "아무것도 없어요. 아래에서 넣어 주세요.",
+            ),
+      ),
+      h("div", { class: "gsec", style: { margin: "28px 20px 8px" } }, h("span", null, `숨긴 것 · ${hidden.length}개`)),
+      h(
+        "div",
+        { style: { borderTop: "1px solid var(--line)" } },
+        hidden.map((it) =>
+          h(
+            "div",
+            { style: rowStyle },
+            name(it),
+            small("넣기", "+ 넣기", false, () => save([...ids, it.id])),
+          ),
+        ),
+      ),
+      h(
+        "div",
+        { style: { padding: "20px" } },
         h(
           "button",
           { type: "button", class: "pill", style: { minHeight: "44px" }, onClick: () => save(null) },
-          "기본으로",
+          "처음 상태로",
         ),
       ),
     ];
