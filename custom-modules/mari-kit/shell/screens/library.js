@@ -9,7 +9,8 @@ import {
   coverOf,
   byBranchGroup,
 } from "../lib/data.js";
-import { pageHead, errorBox, lazyBg, openEngine } from "../lib/ui.js";
+import { pageHead, errorBox, lazyBg, openEngine, sheet, toast } from "../lib/ui.js";
+import { api } from "../lib/api.js";
 import { openNewChat } from "../lib/newchat.js";
 import { groupsOf, splitByGroup, foldGroup } from "../lib/groups.js";
 
@@ -107,6 +108,39 @@ export function libraryScreen({ mount, go, args = [] }) {
       ),
       h("span", { class: "cplay", "aria-label": "이어서" }, icon(I.play, 14, 2)),
     );
+  }
+
+  function newCharacter() {
+    const input = h("input", { class: "inp", placeholder: "캐릭터 이름", maxlength: 200, style: { width: "100%" } });
+    const make = async () => {
+      const name = input.value.trim();
+      if (!name) return toast("이름을 적어 주세요");
+      try {
+        const row = await api.post("/characters", { data: { name } });
+        data.characters(true);
+        s.close();
+        go(`edit/character/${encodeURIComponent(row.id)}`);
+      } catch (error) {
+        toast(error.message);
+      }
+    };
+    input.addEventListener("keydown", (e) => e.key === "Enter" && make());
+    const s = sheet(
+      h(
+        "div",
+        { style: { padding: "8px 20px 24px", display: "flex", flexDirection: "column", gap: "14px" } },
+        h("b", { style: { fontSize: "18px" } }, "새 캐릭터"),
+        input,
+        h(
+          "div",
+          { style: { display: "flex", gap: "8px", justifyContent: "flex-end" } },
+          h("button", { type: "button", class: "pill", onClick: () => s.close() }, "취소"),
+          h("button", { type: "button", class: "pill main", onClick: make }, "만들기"),
+        ),
+      ),
+      { label: "새 캐릭터" },
+    );
+    setTimeout(() => input.focus(), 50);
   }
 
   function draw() {
@@ -254,9 +288,18 @@ export function libraryScreen({ mount, go, args = [] }) {
             { style: { display: "flex", justifyContent: "space-between", alignItems: "center", paddingRight: "20px" } },
             sorts,
             h(
-              "a",
-              { class: "hint", href: "#/groups/characters", style: { padding: "10px 0", whiteSpace: "nowrap" } },
-              "그룹 관리 ›",
+              "span",
+              { style: { display: "flex", gap: "14px", alignItems: "center" } },
+              h(
+                "button",
+                { type: "button", class: "pill", style: { minHeight: "44px" }, onClick: newCharacter },
+                "새 캐릭터",
+              ),
+              h(
+                "a",
+                { class: "hint", href: "#/groups/characters", style: { padding: "10px 0", whiteSpace: "nowrap" } },
+                "그룹 관리 ›",
+              ),
             ),
           ),
           rows.length

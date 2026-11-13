@@ -1,7 +1,7 @@
 import { h, icon, I, setChildren } from "../lib/h.js";
 import { api, characterCard } from "../lib/api.js";
 import { data, characterIndex, firstLetter, chatTitle, byLastActivity } from "../lib/data.js";
-import { topBar, errorBox, toast, thumb, popMenu, openEngine } from "../lib/ui.js";
+import { topBar, errorBox, toast, thumb } from "../lib/ui.js";
 import { openNewChat } from "../lib/newchat.js";
 
 const FIELDS = [
@@ -10,21 +10,6 @@ const FIELDS = [
   ["scenario", "시나리오"],
   ["extensions.backstory", "배경"],
   ["extensions.appearance", "외모"],
-];
-
-// The Engine's character editor tabs (CharacterEditor TABS), opened at the one picked.
-const EDIT_TABS = [
-  ["metadata", "정보 · 사진 · 태그", "내보내기 · 복제 · 삭제"],
-  ["card", "카드 · 인사말 · 예시 대사"],
-  ["onboarding", "온보딩 질문"],
-  ["convo", "Convo 프로필"],
-  ["lorebook", "로어북"],
-  ["sprites", "스프라이트 · 표정"],
-  ["gallery", "갤러리"],
-  ["colors", "색"],
-  ["voice", "음성"],
-  ["stats", "스탯"],
-  ["advanced", "고급 · 정규식"],
 ];
 
 function pick(card, path) {
@@ -41,23 +26,8 @@ export function characterScreen({ mount, args, go, back }) {
   );
   const editBtn = h(
     "button",
-    {
-      type: "button",
-      class: "pill",
-      "aria-haspopup": "menu",
-      onClick: (e) => {
-        e.stopPropagation();
-        popMenu([
-          // Each opens the Engine (its app, about 17MB on a first visit) at that tab.
-          ...EDIT_TABS.map(([tab, label, sub]) => ({
-            label,
-            sub,
-            onClick: () => openEngine(null, { character: id, tab }),
-          })),
-        ]);
-      },
-    },
-    "엔진에서 편집",
+    { type: "button", class: "pill", onClick: () => go(`edit/character/${encodeURIComponent(id)}`) },
+    "편집",
   );
   mount.append(topBar({ back: () => back("library"), plain: true, actions: [editBtn] }), body);
   (async () => {

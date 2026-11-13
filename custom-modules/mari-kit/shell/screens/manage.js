@@ -4,8 +4,8 @@
 
 import { h, icon, I, setChildren } from "../lib/h.js";
 import { api, characterCard } from "../lib/api.js";
-import { data, characterIndex } from "../lib/data.js";
-import { toast, errorBox, openEngine, avatar } from "../lib/ui.js";
+import { data, characterIndex, withCrop } from "../lib/data.js";
+import { toast, errorBox, openEngine, avatar, sheet } from "../lib/ui.js";
 import { groupsOf, splitByGroup, sectioned } from "../lib/groups.js";
 import { voiceList } from "../lib/voice.js";
 
@@ -216,13 +216,53 @@ export function connectionPage(body, go, id) {
 // ── personas ──────────────────────────────
 // Every persona with its picture as the Engine crops it, split by persona groups. Editing (fields, picture and
 // crop, groups, export) is the Engine's persona editor, opened at that persona.
+// A small sheet asks the name, creates the persona, and opens it in Mari's editor.
+function newPersona(go) {
+  const input = h("input", { class: "inp ed-inp", type: "text", placeholder: "페르소나 이름", maxlength: 100 });
+  const make = h("button", { type: "button", class: "pill main" }, "만들기");
+  const s = sheet(
+    h(
+      "div",
+      { class: "ed-sheet" },
+      h("b", { class: "ed-sheet-t" }, "새 페르소나"),
+      input,
+      h(
+        "div",
+        { class: "ed-actions" },
+        h("button", { type: "button", class: "pill", onClick: () => s.close() }, "취소"),
+        make,
+      ),
+    ),
+    { label: "새 페르소나" },
+  );
+  const submit = async () => {
+    const name = input.value.trim();
+    if (!name) return input.focus();
+    make.disabled = true;
+    try {
+      const made = await api.post("/characters/personas", { name, description: "" });
+      data
+        .personas()
+        .then((list) => list.push({ ...made, avatarPath: withCrop(made.avatarPath || null, made.avatarCrop) }));
+      s.close();
+      go(`edit/persona/${made.id}`);
+    } catch (error) {
+      make.disabled = false;
+      toast(`만들지 못했어요: ${error.message}`);
+    }
+  };
+  make.onclick = submit;
+  input.addEventListener("keydown", (e) => e.key === "Enter" && submit());
+  setTimeout(() => input.focus(), 50);
+}
+
 export function personasPage(body, go) {
   guard(body, async () => {
     const [list, groups] = await Promise.all([data.personas(), groupsOf("personas")]);
     const open = (p) =>
       h(
         "button",
-        { type: "button", class: "r two", onClick: () => openEngine(null, { persona: p.id }) },
+        { type: "button", class: "r two", onClick: () => go(`edit/persona/${p.id}`) },
         h(
           "span",
           { style: { display: "flex", alignItems: "center", gap: "12px", minWidth: "0" } },
@@ -237,17 +277,13 @@ export function personasPage(body, go) {
         h(
           "p",
           { class: "hint", style: { margin: "0", padding: "0 20px", lineHeight: "1.6" } },
-          "채팅마다 쓸 페르소나는 그 채팅의 설정에서 골라요. 편집과 사진 자르기, 그룹은 엔진 페르소나 편집기에서 해요(엔진 화면, 처음 약 17MB).",
+          "채팅마다 쓸 페르소나는 그 채팅의 설정에서 골라요. 페르소나를 누르면 이름, 카드, 사진 자르기, 그룹, 로어북까지 여기서 고칠 수 있어요. 갤러리와 스탯만 엔진에서 열려요.",
         ),
         list.length
           ? h("div", null, sectioned(h, splitByGroup(list, groups), open, "personas"))
           : h("div", { class: "empty" }, "페르소나가 아직 없어요."),
         actions(
-          h(
-            "button",
-            { type: "button", class: "pill", onClick: () => openEngine(null, { panel: "personas" }) },
-            "새 페르소나 · 엔진 ›",
-          ),
+          h("button", { type: "button", class: "pill", onClick: () => newPersona(go) }, "새 페르소나"),
           h("button", { type: "button", class: "pill", onClick: () => go("groups/personas") }, "그룹 관리"),
         ),
       ),

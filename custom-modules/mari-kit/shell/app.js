@@ -37,6 +37,7 @@ const SCREENS = {
   groups: () => import("./screens/groups.js").then((m) => m.groupsScreen),
   search: () => import("./screens/search.js").then((m) => m.searchScreen),
   folders: () => import("./screens/folders.js").then((m) => m.foldersScreen),
+  edit: () => import("./screens/edit.js").then((m) => m.editScreen),
 };
 
 export function go(path) {
