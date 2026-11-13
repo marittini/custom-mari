@@ -1207,7 +1207,8 @@ export function chatSettingsScreen({ mount, args, go, back }) {
         ),
       ),
       // Convo turns read voice cues and the user's schedule without the agent (Convo has no agent list).
-      kitOn || chat.mode === "conversation"
+      // Voice works in every chat (no agent needed); 번역 and 기억 still follow the agent in RP.
+      true
         ? [
             gap(),
             h(
@@ -1232,24 +1233,28 @@ export function chatSettingsScreen({ mount, args, go, back }) {
                     "끄면 이 방 답장에 목소리 표시를 넣지 않아요",
                   )
                 : null,
-              switchRow(
-                I.translate,
-                "번역 (Mari Kit)",
-                !!features.translation,
-                () => setFeature("translation", !features.translation),
-                "모든 방 공통 · 번역 프리셋과 단어장",
-              ),
-              features.translation
+              !(kitOn || chat.mode === "conversation")
+                ? null
+                : switchRow(
+                    I.translate,
+                    "번역 (Mari Kit)",
+                    !!features.translation,
+                    () => setFeature("translation", !features.translation),
+                    "모든 방 공통 · 번역 프리셋과 단어장",
+                  ),
+              (kitOn || chat.mode === "conversation") && features.translation
                 ? linkRow(I.glossary, "번역 프리셋 · 단어장", "", () => go(`translation/${encodeURIComponent(chatId)}`))
                 : null,
-              switchRow(
-                I.memory,
-                "기억",
-                !!features.memory,
-                () => setFeature("memory", !features.memory),
-                "모든 방 공통",
-              ),
-              features.memory && chat.mode === "roleplay"
+              !(kitOn || chat.mode === "conversation")
+                ? null
+                : switchRow(
+                    I.memory,
+                    "기억",
+                    !!features.memory,
+                    () => setFeature("memory", !features.memory),
+                    "모든 방 공통",
+                  ),
+              kitOn && features.memory && chat.mode === "roleplay"
                 ? linkRow(I.memory, "기억 서재", "", () => go(`memory/${encodeURIComponent(chatId)}`))
                 : null,
               chat.mode === "conversation"
