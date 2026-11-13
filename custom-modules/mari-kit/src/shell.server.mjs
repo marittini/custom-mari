@@ -325,6 +325,13 @@ export async function shellRoutes(app, { runtime } = {}) {
       .map((x) => x.trim())
       .filter(Boolean)
       .slice(0, 80);
+    // fresh: chats the browser just wrote to — the Engine does not always move lastMessageAt (a generated reply).
+    const fresh = new Set(
+      String(request.query?.fresh || "")
+        .split(",")
+        .map((x) => x.trim())
+        .filter(Boolean),
+    );
     const chats = new Map((await runtime.persistence.listChats()).map((c) => [c.id, c]));
     const out = {};
     for (const id of ids) {
@@ -332,7 +339,7 @@ export async function shellRoutes(app, { runtime } = {}) {
       if (!chat) continue;
       const at = String(chat.lastMessageAt || chat.updatedAt || "");
       let hit = previewCache.get(id);
-      if (!hit || hit.at !== at) {
+      if (!hit || hit.at !== at || fresh.has(id)) {
         const messages = await runtime.persistence.listMessages(id);
         hit = { at, value: { ...previewOf(messages), chars: charsOf(messages), count: messages.length } };
         previewCache.set(id, hit);

@@ -152,7 +152,10 @@ export function rpScreen({ mount, args, go, back }) {
         data.chat(chatId),
         data.characters(),
         win.reload(tail),
-        api.get(`/mari-kit/shell/previews?ids=${encodeURIComponent(chatId)}`).catch(() => null),
+        // Read fresh each time: the screen's length counts what was just written.
+        api
+          .get(`/mari-kit/shell/previews?ids=${encodeURIComponent(chatId)}&fresh=${encodeURIComponent(chatId)}`)
+          .catch(() => null),
       ]);
       if (!alive) return;
       chat = c;

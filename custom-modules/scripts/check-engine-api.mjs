@@ -15,7 +15,9 @@ const missing = [];
 for (const route of list.routes) {
   const [method, path] = route.split(" ");
   const url = `${base}/api${path.replaceAll(":id", "mari-kit-probe")}`;
-  const body = method === "GET" ? undefined : "{}";
+  // Writes get a body that is not JSON: the Engine answers 400 before any handler runs, so the probe proves the
+  // route exists without changing anything (an empty "{}" once reset the TTS settings to their defaults).
+  const body = method === "GET" ? undefined : "{";
   const res = await fetch(url, {
     method,
     headers: { "x-marinara-csrf": "1", ...(body ? { "content-type": "application/json" } : {}) },

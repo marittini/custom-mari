@@ -13,9 +13,20 @@ export class ApiError extends Error {
 let chatWrites = 0;
 const CHAT_WRITE = /^\/(chats|chat-folders|generate|mari-kit\/shell\/cover)(\/|\?|$)/;
 export const chatWriteCount = () => chatWrites;
+// Chats this browser changed (sent, generated, edited, deleted messages): their list line and length are read
+// fresh next time. The Engine does not move a chat's lastMessageAt when a reply is generated, so that alone
+// cannot tell a cached line is old.
+export const touchedChats = new Set();
+function touch(path, body) {
+  const id = /^\/chats\/([^/?]+)/.exec(path)?.[1] || (typeof body?.chatId === "string" ? body.chatId : "");
+  if (id && !["group", "import"].includes(id)) touchedChats.add(decodeURIComponent(id));
+}
 
 async function request(method, path, body) {
-  if (method !== "GET" && CHAT_WRITE.test(path)) chatWrites += 1;
+  if (method !== "GET" && CHAT_WRITE.test(path)) {
+    chatWrites += 1;
+    touch(path, body);
+  }
   const headers = { ...CSRF };
   if (body !== undefined) headers["Content-Type"] = "application/json";
   const res = await fetch(`/api${path}`, {
@@ -43,7 +54,10 @@ export const api = {
   delete: (path) => request("DELETE", path),
   /** POST that answers with Server-Sent Events; yields { type, data, ... } objects. */
   async *stream(path, body, signal) {
-    if (CHAT_WRITE.test(path)) chatWrites += 1;
+    if (CHAT_WRITE.test(path)) {
+      chatWrites += 1;
+      touch(path, body);
+    }
     const res = await fetch(`/api${path}`, {
       method: "POST",
       headers: { ...CSRF, "Content-Type": "application/json", Accept: "text/event-stream" },
