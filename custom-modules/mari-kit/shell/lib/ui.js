@@ -271,3 +271,46 @@ export function jumpTo(root, id) {
   setTimeout(() => el.classList.remove("flash"), 2400);
   return true;
 }
+
+/**
+ * Asks yes or no in a sheet inside the app and resolves true or false. Used instead of the browser's confirm(),
+ * which some app wrappers (Android WebView) never show and silently answer "no".
+ */
+export function ask(message, { ok = "확인", cancel = "취소", danger = false } = {}) {
+  return new Promise((resolve) => {
+    let answered = false;
+    const answer = (v) => {
+      if (answered) return;
+      answered = true;
+      s.close();
+      resolve(v);
+    };
+    const s = sheet(
+      h(
+        "div",
+        { style: { display: "flex", flexDirection: "column", gap: "20px", padding: "8px 20px 24px" } },
+        h("p", { style: { margin: "0", fontSize: "16px", lineHeight: "1.6", whiteSpace: "pre-wrap" } }, message),
+        h(
+          "div",
+          { style: { display: "flex", gap: "10px" } },
+          h(
+            "button",
+            { type: "button", class: "pill", style: { flex: "1", minHeight: "48px" }, onClick: () => answer(false) },
+            cancel,
+          ),
+          h(
+            "button",
+            {
+              type: "button",
+              class: "pill main",
+              style: { flex: "1", minHeight: "48px", ...(danger ? { fontWeight: "700" } : {}) },
+              onClick: () => answer(true),
+            },
+            ok,
+          ),
+        ),
+      ),
+      { label: "확인", onClose: () => answer(false) },
+    );
+  });
+}

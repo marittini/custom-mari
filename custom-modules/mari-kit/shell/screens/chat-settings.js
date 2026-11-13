@@ -8,7 +8,7 @@ import { h, icon, I, setChildren } from "../lib/h.js";
 import { api, download } from "../lib/api.js";
 import { data, characterIndex, chatMeta, chatTitle, coverOf, coverPos, textConnections } from "../lib/data.js";
 import { setPrefs, isDark, TOOL_DEFS, toolPlace } from "../lib/prefs.js";
-import { topBar, toast, errorBox, openEngine, sheet, avatar, thumb } from "../lib/ui.js";
+import { topBar, toast, errorBox, openEngine, sheet, avatar, thumb, ask } from "../lib/ui.js";
 import { lorebookViews, REASON_LABEL } from "../lib/lorebooks.js";
 import { ENGINE_SECTIONS } from "../lib/engine-sections.js";
 import { pickPerson } from "../lib/picker.js";
@@ -569,16 +569,57 @@ export function chatSettingsScreen({ mount, args, go, back }) {
   // Deletes this chat (this branch only, like the Engine's single-chat delete) and its shell cover.
   async function removeChat() {
     const { chat, index } = state;
-    if (!confirm(`'${chatTitle(chat, index)}' 채팅을 지울까요? 메시지도 함께 지워지고 되돌릴 수 없어요.`)) return;
+    const title = chatTitle(chat, index);
+    // A chat with branches: this branch only, or every branch (the Engine's group delete).
+    const branches = chat.groupId ? (await data.chats(true)).filter((c) => c.groupId === chat.groupId) : [chat];
+    let all = false;
+    if (branches.length > 1) {
+      const pick = await new Promise((resolve) => {
+        const done = (v) => (resolve(v), s.close());
+        const s = sheet(
+          h(
+            "div",
+            { style: { display: "flex", flexDirection: "column", gap: "12px", padding: "8px 20px 24px" } },
+            h(
+              "p",
+              { style: { margin: "0 0 4px", fontSize: "16px", lineHeight: "1.6" } },
+              `'${title}'에는 분기가 ${branches.length}개 있어요. 무엇을 지울까요? 되돌릴 수 없어요.`,
+            ),
+            h(
+              "button",
+              { type: "button", class: "pill", style: { minHeight: "48px" }, onClick: () => done("one") },
+              "이 분기만 지우기",
+            ),
+            h(
+              "button",
+              { type: "button", class: "pill main", style: { minHeight: "48px" }, onClick: () => done("all") },
+              `분기 ${branches.length}개 모두 지우기`,
+            ),
+            h(
+              "button",
+              { type: "button", class: "pill", style: { minHeight: "48px" }, onClick: () => done(null) },
+              "취소",
+            ),
+          ),
+          { label: "채팅 지우기", onClose: () => resolve(null) },
+        );
+      });
+      if (!pick) return;
+      all = pick === "all";
+    } else if (!(await ask(`'${title}' 채팅을 지울까요? 메시지도 함께 지워지고 되돌릴 수 없어요.`, { ok: "지우기" })))
+      return;
     try {
-      const cover = coverOf(chat);
-      if (cover)
-        await api
-          .delete(`/mari-kit/shell/cover/${encodeURIComponent(cover.replace(/#.*$/, "").split("/").pop())}`)
-          .catch(() => {});
-      await api.delete(`/chats/${encodeURIComponent(chatId)}`);
+      for (const c of all ? branches : [chat]) {
+        const cover = coverOf(c);
+        if (cover)
+          await api
+            .delete(`/mari-kit/shell/cover/${encodeURIComponent(cover.replace(/#.*$/, "").split("/").pop())}`)
+            .catch(() => {});
+      }
+      if (all) await api.delete(`/chats/group/${encodeURIComponent(chat.groupId)}`);
+      else await api.delete(`/chats/${encodeURIComponent(chatId)}`);
       await data.chats(true);
-      toast("채팅을 지웠어요");
+      toast(all ? `분기 ${branches.length}개를 모두 지웠어요` : "채팅을 지웠어요");
       location.replace(`#/${chat.mode === "conversation" ? "convos" : "library"}`);
     } catch (error) {
       toast(`지우지 못했어요: ${error.message}`);
@@ -886,11 +927,12 @@ export function chatSettingsScreen({ mount, args, go, back }) {
         class: raw ? "ph cov-pick" : "ph",
         style: {
           position: "relative",
-          width: "180px",
+          width: "min(100%, 340px)",
           aspectRatio: "3 / 4",
           margin: "20px auto 8px",
           borderRadius: "12px",
-          backgroundSize: "cover",
+          // A cover shows whole, in its own shape, so the focus can be anywhere on it.
+          backgroundSize: raw ? "100% 100%" : "cover",
           backgroundPosition: "center",
           backgroundImage: bg,
           touchAction: raw ? "none" : "auto",
@@ -918,9 +960,14 @@ export function chatSettingsScreen({ mount, args, go, back }) {
     const show = () => {
       dot.style.left = `${at.x}%`;
       dot.style.top = `${at.y}%`;
-      for (const el of [preview, ...(preview.parentNode?.querySelectorAll?.(".cov-small") || [])])
+      for (const el of preview.parentNode?.querySelectorAll?.(".cov-small") || [])
         el.style.backgroundPosition = `${at.x}% ${at.y}%`;
     };
+    if (raw) {
+      const probe = new Image();
+      probe.onload = () => (preview.style.aspectRatio = `${probe.naturalWidth} / ${probe.naturalHeight}`);
+      probe.src = raw;
+    }
     if (raw) {
       const move = (e) => {
         const r = preview.getBoundingClientRect();
@@ -965,7 +1012,9 @@ export function chatSettingsScreen({ mount, args, go, back }) {
       h(
         "p",
         { class: "hint", style: { textAlign: "center", margin: "0 0 12px" } },
-        raw ? "사진을 눌러 목록에서 보일 곳을 고르세요" : "표지가 없어서 첫 캐릭터 사진(엔진에서 자른 모양)을 써요",
+        raw
+          ? "사진에서 목록·카드에 보일 중심을 눌러 고르세요. 아래 미리 보기로 확인해요"
+          : "표지가 없어서 첫 캐릭터 사진(엔진에서 자른 모양)을 써요",
       ),
       raw
         ? h(
@@ -1265,19 +1314,13 @@ export function chatSettingsScreen({ mount, args, go, back }) {
 
 /** A picked photo as a 3:4, 600×800 (at most) WebP, base64 — cropped from the middle, made in the browser. */
 async function coverWebp(file) {
+  // The whole picture in its own shape (wide stays wide), longest side up to 1200px; lists crop around the focus.
   const bitmap = await createImageBitmap(file);
-  const want = 3 / 4;
-  let sw = bitmap.width;
-  let sh = bitmap.height;
-  if (sw / sh > want) sw = Math.round(sh * want);
-  else sh = Math.round(sw / want);
-  const scale = Math.min(1, 600 / sw);
+  const scale = Math.min(1, 1200 / Math.max(bitmap.width, bitmap.height));
   const canvas = document.createElement("canvas");
-  canvas.width = Math.round(sw * scale);
-  canvas.height = Math.round(sh * scale);
-  canvas
-    .getContext("2d")
-    .drawImage(bitmap, (bitmap.width - sw) / 2, (bitmap.height - sh) / 2, sw, sh, 0, 0, canvas.width, canvas.height);
+  canvas.width = Math.max(1, Math.round(bitmap.width * scale));
+  canvas.height = Math.max(1, Math.round(bitmap.height * scale));
+  canvas.getContext("2d").drawImage(bitmap, 0, 0, canvas.width, canvas.height);
   const blob = await new Promise((resolve) => canvas.toBlob(resolve, "image/webp", 0.82));
   const bytes = new Uint8Array(await blob.arrayBuffer());
   let bin = "";

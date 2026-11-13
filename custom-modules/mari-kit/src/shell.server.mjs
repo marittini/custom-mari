@@ -401,7 +401,8 @@ export async function shellRoutes(app, { runtime } = {}) {
     if (sharp) {
       try {
         data = await sharp(data)
-          .resize({ width: 600, height: 800, fit: "cover", withoutEnlargement: true })
+          // The whole picture, in its own shape: lists show the part around the chosen focus (표지 위치).
+          .resize({ width: 1200, height: 1200, fit: "inside", withoutEnlargement: true })
           .webp({ quality: 80 })
           .toBuffer();
       } catch {

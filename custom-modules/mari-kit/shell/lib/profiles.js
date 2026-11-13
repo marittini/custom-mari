@@ -6,7 +6,7 @@
 import { h, setChildren } from "./h.js";
 import { api } from "./api.js";
 import { chatMeta } from "./data.js";
-import { sheet, toast } from "./ui.js";
+import { sheet, toast, ask } from "./ui.js";
 
 /** The chat's settings as a profile holds them (the Engine strips what profiles don't keep). */
 export function snapshotOf(chat, { withStart = false } = {}) {
@@ -84,7 +84,7 @@ export function profileSheet({ chat, changed }) {
       (o) => o.id !== chat.id && o.mode === chat.mode && follows(chatMeta(o), p.id),
     ).length;
     await api.put(`/chat-presets/${enc(p.id)}/settings`, settings);
-    if (others && confirm(`'${p.name}'을 따르는 다른 채팅 ${others}개에도 이 설정을 넣을까요?`)) {
+    if (others && (await ask(`'${p.name}'을 따르는 다른 채팅 ${others}개에도 이 설정을 넣을까요?`))) {
       const r = await api.post(`/chat-presets/${enc(p.id)}/apply-to-followers`, { exceptChatId: chat.id });
       return r.failed ? `저장 · ${r.updated}개 반영, ${r.failed}개 실패` : `저장 · 다른 채팅 ${r.updated}개에도 반영`;
     }
@@ -208,8 +208,8 @@ export function profileSheet({ chat, changed }) {
                       type: "button",
                       class: "pill",
                       style: { marginTop: "10px" },
-                      onClick: () =>
-                        confirm(`'${target.name}' 프로필을 지울까요? 이 채팅은 기본 프로필로 돌아가요.`) &&
+                      onClick: async () =>
+                        (await ask(`'${target.name}' 프로필을 지울까요? 이 채팅은 기본 프로필로 돌아가요.`)) &&
                         run(async () => {
                           await api.delete(`/chat-presets/${enc(target.id)}`);
                           // Like the Engine: a chat that had it goes back to Default.

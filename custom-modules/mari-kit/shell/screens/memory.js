@@ -6,7 +6,7 @@ import { h, icon, dots, I, setChildren } from "../lib/h.js";
 import { api } from "../lib/api.js";
 import { data, chatTitle, characterIndex, chatMeta, textConnections } from "../lib/data.js";
 import { groupsOf, groupedOptions, splitByGroup } from "../lib/groups.js";
-import { toast, errorBox, sheet } from "../lib/ui.js";
+import { toast, errorBox, sheet, ask } from "../lib/ui.js";
 
 const P = (d) => d;
 const SECTIONS = [
@@ -139,7 +139,7 @@ const SETTINGS = [
     rows: [
       {
         key: "writeLanguage",
-        label: "기억을 정리할 언어",
+        label: "기억 원본 언어 · AI에게 들어가는 글",
         options: [
           ["auto", "채팅 언어로"],
           ["ko", "한국어로"],
@@ -148,20 +148,36 @@ const SETTINGS = [
         ],
       },
       {
-        key: "memoryLanguage",
-        label: "기억을 넣을 언어",
+        key: "showLanguage",
+        label: "내게 보여줄 언어 · 이 화면에서만",
         options: [
-          ["auto", "정리한 언어 그대로 (번역 없음)"],
+          ["auto", "원본 그대로 (번역 없음)"],
           ["ko", "한국어"],
           ["en", "영어"],
           ["zh", "중국어 (간체)"],
         ],
-        help: "다르면 정리할 때 한 번 번역해 두고, 답변마다 다시 번역하지 않아요",
+        help: "AI에게는 언제나 원본만 들어가요. 원본과 다르면 정리할 때 한 번 번역해서 이 화면에만 보여 줘요",
       },
       { key: "translateConnection", label: "번역에 쓸 연결" },
     ],
   },
 ];
+
+// 내게 보여줄 언어: the screen shows each item in its translation (made once while organizing); the original, which is
+// what the model reads, stays on the item as __orig so 고치기 edits the original.
+function shown(memory) {
+  const lang = memory?.settings?.showLanguage;
+  if (!memory || !lang || lang === "auto") return memory;
+  const swap = (list) => (list || []).map((it) => (it?.tr?.[lang] ? { ...it, ...it.tr[lang], __orig: it } : it));
+  return {
+    ...memory,
+    chapters: swap(memory.chapters),
+    scenes: swap(memory.scenes),
+    facts: swap(memory.facts),
+    threads: swap(memory.threads),
+    notebook: swap(memory.notebook),
+  };
+}
 
 export function memoryScreen({ mount, args, go, back }) {
   const chatId = args[0];
@@ -211,6 +227,7 @@ export function memoryScreen({ mount, args, go, back }) {
       if (!alive) return;
       state = {
         ...d,
+        memory: shown(d.memory),
         chat,
         allConns: conns,
         // Organizing and translating write text: image, video and audio connections are left out.
@@ -234,7 +251,7 @@ export function memoryScreen({ mount, args, go, back }) {
         id,
         ...(patch === "delete" ? { delete: true } : { patch }),
       });
-      state.memory = res.memory;
+      state.memory = shown(res.memory);
       draw();
     } catch (error) {
       toast(error.message);
@@ -243,7 +260,7 @@ export function memoryScreen({ mount, args, go, back }) {
   const addItem = async (type, itemData) => {
     try {
       const res = await api.post(`/mari-kit/memory/${enc}/item`, { type, data: itemData });
-      state.memory = res.memory;
+      state.memory = shown(res.memory);
       draw();
       return true;
     } catch (error) {
@@ -471,8 +488,16 @@ export function memoryScreen({ mount, args, go, back }) {
       h(
         "div",
         { style: { display: "flex", flexDirection: "column", gap: "14px", padding: "8px 0 24px", overflowY: "auto" } },
+        item.__orig
+          ? h(
+              "p",
+              { class: "hint", style: { margin: "0 20px" } },
+              "원본(AI에게 들어가는 글)을 고쳐요. 번역은 다음 정리 때 다시 만들어요.",
+            )
+          : null,
         fields.map((f) => {
-          const v = Array.isArray(item[f]) ? item[f].join(", ") : (item[f] ?? "");
+          const src = item.__orig || item;
+          const v = Array.isArray(src[f]) ? src[f].join(", ") : (src[f] ?? "");
           inputs[f] =
             f === "summary" || f === "text"
               ? h("textarea", { class: "inp", rows: 5, style: { resize: "vertical" } })
@@ -581,8 +606,8 @@ export function memoryScreen({ mount, args, go, back }) {
             [
               "처음부터 다시 정리",
               "직접 고친 장면·사실도 사라져요 · 백업 먼저",
-              () => {
-                if (confirm("이 방의 기억을 비우고 처음부터 다시 정리할까요? 먼저 설정 → 백업에서 내보내 두세요."))
+              async () => {
+                if (await ask("이 방의 기억을 비우고 처음부터 다시 정리할까요? 먼저 설정 → 백업에서 내보내 두세요."))
                   run("비우기", async () => {
                     await api.post(`/mari-kit/memory/${enc}/reset`, { confirm: true });
                     return "비웠어요. 정리를 눌러 다시 시작하세요";
@@ -1408,11 +1433,37 @@ export function memoryScreen({ mount, args, go, back }) {
             if (n !== cur) set(n);
           },
         });
+        // − / + move by one; the box takes any number; the chips are only shortcuts.
+        const stepBtn = (d, label) =>
+          h(
+            "button",
+            {
+              type: "button",
+              class: "chip stp",
+              "aria-label": `${r.label} ${label}`,
+              style: { minWidth: "44px", minHeight: "44px", fontSize: "18px" },
+              disabled: d < 0 ? (cur ?? 0) <= lo : (cur ?? 0) >= hi,
+              onClick: (e) => (e.preventDefault(), set(Math.min(hi, Math.max(lo, (cur ?? 0) + d)))),
+            },
+            d < 0 ? "−" : "+",
+          );
         return h(
           "span",
-          { style: { display: "flex", gap: "8px", flexWrap: "wrap", alignItems: "center" } },
-          box,
-          chips,
+          { style: { display: "flex", flexDirection: "column", gap: "10px" } },
+          h(
+            "span",
+            { style: { display: "flex", gap: "8px", alignItems: "center" } },
+            stepBtn(-1, "줄이기"),
+            box,
+            stepBtn(1, "늘리기"),
+            h("span", { class: "hint" }, `${lo}–${hi} 사이 아무 수`),
+          ),
+          h(
+            "span",
+            { style: { display: "flex", gap: "6px", flexWrap: "wrap", alignItems: "center" } },
+            h("span", { class: "hint" }, "빠른 값"),
+            chips,
+          ),
         );
       }
       if (r.toggle)
@@ -1638,8 +1689,8 @@ export function memoryScreen({ mount, args, go, back }) {
               "div",
               { style: { display: "flex", flexWrap: "wrap", gap: "8px", paddingTop: "8px" } },
               presets.map((p) =>
-                pill(`${p.name} 지우기`, () =>
-                  confirm(`'${p.name}' 프리셋을 지울까요?`)
+                pill(`${p.name} 지우기`, async () =>
+                  (await ask(`'${p.name}' 프리셋을 지울까요?`))
                     ? savePresets(
                         presets.filter((x) => x !== p),
                         "지웠어요",
@@ -1657,8 +1708,9 @@ export function memoryScreen({ mount, args, go, back }) {
         sec(g.group),
         card(
           g.rows.map((r) =>
+            // A div, not a label: a label passes taps on its text to its first button (it changed values by itself).
             h(
-              "label",
+              "div",
               {
                 style: {
                   display: "flex",
@@ -1696,7 +1748,7 @@ export function memoryScreen({ mount, args, go, back }) {
               run("색인", async () => `${(await api.post(`/mari-kit/memory/${enc}/reindex`)).indexed}개 장면 색인`),
             )
           : null,
-        s.memoryLanguage !== "auto"
+        s.showLanguage !== "auto" && s.showLanguage !== s.writeLanguage
           ? pill("남은 항목 번역", () =>
               run("번역", async () => {
                 const r = await api.post(`/mari-kit/memory/${enc}/translate`);

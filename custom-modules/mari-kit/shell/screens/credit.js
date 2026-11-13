@@ -3,7 +3,7 @@
 
 import { h, setChildren } from "../lib/h.js";
 import { api } from "../lib/api.js";
-import { pageHead, toast, errorBox, hbox, openEngine } from "../lib/ui.js";
+import { pageHead, toast, errorBox, hbox, openEngine, ask } from "../lib/ui.js";
 import { loadCredit, forgetCredit } from "../lib/credit.js";
 
 const sw = (on) => h("span", { class: on ? "sw on" : "sw" }, h("span"));
@@ -138,8 +138,8 @@ export function creditScreen({ mount, back, go }) {
           {
             type: "button",
             class: "pill",
-            onClick: () => {
-              if (!confirm(`'${g.name}' 계정을 지울까요? 저장한 키 파일도 지워져요.`)) return;
+            onClick: async () => {
+              if (!(await ask(`'${g.name}' 계정을 지울까요? 저장한 키 파일도 지워져요.`))) return;
               run(() => api.delete(`/mari-kit/credit/google/${encodeURIComponent(g.id)}`), "지웠어요");
             },
           },
@@ -197,8 +197,8 @@ export function creditScreen({ mount, back, go }) {
             {
               type: "button",
               class: "pill",
-              onClick: () =>
-                confirm(`'${k.name}' 키를 지울까요?`) &&
+              onClick: async () =>
+                (await ask(`'${k.name}' 키를 지울까요?`)) &&
                 run(() => api.delete(`/mari-kit/credit/deepseek/${encodeURIComponent(k.id)}`), "지웠어요"),
             },
             "지우기",

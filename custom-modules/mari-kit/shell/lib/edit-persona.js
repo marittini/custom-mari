@@ -6,7 +6,7 @@ import { h, setChildren } from "./h.js";
 import { api, download } from "./api.js";
 import { data, withCrop } from "./data.js";
 import { createEditor } from "./editor.js";
-import { toast, sheet, popMenu, avatar, errorBox, openEngine } from "./ui.js";
+import { toast, sheet, popMenu, avatar, errorBox, openEngine, ask } from "./ui.js";
 import { groupsOf, splitByGroup, foldGroup, forgetGroups } from "./groups.js";
 
 const CARD_FIELDS = ["summary", "description", "personality", "backstory", "appearance", "scenario", "mes_example"];
@@ -186,7 +186,7 @@ export function personaEditor({ mount, id, go, back }) {
       });
     }
     async function removePhoto() {
-      if (!confirm("사진을 지울까요?")) return;
+      if (!(await ask("사진을 지울까요?"))) return;
       await withSaved(() => api.delete(`${path}/avatar`));
     }
     drawAvatar();
@@ -465,7 +465,7 @@ export function personaEditor({ mount, id, go, back }) {
       }
     }
     async function remove() {
-      if (!confirm(`'${ed.get("name") || "이 페르소나"}'를 지울까요? 되돌릴 수 없어요.`)) return;
+      if (!(await ask(`'${ed.get("name") || "이 페르소나"}'를 지울까요? 되돌릴 수 없어요.`))) return;
       try {
         await api.delete(path);
         syncCache({ id }, true);
@@ -517,7 +517,7 @@ export function personaEditor({ mount, id, go, back }) {
       }
     }
     async function restore(v, s) {
-      if (!confirm("이 버전으로 되돌릴까요? 지금 모습도 기록에 남아요.")) return;
+      if (!(await ask("이 버전으로 되돌릴까요? 지금 모습도 기록에 남아요."))) return;
       try {
         const next = normalize(await api.post(`${path}/versions/${encodeURIComponent(v.id)}/restore`));
         syncCache(next);

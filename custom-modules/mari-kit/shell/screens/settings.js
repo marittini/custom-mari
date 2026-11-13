@@ -3,6 +3,7 @@ import { api } from "../lib/api.js";
 import { prefs, setPrefs, isDark, TOOL_DEFS, toolPlace, parseFamilies } from "../lib/prefs.js";
 import { pageHead, toast, openEngine } from "../lib/ui.js";
 import { data, byLastActivity } from "../lib/data.js";
+import { QUICK_ITEMS, quickIds } from "../lib/quick.js";
 import { connectionsPage, connectionPage, presetsPage, presetPage, voicePage, personasPage } from "./manage.js";
 
 const startsInShell = () => {
@@ -21,6 +22,7 @@ export function settingsScreen({ mount, args, go, back }) {
     font: "글꼴",
     brand: "앱 이름 · 아이콘",
     tools: "메시지 도구",
+    quick: "빠른 설정",
     connections: "연결",
     connection: "연결",
     presets: "프리셋",
@@ -45,7 +47,15 @@ export function settingsScreen({ mount, args, go, back }) {
     if (manage[page]) return manage[page]();
     setChildren(
       body,
-      ...(page === "font" ? fontPage() : page === "brand" ? brandPage() : page === "tools" ? toolsPage() : listPage()),
+      ...(page === "font"
+        ? fontPage()
+        : page === "brand"
+          ? brandPage()
+          : page === "tools"
+            ? toolsPage()
+            : page === "quick"
+              ? quickPage()
+              : listPage()),
     );
   };
 
@@ -82,6 +92,7 @@ export function settingsScreen({ mount, args, go, back }) {
         row(I.font, "글꼴", val(p.font || "기본"), () => go("settings/font")),
         row(I.reader, "읽기", val(""), () => go("reader")),
         row(I.list, "메시지 도구", val(`표시 ${shown} · 더보기 ${more}`), () => go("settings/tools")),
+        row(I.sliders, "빠른 설정", val(`${quickIds().length}개`), () => go("settings/quick")),
         row(I.square, "앱 이름 · 아이콘", val(p.appName || "기본"), () => go("settings/brand")),
       ),
       sec("모델"),
@@ -150,6 +161,7 @@ export function settingsScreen({ mount, args, go, back }) {
     ["글꼴", "설정 › 화면", "font 폰트", () => go("settings/font")],
     ["읽기", "설정 › 화면", "글자 크기 줄 간격 정렬 글꼴 롤플레이 대화 대사 형광펜 reading", () => go("reader")],
     ["메시지 도구", "설정 › 화면", "버튼 tools 복사 수정", () => go("settings/tools")],
+    ["빠른 설정", "설정 › 화면", "채팅 입력창 왼쪽 슬라이더 버튼 quick 순서 고르기", () => go("settings/quick")],
     ["앱 이름 · 아이콘", "설정 › 화면", "brand 홈 화면", () => go("settings/brand")],
     ["연결", "설정 › 모델", "connection api 모델 키", () => go("settings/connections")],
     ["프리셋", "설정 › 모델", "preset 프롬프트 파라미터", () => go("settings/presets")],
@@ -465,6 +477,96 @@ export function settingsScreen({ mount, args, go, back }) {
               ),
             ),
           ),
+        ),
+      ),
+    ];
+  }
+
+  function quickPage() {
+    const ids = quickIds();
+    const rest = QUICK_ITEMS.filter((i) => !ids.includes(i.id)).map((i) => i.id);
+    const byId = new Map(QUICK_ITEMS.map((i) => [i.id, i]));
+    const save = (next) => (setPrefs({ quick: next }), draw());
+    const move = (i, d) => {
+      const next = [...ids];
+      [next[i], next[i + d]] = [next[i + d], next[i]];
+      save(next);
+    };
+    const arrow = (label, text, disabled, onClick) =>
+      h(
+        "button",
+        {
+          type: "button",
+          "aria-label": label,
+          disabled,
+          onClick,
+          style: {
+            width: "44px",
+            height: "44px",
+            flex: "none",
+            fontSize: "18px",
+            opacity: disabled ? "0.25" : "1",
+            background: "none",
+            border: "0",
+            color: "inherit",
+          },
+        },
+        text,
+      );
+    const line = (id, on, i) => {
+      const it = byId.get(id);
+      return h(
+        "div",
+        { class: "r static", style: { minHeight: "52px", gap: "4px" } },
+        h(
+          "button",
+          {
+            type: "button",
+            role: "switch",
+            "aria-checked": on ? "true" : "false",
+            "aria-label": it.label,
+            onClick: () => save(on ? ids.filter((x) => x !== id) : [...ids, id]),
+            style: {
+              display: "flex",
+              alignItems: "center",
+              flex: "1",
+              minWidth: "0",
+              minHeight: "52px",
+              gap: "12px",
+              background: "none",
+              border: "0",
+              color: "inherit",
+              textAlign: "left",
+              font: "inherit",
+              fontSize: "15px",
+            },
+          },
+          h(
+            "span",
+            { style: { flex: "1", whiteSpace: "normal", overflowWrap: "anywhere" } },
+            it.label,
+            it.modes ? " (RP)" : "",
+          ),
+          sw(on),
+        ),
+        arrow("위로", "↑", !on || i === 0, () => move(i, -1)),
+        arrow("아래로", "↓", !on || i === ids.length - 1, () => move(i, 1)),
+      );
+    };
+    return [
+      h(
+        "div",
+        { class: "hint", style: { padding: "4px 20px 12px" } },
+        "채팅 입력창 왼쪽 ⚙에 보일 것을 고르고 순서를 정해요",
+      ),
+      h("div", { class: "list" }, ...ids.map((id, i) => line(id, true, i)), ...rest.map((id) => line(id, false, -1))),
+      h(
+        "div",
+        { style: { padding: "16px 20px 0" } },
+        h(
+          "button",
+          { type: "button", class: "pill", style: { minHeight: "44px" }, onClick: () => save(null) },
+          "기본으로",
         ),
       ),
     ];

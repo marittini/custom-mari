@@ -525,8 +525,34 @@ export function createEditor({ mount, title, label, back, record, save, more = n
     );
   }
 
+  // Tabs: one section at a time; the chips wrap so every tab is in sight. The open tab is remembered while the
+  // app is open (per editor), so coming back from a picker or a sheet keeps it.
+  const tabKey = `mari-ed-tab:${title}`;
+  let current = (() => {
+    try {
+      return sessionStorage.getItem(tabKey) || "";
+    } catch {
+      return "";
+    }
+  })();
   function render(sections) {
     setChildren(body, sections);
+    const ids = sections.map((s) => s.dataset.edSection);
+    if (!ids.includes(current)) current = ids[0];
+    const show = (id) => {
+      current = id;
+      try {
+        sessionStorage.setItem(tabKey, id);
+      } catch {}
+      for (const s of sections) s.hidden = s.dataset.edSection !== id;
+      for (const c of chips.children) {
+        const on = c.dataset.for === id;
+        c.classList.toggle("on", on);
+        c.setAttribute("aria-selected", on ? "true" : "false");
+      }
+      body.scrollTop = 0;
+    };
+    chips.setAttribute("role", "tablist");
     setChildren(
       chips,
       sections.map((s) =>
@@ -535,27 +561,15 @@ export function createEditor({ mount, title, label, back, record, save, more = n
           {
             type: "button",
             class: "chip",
+            role: "tab",
             "data-for": s.dataset.edSection,
-            onClick: () => s.scrollIntoView({ behavior: "smooth", block: "start" }),
+            onClick: () => show(s.dataset.edSection),
           },
           s.querySelector(".ed-sec-t").textContent,
         ),
       ),
     );
-    // The chip of the section being read is marked.
-    const io = new IntersectionObserver(
-      (entries) => {
-        for (const e of entries)
-          if (e.isIntersecting)
-            for (const c of chips.children) {
-              const on = c.dataset.for === e.target.dataset.edSection;
-              c.classList.toggle("on", on);
-              if (on) c.scrollIntoView({ block: "nearest", inline: "nearest" });
-            }
-      },
-      { root: body, rootMargin: "0px 0px -70% 0px" },
-    );
-    for (const s of sections) io.observe(s);
+    show(current);
     refresh();
   }
 

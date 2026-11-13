@@ -5,9 +5,9 @@
 import { h, icon, I, setChildren } from "../lib/h.js";
 import { api, characterCard } from "../lib/api.js";
 import { data, characterIndex, withCrop } from "../lib/data.js";
-import { toast, errorBox, openEngine, avatar, sheet } from "../lib/ui.js";
-import { groupsOf, splitByGroup, sectioned } from "../lib/groups.js";
-import { voiceList } from "../lib/voice.js";
+import { toast, errorBox, openEngine, avatar, sheet, ask } from "../lib/ui.js";
+import { groupsOf, splitByGroup, sectioned, foldGroup } from "../lib/groups.js";
+import { voiceList, voiceOptions as groupedVoices } from "../lib/voice.js";
 
 const PROVIDERS = [
   "openai",
@@ -48,7 +48,11 @@ const select = (value, options, attrs = {}) =>
 const stack = (...children) =>
   h("div", { style: { display: "flex", flexDirection: "column", gap: "20px", padding: "12px 0 28px" } }, children);
 const actions = (...buttons) =>
-  h("div", { style: { display: "flex", justifyContent: "flex-end", gap: "8px", padding: "0 20px" } }, buttons);
+  h(
+    "div",
+    { style: { display: "flex", flexWrap: "wrap", justifyContent: "flex-end", gap: "8px", padding: "0 20px" } },
+    buttons,
+  );
 
 function row(label, value, onClick) {
   return h(
@@ -78,23 +82,132 @@ const KIND = {
   audio: "음성 · 오디오",
   decision: "판단",
 };
+/** Duplicate through the Engine (keeps the stored key), name the copy "<name> 사본", return it. */
+async function duplicateConnection(c) {
+  const copy = await api.post(`/connections/${encodeURIComponent(c.id)}/duplicate`, {});
+  await api.patch(`/connections/${encodeURIComponent(copy.id)}`, { name: `${c.name} 사본` });
+  return copy;
+}
+const wrapText = { minWidth: 0, overflowWrap: "anywhere", whiteSpace: "normal", lineHeight: 1.45, fontSize: "15px" };
+
 export function connectionsPage(body, go) {
   guard(body, async () => {
-    const [list, folders] = await Promise.all([api.get("/connections"), groupsOf("connections")]);
+    const [list, folders, accounts] = await Promise.all([
+      api.get("/connections"),
+      groupsOf("connections"),
+      api.get("/connection-accounts").catch(() => []),
+    ]);
+    const accountOf = new Map(accounts.map((a) => [a.id, a]));
+    const copy = async (c) => {
+      try {
+        const made = await duplicateConnection(c);
+        toast("복제했어요");
+        KIND[c.provider] ? connectionsPage(body, go) : go(`settings/connection/${encodeURIComponent(made.id)}`);
+      } catch (error) {
+        toast(`복제하지 못했어요: ${error.message}`);
+      }
+    };
+    const connRow = (c) => {
+      const kind = KIND[c.provider];
+      const isDef = c.isDefault === "true" || c.isDefault === true;
+      return h(
+        "div",
+        { style: { display: "flex", alignItems: "stretch", borderBottom: "1px solid var(--line)" } },
+        h(
+          "button",
+          {
+            type: "button",
+            class: "r two",
+            style: { minHeight: "56px", borderBottom: "0", flex: "1", minWidth: "0" },
+            onClick: () =>
+              kind ? openEngine(null, { connection: c.id }) : go(`settings/connection/${encodeURIComponent(c.id)}`),
+          },
+          h(
+            "span",
+            { style: wrapText },
+            kind ? c.name : c.model || c.name,
+            kind || (c.model && c.name !== c.model)
+              ? h(
+                  "small",
+                  { class: "hint", style: { display: "block", fontSize: "13px" } },
+                  kind ? `${kind} · 엔진에서 편집` : c.name,
+                )
+              : null,
+          ),
+          h("span", { class: "val" }, isDef ? "기본 ›" : "›"),
+        ),
+        h(
+          "button",
+          {
+            type: "button",
+            class: "pill",
+            style: { alignSelf: "center", margin: "0 14px 0 0", minHeight: "44px", flexShrink: "0" },
+            "aria-label": `${c.name} 복제`,
+            onClick: () => copy(c),
+          },
+          "복제",
+        ),
+      );
+    };
+    // One folder's connections, split under a heading per account (provider + count).
+    const byAccount = (items) => {
+      const groups = new Map();
+      for (const c of items) {
+        const key = c.accountId || "";
+        if (!groups.has(key)) groups.set(key, []);
+        groups.get(key).push(c);
+      }
+      return [...groups].map(([key, rows]) => {
+        const acc = accountOf.get(key);
+        const name = acc?.name || (key ? "연결" : "계정 없음");
+        const provider = acc?.provider || rows[0]?.provider || "";
+        return h(
+          "div",
+          { style: { marginBottom: "14px" } },
+          h(
+            "div",
+            {
+              style: {
+                display: "flex",
+                alignItems: "baseline",
+                flexWrap: "wrap",
+                gap: "4px 10px",
+                padding: "10px 20px",
+                fontSize: "15px",
+                fontWeight: "600",
+                overflowWrap: "anywhere",
+              },
+            },
+            h("span", null, name),
+            h(
+              "span",
+              { class: "hint", style: { fontSize: "13px", fontWeight: "400" } },
+              `${KIND[provider] || provider} · ${rows.length}개`,
+            ),
+          ),
+          h("div", { class: "list" }, rows.map(connRow)),
+        );
+      });
+    };
     const parts = splitByGroup(list, folders, { folderOf: (c) => c.folderId });
+    const grouped = parts.length > 1 || (parts.length === 1 && parts[0].label);
     setChildren(
       body,
       stack(
         list.length
-          ? sectioned(h, parts, (c) => {
-              const kind = KIND[c.provider];
-              const def = c.isDefault === "true" || c.isDefault === true ? " · 기본" : "";
-              return row(c.name, kind ? `${kind} · 엔진에서 편집` : `${c.model || "모델 없음"}${def}`, () =>
-                kind ? openEngine(null, { connection: c.id }) : go(`settings/connection/${encodeURIComponent(c.id)}`),
-              );
-            })
+          ? h(
+              "div",
+              null,
+              parts.map((p) =>
+                grouped
+                  ? foldGroup(h, "conn", p.label || "폴더 없음", p.items.length, h("div", null, byAccount(p.items)))
+                  : h("div", null, byAccount(p.items)),
+              ),
+            )
           : h("div", { class: "empty" }, "연결이 아직 없어요."),
-        actions(
+        h(
+          "div",
+          { style: { display: "flex", flexWrap: "wrap", justifyContent: "flex-end", gap: "8px", padding: "0 20px" } },
           h("button", { type: "button", class: "pill", onClick: () => go("folders/connections") }, "폴더 관리"),
           h(
             "button",
@@ -166,7 +279,7 @@ export function connectionPage(body, go, id) {
       }
     };
     const remove = async () => {
-      if (!confirm(`'${c.name}' 연결을 지울까요?`)) return;
+      if (!(await ask(`'${c.name}' 연결을 지울까요?`))) return;
       try {
         await api.delete(`/connections/${encodeURIComponent(id)}`);
         go("settings/connections");
@@ -205,6 +318,25 @@ export function connectionPage(body, go, id) {
         ),
         actions(
           isNew ? null : h("button", { type: "button", class: "pill", onClick: remove }, "삭제"),
+          isNew
+            ? null
+            : h(
+                "button",
+                {
+                  type: "button",
+                  class: "pill",
+                  onClick: async () => {
+                    try {
+                      const made = await duplicateConnection(c);
+                      toast("복제했어요 · 복사본을 열었어요");
+                      go(`settings/connection/${encodeURIComponent(made.id)}`);
+                    } catch (error) {
+                      toast(`복제하지 못했어요: ${error.message}`);
+                    }
+                  },
+                },
+                "복제",
+              ),
           h("button", { type: "button", class: "pill main", onClick: save }, "저장"),
         ),
       ),
@@ -321,7 +453,7 @@ export function presetPage(body, go, id) {
       return await api.patch(path, payload);
     } catch (error) {
       if (error.status !== 409) throw error;
-      if (!confirm("기본 프리셋은 고칠 수 없어요. 복사본을 만들어 고칠까요?")) throw new Error("바꾸지 않았어요");
+      if (!(await ask("기본 프리셋은 고칠 수 없어요. 복사본을 만들어 고칠까요?"))) throw new Error("바꾸지 않았어요");
       const copy = await api.post(`/prompts/${encodeURIComponent(id)}/duplicate`);
       go(`settings/preset/${encodeURIComponent(copy.id)}`);
       throw new Error("복사본을 만들었어요. 여기서 고쳐 주세요");
@@ -527,7 +659,6 @@ export function voicePage(body) {
       const res = await api.get("/tts/voices");
       voices = voiceList(res);
     } catch {}
-    const voiceOptions = [["", "기본 보이스"], ...voices.map((v) => [v.id, v.name])];
     const enabled = h("input", { type: "checkbox", checked: !!config.enabled });
     const source = select(config.source, TTS_SOURCES);
     const baseUrl = text(config.baseUrl, { placeholder: "비우면 기본 주소", inputmode: "url" });
@@ -538,8 +669,9 @@ export function voicePage(body) {
       placeholder: "비우면 저장된 키 유지",
     });
     const model = text(config.model);
+    // Grouped: 내 목소리 (cloned, generated, …) and 기본 목소리 (premade).
     const voice = voices.length
-      ? select(config.voice, voiceOptions.slice(1).length ? voiceOptions.slice(1) : voiceOptions)
+      ? h("select", { class: "inp" }, groupedVoices(h, voices, config.voice, []))
       : text(config.voice);
     const speed = h("input", { class: "inp", type: "number", step: 0.05, min: 0.25, max: 4, value: config.speed ?? 1 });
     const mode = select(config.voiceMode, [

@@ -6,8 +6,8 @@ import { h, setChildren } from "./h.js";
 import { api, characterCard, parseJson, download } from "./api.js";
 import { data, firstLetter, withCrop } from "./data.js";
 import { createEditor } from "./editor.js";
-import { toast, sheet, popMenu, avatar, errorBox, openEngine } from "./ui.js";
-import { voiceList } from "./voice.js";
+import { toast, sheet, popMenu, avatar, errorBox, openEngine, ask } from "./ui.js";
+import { loadVoices, voiceGroups } from "./voice.js";
 import { groupsOf, forgetGroups, splitByGroup, foldGroup } from "./groups.js";
 
 const enc = encodeURIComponent;
@@ -163,7 +163,7 @@ export function characterEditor({ mount, id, go, back }) {
       }
     }
     async function removePhoto() {
-      if (!confirm("사진을 지울까요?")) return;
+      if (!(await ask("사진을 지울까요?"))) return;
       try {
         await e.save({ quiet: true });
         await api.delete(`/characters/${enc(id)}/avatar`);
@@ -322,7 +322,7 @@ export function characterEditor({ mount, id, go, back }) {
       .catch(drawVoice);
     async function pickVoice() {
       try {
-        if (!voices) voices = voiceList(await api.get("/tts/voices"));
+        if (!voices) voices = await loadVoices();
       } catch (error) {
         return toast(`목소리 목록을 못 읽었어요: ${error.message}`);
       }
@@ -350,19 +350,22 @@ export function characterEditor({ mount, id, go, back }) {
             "div",
             { class: "ed-stack", style: { maxHeight: "55vh", overflowY: "auto" } },
             h("button", { type: "button", class: "grow", onClick: () => set("") }, h("span", null, "정하지 않음")),
-            voices.map((v) =>
-              h(
-                "button",
-                {
-                  type: "button",
-                  class: "grow",
-                  "aria-pressed": v.id === voiceNow() ? "true" : "false",
-                  onClick: () => set(v.id),
-                },
-                h("span", null, v.name),
-                h("span", null, v.id === voiceNow() ? "✓" : ""),
+            voiceGroups(voices).map((g) => [
+              g.label ? h("div", { class: "label", style: { margin: "12px 0 2px" } }, g.label) : null,
+              g.items.map((v) =>
+                h(
+                  "button",
+                  {
+                    type: "button",
+                    class: "grow",
+                    "aria-pressed": v.id === voiceNow() ? "true" : "false",
+                    onClick: () => set(v.id),
+                  },
+                  h("span", null, v.name),
+                  h("span", null, v.id === voiceNow() ? "✓" : ""),
+                ),
               ),
-            ),
+            ]),
           ),
         ),
         { label: "목소리" },
@@ -393,7 +396,7 @@ export function characterEditor({ mount, id, go, back }) {
                   }
                 }),
                 miniBtn("카드에서 빼기", async () => {
-                  if (!confirm("카드 안의 로어북을 지울까요?")) return;
+                  if (!(await ask("카드 안의 로어북을 지울까요?"))) return;
                   try {
                     await api.delete(`/characters/${enc(id)}/embedded-lorebook`);
                     await afterBook("뺐어요");
@@ -558,7 +561,7 @@ export function characterEditor({ mount, id, go, back }) {
                     "div",
                     { class: "ed-item-tools" },
                     miniBtn("되돌리기", async () => {
-                      if (!confirm("이 버전으로 되돌릴까요? 지금 내용은 버전 기록에 남아요.")) return;
+                      if (!(await ask("이 버전으로 되돌릴까요? 지금 내용은 버전 기록에 남아요."))) return;
                       try {
                         await api.post(`/characters/${enc(id)}/versions/${enc(v.id)}/restore`, {});
                         e.reset(await reload());
@@ -585,7 +588,7 @@ export function characterEditor({ mount, id, go, back }) {
       draw();
     }
     async function remove() {
-      if (!confirm(`'${e.get("data.name") || "이 캐릭터"}'를 지울까요? 되돌릴 수 없어요.`)) return;
+      if (!(await ask(`'${e.get("data.name") || "이 캐릭터"}'를 지울까요? 되돌릴 수 없어요.`))) return;
       try {
         leaveClean();
         await api.delete(`/characters/${enc(id)}`);
