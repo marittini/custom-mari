@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "generatedAt": "2026-11-13T10:25:15.460Z",
+  "generatedAt": "2026-11-13T10:57:37.726Z",
   "packages": [
     {
       "manifest": {
@@ -4677,7 +4677,7 @@
         },
         "id": "mari-kit",
         "name": "Mari Kit",
-        "version": "0.16.1",
+        "version": "0.16.3",
         "description": "개인 기능 모음(TTS·번역·날씨·기억)을 엔진 소스 수정 없이 붙이는 패키지입니다.",
         "engine": {
           "min": "2.5.2",
@@ -4715,13 +4715,13 @@
         "restartRequired": true,
         "builtAgainst": {
           "engineVersion": "2.5.2",
-          "engineCommit": "dda590e25eed304ad2815c6737066930c11ea9fe"
+          "engineCommit": "875125eb9743cc702fcaadf369fac8992348d6f2"
         },
         "files": [
           {
             "path": "agents.json",
-            "sha256": "5d804048f5d8251324cec6d4b8b6a11d7129c67cbe3f572cf0a0181782d49332",
-            "bytes": 526
+            "sha256": "a361324294f3c594420af2a3cde8bb1d34e4077bf3c13b85a45932d0aef2f907",
+            "bytes": 555
           },
           {
             "path": "client.js",
@@ -4785,8 +4785,8 @@
           },
           {
             "path": "tts.server.mjs",
-            "sha256": "286f17753c8fc9b91c3641cd991c081dbb86c59acf1121c298ff8bfb91047ca8",
-            "bytes": 13126
+            "sha256": "1d7dc1b0b1709bb5d7095f9fe3de5c8538ab68007b71e6b1eadbe91af990a60d",
+            "bytes": 13372
           },
           {
             "path": "weather.server.mjs",
@@ -4960,8 +4960,8 @@
           },
           {
             "path": "shell/screens/chat-settings.js",
-            "sha256": "ef96b977bfe55b977ca7e9d1e94d5cb0000a8d40aee6cab2aac4077977a3ecf4",
-            "bytes": 58961
+            "sha256": "c946557914a54610e2b5496f8ea80f7e720c065aeb3f2c995f22d22d45e6c9c2",
+            "bytes": 59294
           },
           {
             "path": "shell/screens/convo.js",
@@ -5030,8 +5030,8 @@
           },
           {
             "path": "shell/screens/rp.js",
-            "sha256": "160d14d322b274a3c0203dda4acf0f914b160f692e00f08218534e1393a82f24",
-            "bytes": 27215
+            "sha256": "7936f7ae505adf090e3c1b869f1e723296e1e24e987f037dcf09917b45ccc9e4",
+            "bytes": 27319
           },
           {
             "path": "shell/screens/schedule.js",
@@ -5067,9 +5067,9 @@
       },
       "category": "misc",
       "artifact": {
-        "url": "https://raw.githubusercontent.com/marittini/custom-mari/mari-catalog/artifacts/mari-kit-0.16.1.zip",
-        "sha256": "4d593ae82cb82602741aefe0caaa00bca55e4c34c6e935f99edb1b351305ce07",
-        "bytes": 330201
+        "url": "https://raw.githubusercontent.com/marittini/custom-mari/mari-catalog/artifacts/mari-kit-0.16.3.zip",
+        "sha256": "455309872232b6e20cf69069e9f1692dff8b5dc7065eaef59e09f60dc3ce3f23",
+        "bytes": 330469
       },
       "documentationUrl": "https://github.com/marittini/custom-mari/tree/main/custom-modules"
     }
