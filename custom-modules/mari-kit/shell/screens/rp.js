@@ -196,7 +196,8 @@ export function rpScreen({ mount, args, go, back }) {
     ttsConfig = config?.enabled ? config : null;
     voiceSet = ttsConfig ? await syncVoiceSettings(config) : null;
     const usesKit = meta.enableAgents === true && (meta.activeAgentIds || []).includes("mari-kit");
-    if (ttsConfig && settings?.features?.tts && usesKit) {
+    // Speaker names and pronunciations for line voice: wherever Mari Kit's voice feature is on (no agent needed).
+    if (ttsConfig && settings?.features?.tts) {
       participants =
         (await api.get(`/mari-kit/tts/participants/${encodeURIComponent(chatId)}`).catch(() => null))?.participants ||
         [];

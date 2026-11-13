@@ -154,7 +154,10 @@ export const ttsFeature = {
     if (voice.rooms[request.chatId] === false) return null;
     const cue = resolveCue(voice);
     if (request.mode === "roleplay") {
-      if (!voice.rp || !usesKit(request.chatMeta)) return null;
+      // On in every RP chat while 음성 › RP에서 쓰기 is on (the room switch turns it off per chat). It used to need
+      // the Mari Kit agent added to the chat, and chats without it got no guidance: every line then came out in
+      // the reply's character voice.
+      if (!voice.rp) return null;
       return buildTtsGuidance(await listParticipants(runtime, request.chatId, request.personaId), cue);
     }
     if (request.mode === "conversation" && voice.convo) return buildConvoTtsGuidance(cue);
