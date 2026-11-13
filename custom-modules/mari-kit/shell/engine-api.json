@@ -85,6 +85,14 @@
     "DELETE /library-folders/presets/:id",
     "POST /library-folders/presets/move",
     "POST /import/st-chat",
-    "GET /chats/:id/export"
+    "GET /chats/:id/export",
+    "GET /chat-presets",
+    "POST /chat-presets",
+    "PATCH /chat-presets/:id",
+    "DELETE /chat-presets/:id",
+    "PUT /chat-presets/:id/settings",
+    "POST /chat-presets/:id/set-active",
+    "POST /chat-presets/:id/apply/:id",
+    "POST /chat-presets/:id/apply-to-followers"
   ]
 }

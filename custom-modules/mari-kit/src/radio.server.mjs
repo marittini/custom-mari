@@ -40,6 +40,8 @@ export function normalizeRadioSettings(raw) {
       .slice(0, 20),
     notify: s.notify !== false,
     djId: str(s.djId, 200),
+    // 둘이 진행: a second host who talks with the DJ ("" = the DJ alone).
+    coDjId: str(s.coDjId, 200) !== str(s.djId, 200) ? str(s.coDjId, 200) : "",
     guide: str(s.guide, 4000) || DEFAULT_GUIDE,
     presets,
   };
@@ -95,27 +97,39 @@ const brief = (card) =>
     .join("\n")
     .slice(0, 2500);
 
-export function radioPrompt({ dj, guide, time, letter, sender, poster, roomNotes }) {
+export function radioPrompt({ dj, co, guide, time, letter, sender, poster, roomNotes }) {
   return [
-    `You write one episode of a late-night radio show hosted by ${dj.name}. Stay in ${dj.name}'s character and voice.`,
-    `Host card:\n${dj.brief || "(no card text)"}`,
+    co
+      ? `You write one episode of a late-night radio show co-hosted by ${dj.name} (host 1) and ${co.name} (host 2). Keep each in their own character and voice; they talk with each other as well as to the listeners.`
+      : `You write one episode of a late-night radio show hosted by ${dj.name}. Stay in ${dj.name}'s character and voice.`,
+    co
+      ? `Host 1 card (${dj.name}):\n${dj.brief || "(no card text)"}\n\nHost 2 card (${co.name}):\n${co.brief || "(no card text)"}`
+      : `Host card:\n${dj.brief || "(no card text)"}`,
     `Show guide (follow it):\n${guide}`,
     `On air: ${time.when} (${time.label}).`,
     letter
       ? `Today's story was sent anonymously by a listener signed "${sender}". The host does not know who they are. Story:\n${letter}`
       : `No listener story today. The host picks a post from the show's story board. It was written anonymously by ${poster ? `${poster.name}, who does not reveal themselves (the host does not know it is them)` : "a listener"}. Invent that post in the writer's own voice and situation${roomNotes ? ", drawn from these recent events in their life" : ""}.`,
     roomNotes ? `Recent events (context only, never quote them as messages):\n${roomNotes}` : "",
-    'Reply with JSON only: {"title":"short episode title in Korean","segments":[{"type":"dj","text":"…"},{"type":"letter","from":"signature","text":"the story as read on air"},{"type":"dj","text":"…"}]}. 4 to 8 segments, the letter exactly once. Write the dj segments as spoken radio talk.',
+    co
+      ? 'Reply with JSON only: {"title":"short episode title in Korean","segments":[{"type":"dj","host":1,"text":"…"},{"type":"dj","host":2,"text":"…"},{"type":"letter","from":"signature","text":"the story as read on air"},{"type":"dj","host":2,"text":"…"}]}. 8 to 14 segments, the letter exactly once. Each dj segment is one host speaking ("host" 1 or 2); the two take turns like a real two-host show. Write them as spoken radio talk.'
+      : 'Reply with JSON only: {"title":"short episode title in Korean","segments":[{"type":"dj","text":"…"},{"type":"letter","from":"signature","text":"the story as read on air"},{"type":"dj","text":"…"}]}. 4 to 8 segments, the letter exactly once. Write the dj segments as spoken radio talk.',
   ]
     .filter(Boolean)
     .join("\n\n");
 }
 
-export function parseEpisode(parsed) {
+export function parseEpisode(parsed, { co = false } = {}) {
   const segments = (Array.isArray(parsed?.segments) ? parsed.segments : [])
-    .map((s) => ({ type: s?.type === "letter" ? "letter" : "dj", from: str(s?.from, 60), text: str(s?.text, 4000) }))
+    .map((s) => ({
+      type: s?.type === "letter" ? "letter" : "dj",
+      from: str(s?.from, 60),
+      text: str(s?.text, 4000),
+      // Two hosts: who says this line (1 the DJ, 2 the co-host).
+      ...(co && s?.type !== "letter" ? { host: Number(s?.host) === 2 ? 2 : 1 } : {}),
+    }))
     .filter((s) => s.text)
-    .slice(0, 20);
+    .slice(0, 30);
   if (!segments.length) throw new Error("The model returned no script.");
   return { title: str(parsed?.title, 80) || "오늘의 사연", segments };
 }
@@ -177,6 +191,11 @@ export const radioFeature = {
         if (!djRec) throw new Error("DJ character not found.");
         const djCard = cardOf(djRec);
         const dj = { name: str(djCard.name, 80) || "DJ", brief: brief(djCard) };
+        let co = null;
+        if (input.coDjId) {
+          const [coRec] = await runtime.resources.listCharacters([input.coDjId]);
+          if (coRec) co = { name: str(cardOf(coRec).name, 80) || "DJ", brief: brief(cardOf(coRec)) };
+        }
         let poster = null;
         let roomNotes = "";
         if (!input.letter && settings.rooms.length) {
@@ -185,7 +204,7 @@ export const radioFeature = {
           if (chat) {
             const chars = chat.characterIds?.length ? await runtime.resources.listCharacters(chat.characterIds) : [];
             const names = new Map(chars.map((c) => [c.id, str(cardOf(c).name, 80)]));
-            const pool = chars.filter((c) => c.id !== input.djId);
+            const pool = chars.filter((c) => c.id !== input.djId && c.id !== input.coDjId);
             const pick = (pool.length ? pool : chars)[
               Math.floor(Math.random() * Math.max(1, (pool.length ? pool : chars).length))
             ];
@@ -203,13 +222,16 @@ export const radioFeature = {
           }
         } else if (!input.letter) {
           const all = await runtime.resources.listCharacters();
-          const others = all.filter((c) => c.id !== input.djId && c.id !== "__professor_mari__");
+          const others = all.filter(
+            (c) => c.id !== input.djId && c.id !== input.coDjId && c.id !== "__professor_mari__",
+          );
           const pick = others[Math.floor(Math.random() * others.length)];
           if (pick) poster = { name: str(cardOf(pick).name, 80) || "listener" };
         }
         const zone = settings.zone === "device" && settings.deviceZone ? settings.deviceZone : "Asia/Seoul";
         const prompt = radioPrompt({
           dj,
+          co,
           guide: settings.guide,
           time: airTime(zone),
           letter: input.letter,
@@ -227,6 +249,7 @@ export const radioFeature = {
         );
         const episode = parseEpisode(
           runtime.json.parseJsonish(typeof result?.content === "string" ? result.content : ""),
+          { co: !!co },
         );
         await upsert(EP_PREFIX + id, "radio-episode", "Radio episode", async (d) => ({
           ...d,
@@ -266,7 +289,17 @@ export const radioFeature = {
       const b = request.body && typeof request.body === "object" ? request.body : {};
       const data = await upsert(SETTINGS_ID, "radio-settings", "Radio settings", async (d) => {
         const cur = normalizeRadioSettings(d);
-        for (const k of ["connectionId", "zone", "deviceZone", "radioName", "rooms", "notify", "djId", "guide"])
+        for (const k of [
+          "connectionId",
+          "zone",
+          "deviceZone",
+          "radioName",
+          "rooms",
+          "notify",
+          "djId",
+          "coDjId",
+          "guide",
+        ])
           if (b[k] !== undefined) cur[k] = b[k];
         return normalizeRadioSettings(cur);
       });
@@ -302,6 +335,10 @@ export const radioFeature = {
       const [djRec] = await runtime.resources.listCharacters([djId]);
       if (!djRec) throw httpError(404, "DJ character not found.");
       const djName = str(cardOf(djRec).name, 80) || "DJ";
+      const coId = str(request.body?.coDjId, 200);
+      const [coRec] = coId && coId !== djId ? await runtime.resources.listCharacters([coId]) : [];
+      const coDjId = coRec ? coId : "";
+      const coDjName = coRec ? str(cardOf(coRec).name, 80) || "DJ" : "";
       await saveIndex((idx) => {
         no = idx.next;
         idx.next += 1;
@@ -311,6 +348,7 @@ export const radioFeature = {
           title: "",
           djId,
           djName,
+          ...(coDjId ? { coDjId, coDjName } : {}),
           createdAt,
           status: "making",
           starred: false,
@@ -324,16 +362,17 @@ export const radioFeature = {
         no,
         djId,
         djName,
+        ...(coDjId ? { coDjId, coDjName } : {}),
         createdAt,
         letter,
         sender,
         status: "making",
       }));
-      if (djId !== settings.djId)
+      if (djId !== settings.djId || coDjId !== settings.coDjId)
         await upsert(SETTINGS_ID, "radio-settings", "Radio settings", async (d) =>
-          normalizeRadioSettings({ ...normalizeRadioSettings(d), djId }),
+          normalizeRadioSettings({ ...normalizeRadioSettings(d), djId, coDjId }),
         ).catch(() => {});
-      void write(id, { djId, letter, sender, settings });
+      void write(id, { djId, coDjId, letter, sender, settings });
       return { id, no, status: "making" };
     });
     app.get("/radio/episode/:id", async (request) => {

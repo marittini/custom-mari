@@ -72,6 +72,8 @@ export function radioScreen({ mount, args, go, back }) {
     const s = state.settings;
     const djId = s.djId && index.has(s.djId) ? s.djId : [...index.keys()][0];
     const dj = index.get(djId);
+    // 둘이 진행: the second host, when one is chosen.
+    const co = s.coDjId && s.coDjId !== djId ? index.get(s.coDjId) : null;
     setChildren(
       head,
       pageHead("라디오", {
@@ -117,33 +119,42 @@ export function radioScreen({ mount, args, go, back }) {
           },
         },
         h(
+          "div",
+          { style: { display: "flex", gap: co ? "28px" : "0", alignItems: "flex-start", justifyContent: "center" } },
+          host(dj, co ? 72 : 88, "DJ 바꾸기", () => pickDj(djId)),
+          co ? host(co, 72, "함께 진행할 사람 바꾸기", () => pickDj(co.id, { co: true, djId })) : null,
+        ),
+        h(
           "button",
           {
             type: "button",
-            class: "plain",
-            style: { alignItems: "center", gap: "14px" },
-            "aria-label": "DJ 바꾸기",
-            onClick: () => pickDj(djId),
+            class: "pill",
+            style: { marginTop: "16px" },
+            onClick: () => pickDj(co?.id || "", { co: true, djId }),
           },
-          avatar(dj.avatar, firstLetter(dj.name), 88),
-          h(
-            "span",
-            { style: { fontFamily: "var(--font-read)", fontSize: "18px", fontWeight: "600" } },
-            showName(dj.name),
-          ),
+          co ? "둘이 진행 중 · 바꾸기" : "+ 함께 진행할 사람",
         ),
         h("label", { class: "sr", for: "radio-letter" }, "사연"),
         Object.assign(ta, { id: "radio-letter", style: `${ta.style.cssText};margin-top:48px` }),
         h("div", { style: { flex: "1", minHeight: "40px" } }),
         h(
           "button",
-          { type: "button", class: "go", "aria-label": "방송 듣기", onClick: (e) => start(e, djId) },
+          { type: "button", class: "go", "aria-label": "방송 듣기", onClick: (e) => start(e, djId, co?.id || "") },
           icon("M8 5v14l11-7z", 18, 0),
         ),
       ),
     ];
   }
-  function pickDj(cur) {
+  function host(c, size, label, onClick) {
+    return h(
+      "button",
+      { type: "button", class: "plain", style: { alignItems: "center", gap: "12px" }, "aria-label": label, onClick },
+      avatar(c.avatar, firstLetter(c.name), size),
+      h("span", { style: { fontFamily: "var(--font-read)", fontSize: "17px", fontWeight: "600" } }, c.name),
+    );
+  }
+  // pickDj(current) picks the DJ; with { co: true, djId } it picks the second host (or 혼자 진행).
+  function pickDj(cur, { co = false, djId = "" } = {}) {
     const s = sheet(
       h(
         "div",
@@ -156,46 +167,62 @@ export function radioScreen({ mount, args, go, back }) {
             padding: "16px 20px 32px",
           },
         },
-        [...index.values()].map((c) =>
-          h(
-            "button",
-            {
-              type: "button",
-              class: "plain",
-              style: {
-                alignItems: "center",
-                width: "64px",
-                gap: "8px",
-                color: c.id === cur ? "var(--ink)" : "var(--ink-3)",
-              },
-              "aria-pressed": c.id === cur ? "true" : "false",
-              onClick: () => (s.close(), saveSettings({ djId: c.id })),
-            },
-            avatar(c.avatar, firstLetter(c.name), 52),
-            h(
-              "span",
+        co
+          ? h(
+              "button",
               {
-                style: {
-                  fontSize: "12px",
-                  maxWidth: "64px",
-                  overflow: "hidden",
-                  textOverflow: "ellipsis",
-                  whiteSpace: "nowrap",
-                },
+                type: "button",
+                class: "plain",
+                style: { alignItems: "center", width: "64px", gap: "8px", color: cur ? "var(--ink-3)" : "var(--ink)" },
+                "aria-pressed": cur ? "false" : "true",
+                onClick: () => (s.close(), saveSettings({ coDjId: "" })),
               },
-              c.name,
+              h("span", { class: "ph", style: { width: "52px", height: "52px", borderRadius: "50%" } }, "—"),
+              h("span", { style: { fontSize: "12px" } }, "혼자 진행"),
+            )
+          : null,
+        [...index.values()]
+          .filter((c) => !co || c.id !== djId)
+          .map((c) =>
+            h(
+              "button",
+              {
+                type: "button",
+                class: "plain",
+                style: {
+                  alignItems: "center",
+                  width: "64px",
+                  gap: "8px",
+                  color: c.id === cur ? "var(--ink)" : "var(--ink-3)",
+                },
+                "aria-pressed": c.id === cur ? "true" : "false",
+                onClick: () => (s.close(), saveSettings(co ? { coDjId: c.id } : { djId: c.id })),
+              },
+              avatar(c.avatar, firstLetter(c.name), 52),
+              h(
+                "span",
+                {
+                  style: {
+                    fontSize: "12px",
+                    maxWidth: "64px",
+                    overflow: "hidden",
+                    textOverflow: "ellipsis",
+                    whiteSpace: "nowrap",
+                  },
+                },
+                c.name,
+              ),
             ),
           ),
-        ),
       ),
-      { label: "DJ" },
+      { label: co ? "함께 진행" : "DJ" },
     );
   }
-  async function start(e, djId) {
+  async function start(e, djId, coDjId) {
     const btn = e.currentTarget;
     btn.disabled = true;
     try {
-      const res = await api.post("/mari-kit/radio/broadcast", { djId, letter: letter.trim() });
+      const res = await api.post("/mari-kit/radio/broadcast", { djId, coDjId, letter: letter.trim() });
       letter = "";
       go(`radio/air/${encodeURIComponent(res.id)}`);
     } catch (error) {
@@ -219,7 +246,7 @@ export function radioScreen({ mount, args, go, back }) {
       topBar({
         back: () => back("radio"),
         title: ep.title ? `${ep.no}회 · ${ep.title}` : `${ep.no}회`,
-        sub: `${showName(ep.djName)} · ${freq(ep.djName)} MHz`,
+        sub: `${showName(ep.coDjName ? `${ep.djName} × ${ep.coDjName}` : ep.djName)} · ${freq(ep.djName)} MHz`,
         actions: [
           h(
             "button",
@@ -279,7 +306,7 @@ export function radioScreen({ mount, args, go, back }) {
     if (ep.status === "done") {
       setChildren(
         read,
-        ep.segments.map((seg) =>
+        ep.segments.map((seg, i) =>
           seg.type === "letter"
             ? h(
                 "div",
@@ -287,7 +314,17 @@ export function radioScreen({ mount, args, go, back }) {
                 h("span", { class: "htag" }, `${seg.from || ep.sender || "익명"} 님의 사연`),
                 seg.text,
               )
-            : h("p", { style: { margin: "0", whiteSpace: "pre-wrap" } }, seg.text),
+            : ep.coDjName
+              ? // Two hosts: the speaker's name when the voice changes.
+                h(
+                  "div",
+                  { style: { display: "flex", flexDirection: "column", gap: "6px" } },
+                  ep.segments[i - 1]?.host !== seg.host || ep.segments[i - 1]?.type === "letter"
+                    ? h("span", { class: "rp-who", style: { margin: "0" } }, seg.host === 2 ? ep.coDjName : ep.djName)
+                    : null,
+                  h("p", { style: { margin: "0", whiteSpace: "pre-wrap" } }, seg.text),
+                )
+              : h("p", { style: { margin: "0", whiteSpace: "pre-wrap" } }, seg.text),
         ),
       );
       if (!marked.has(ep.id)) {
@@ -417,7 +454,7 @@ export function radioScreen({ mount, args, go, back }) {
                   h(
                     "span",
                     { style: { fontSize: "12px", color: "var(--ink-3)" } },
-                    `${e.djName} · ${new Date(e.createdAt).toLocaleDateString("ko-KR", { month: "long", day: "numeric" })}`,
+                    `${e.djName}${e.coDjName ? ` × ${e.coDjName}` : ""} · ${new Date(e.createdAt).toLocaleDateString("ko-KR", { month: "long", day: "numeric" })}`,
                   ),
                 ),
                 h(

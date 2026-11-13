@@ -10,7 +10,17 @@ import { splitByGroup, foldGroup } from "./groups.js";
  * items: [{ id, name, avatar }]; groups: the Engine's groups of that kind; selected: id or null.
  * none: label of the "nobody" row (null hides it). onPick(id | null).
  */
-export function pickPerson({ title, items, groups = [], selected = null, none = "없음", key = "pick", onPick }) {
+export function pickPerson({
+  title,
+  items,
+  groups = [],
+  selected = null,
+  none = "없음",
+  key = "pick",
+  folderOf = null, // for groups that do not list their items (connection folders)
+  faces = true, // false: names only (connections, presets)
+  onPick,
+}) {
   const list = h("div", { style: { overflowY: "auto", minHeight: "0" } });
   const search = h("input", {
     class: "inp",
@@ -31,10 +41,10 @@ export function pickPerson({ title, items, groups = [], selected = null, none = 
         class: "r two",
         role: "radio",
         "aria-checked": p.id === selected ? "true" : "false",
-        style: { gridTemplateColumns: "32px minmax(0,1fr) 20px" },
+        style: { gridTemplateColumns: faces ? "32px minmax(0,1fr) 20px" : "minmax(0,1fr) 20px" },
         onClick: () => choose(p.id),
       },
-      avatar(p.avatar, firstLetter(p.name), 32),
+      faces ? avatar(p.avatar, firstLetter(p.name), 32) : null,
       h("span", { style: { overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" } }, p.name),
       h("span", { class: p.id === selected ? "tick on" : "tick", "aria-hidden": "true" }),
     );
@@ -47,7 +57,7 @@ export function pickPerson({ title, items, groups = [], selected = null, none = 
           .toLowerCase()
           .includes(q),
     );
-    const parts = splitByGroup(shown, groups);
+    const parts = splitByGroup(shown, groups, folderOf ? { folderOf } : {});
     const grouped = !q && (parts.length > 1 || parts[0]?.label);
     setChildren(
       list,
@@ -68,10 +78,12 @@ export function pickPerson({ title, items, groups = [], selected = null, none = 
                 class: "r two",
                 role: "radio",
                 "aria-checked": selected ? "false" : "true",
-                style: { gridTemplateColumns: "32px minmax(0,1fr) 20px" },
+                style: { gridTemplateColumns: faces ? "32px minmax(0,1fr) 20px" : "minmax(0,1fr) 20px" },
                 onClick: () => choose(null),
               },
-              h("span", { class: "ph", style: { width: "32px", height: "32px", borderRadius: "50%" } }, "—"),
+              faces
+                ? h("span", { class: "ph", style: { width: "32px", height: "32px", borderRadius: "50%" } }, "—")
+                : null,
               h("span", { class: "hint" }, none),
               h("span", { class: selected ? "tick" : "tick on", "aria-hidden": "true" }),
             ),

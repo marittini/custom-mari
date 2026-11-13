@@ -2,6 +2,7 @@
 // (show / more / hidden, same choice as RP), and the composer offers the same quick-reply menu.
 // Convo rooms keep the Engine's own memory system; Mari Kit's memory button is RP only.
 
+import { quickButton } from "../lib/quick.js";
 import { h, icon, dots, I, setChildren } from "../lib/h.js";
 import { api } from "../lib/api.js";
 import {
@@ -171,7 +172,22 @@ export function convoScreen({ mount, args, go, back }) {
     head,
     scroller,
     quickLayer,
-    h("div", { class: "cmp", style: { background: "var(--paper)" } }, input, trBtn, qrBtn, sendBtn),
+    h(
+      "div",
+      { class: "cmp", style: { background: "var(--paper)" } },
+      quickButton({
+        getChat: () => chat,
+        go,
+        changed: async () => {
+          await load(false);
+          await loadMe();
+        },
+      }),
+      input,
+      trBtn,
+      qrBtn,
+      sendBtn,
+    ),
   );
 
   function grow() {

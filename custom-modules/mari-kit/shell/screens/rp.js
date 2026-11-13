@@ -2,6 +2,7 @@
 // message tools follow the viewer's show / more / hidden choice, and the composer offers the quick-reply menu
 // (guide reply + the Engine's own custom quick replies).
 
+import { quickButton } from "../lib/quick.js";
 import { h, icon, dots, I, setChildren } from "../lib/h.js";
 import { api } from "../lib/api.js";
 import { data, characterIndex, chatTitle, chatMeta, messageText, messageWindow, charLabel } from "../lib/data.js";
@@ -123,7 +124,17 @@ export function rpScreen({ mount, args, go, back }) {
     icon(I.send, 16, 2),
   );
   const quickLayer = h("div");
-  const composer = h("div", { class: "cmp" }, input, trBtn, qrBtn, sendBtn);
+  const quickBtn = quickButton({
+    getChat: () => chat,
+    getMemory: () => memory,
+    organize: () => organize(),
+    go,
+    changed: async () => {
+      await load(false);
+      await loadExtras();
+    },
+  });
+  const composer = h("div", { class: "cmp" }, quickBtn, input, trBtn, qrBtn, sendBtn);
   mount.append(head, scroller, quickLayer, composer);
 
   function grow() {

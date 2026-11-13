@@ -94,6 +94,30 @@ if (id === "mari-kit") {
   assert.deepEqual(radio.normalizeRadioSettings({ rooms: ["a", 3] }).rooms, ["a"]);
   assert.throws(() => radio.parseEpisode({ segments: [] }), /no script/);
   assert.equal(radio.parseEpisode({ title: "", segments: [{ type: "x", text: "hi" }] }).segments[0].type, "dj");
+  // 둘이 진행: each host line keeps who says it; the letter has no host; one host never gets one.
+  {
+    const two = radio.parseEpisode(
+      {
+        segments: [
+          { type: "dj", host: 2, text: "a" },
+          { type: "letter", host: 2, text: "b" },
+          { type: "dj", text: "c" },
+        ],
+      },
+      { co: true },
+    ).segments;
+    assert.deepEqual(
+      two.map((x) => x.host),
+      [2, undefined, 1],
+    );
+    assert.equal("host" in radio.parseEpisode({ segments: [{ type: "dj", host: 2, text: "a" }] }).segments[0], false);
+    assert.equal(radio.normalizeRadioSettings({ djId: "a", coDjId: "a" }).coDjId, "");
+    assert.equal(radio.normalizeRadioSettings({ djId: "a", coDjId: "b" }).coDjId, "b");
+    assert.match(
+      radio.radioPrompt({ dj: { name: "A" }, co: { name: "B" }, guide: "g", time: { when: "w", label: "l" } }),
+      /co-hosted by A \(host 1\) and B/,
+    );
+  }
   assert.match(
     radio.radioPrompt({
       dj: { name: "DJ", brief: "" },
