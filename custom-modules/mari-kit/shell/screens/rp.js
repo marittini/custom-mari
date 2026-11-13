@@ -33,6 +33,7 @@ import {
   toolLabel,
 } from "../lib/actions.js";
 import { savedTranslation, shownText, hideCues, translate } from "../lib/translate.js";
+import { watchGeneration, stopGeneration } from "../lib/generation.js";
 
 export function rpScreen({ mount, args, go, back }) {
   const chatId = args[0];
@@ -702,6 +703,7 @@ export function rpScreen({ mount, args, go, back }) {
         // A reader who scrolled up to older lines is left where they are.
         if (follow) scroller.scrollTop = scroller.scrollHeight;
         autoplay();
+        await recovery.check();
       }
     }
   }
@@ -719,9 +721,12 @@ export function rpScreen({ mount, args, go, back }) {
 
   async function stopGenerating() {
     try {
-      await api.post(`/generate/abort`, { chatId });
-    } catch {}
-    abort?.abort();
+      await stopGeneration(chatId);
+      abort?.abort();
+      await recovery.check();
+    } catch (error) {
+      toast(`중단하지 못했어요: ${error.message}`);
+    }
   }
 
   async function send() {
@@ -793,10 +798,27 @@ export function rpScreen({ mount, args, go, back }) {
     }
   });
   const off = tts.onTts(() => alive && draw());
+  let recoveredJob = null;
+  const recovery = watchGeneration(chatId, {
+    isAttached: () => !!abort,
+    onState: (state) => {
+      busy = state?.active === true;
+      if (busy && !recoveredJob)
+        recoveredJob = startJob("이 채팅에서 생성 중…", { label: "멈추기", fn: stopGenerating });
+      if (!busy) {
+        recoveredJob?.();
+        recoveredJob = null;
+      }
+      draw();
+    },
+    onSettled: () => load(false, true),
+  });
   load(true);
   return {
     dispose: () => {
       alive = false;
+      recovery.dispose();
+      recoveredJob?.();
       off();
       strip.dispose();
       scroll.dispose();

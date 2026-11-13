@@ -1307,7 +1307,11 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
    * POST /api/generate
    * Streams AI generation via Server-Sent Events.
    */
-  const executeGeneration: GenerationRunner = async (request, reply) => {
+  const executeGeneration = async (
+    request: SchemaInput<typeof generateRequestSchema>,
+    reply: GenerationOutput,
+    onRegistered?: (abortController: AbortController) => void,
+  ) => {
     const input = generateRequestSchema.parse(request);
     const chatGenerationTimeoutMs = getChatGenerationTimeoutMs();
     const requestDebug = input.debugMode === true;
@@ -1502,6 +1506,7 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
       swipeIndex: null,
     };
     activeGenerations.set(input.chatId, activeGenerationRecord);
+    onRegistered?.(abortController);
     const releaseActiveGeneration = () => {
       if (activeGenerations.get(input.chatId)?.abortController === abortController) {
         activeGenerations.delete(input.chatId);
@@ -16172,7 +16177,21 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
     } catch (error) {
       return rejectGenerationOutput(output, 409, { error: (error as Error).message, code: "room_generation_required" });
     }
-    return runWithRoomGeneration(policy, () => executeGeneration(input, output));
+    let registeredAbortController: AbortController | undefined;
+    try {
+      return await runWithRoomGeneration(policy, () =>
+        executeGeneration(input, output, (abortController) => {
+          registeredAbortController = abortController;
+        }),
+      );
+    } finally {
+      if (
+        registeredAbortController &&
+        activeGenerations.get(input.chatId)?.abortController === registeredAbortController
+      ) {
+        activeGenerations.delete(input.chatId);
+      }
+    }
   };
 
   app.post("/", async (req, reply) => runGeneration(generateRequestSchema.parse(req.body), reply));

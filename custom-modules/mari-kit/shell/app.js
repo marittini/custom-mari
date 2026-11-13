@@ -22,6 +22,7 @@ const SCREENS = {
   library: () => import("./screens/library.js").then((m) => m.libraryScreen),
   convos: () => import("./screens/convos.js").then((m) => m.convosScreen),
   settings: () => import("./screens/settings.js").then((m) => m.settingsScreen),
+  generations: () => import("./screens/generations.js").then((m) => m.generationsScreen),
   rp: () => import("./screens/rp.js").then((m) => m.rpScreen),
   convo: () => import("./screens/convo.js").then((m) => m.convoScreen),
   character: () => import("./screens/character.js").then((m) => m.characterScreen),
