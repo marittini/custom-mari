@@ -3,6 +3,8 @@
 // Convo rooms keep the Engine's own memory system; Mari Kit's memory button is RP only.
 
 import { quickButton } from "../lib/quick.js";
+import { swipeNav } from "../lib/swipes.js";
+import { chatScrolling } from "../lib/scrolling.js";
 import { activityStrip, startJob } from "../lib/activity.js";
 import { h, icon, dots, I, setChildren } from "../lib/h.js";
 import { api } from "../lib/api.js";
@@ -170,9 +172,11 @@ export function convoScreen({ mount, args, go, back }) {
   );
   const quickLayer = h("div");
   const strip = activityStrip();
+  const scroll = chatScrolling(scroller);
   mount.append(
     head,
     scroller,
+    scroll.anchor,
     quickLayer,
     strip.el,
     h(
@@ -440,6 +444,7 @@ export function convoScreen({ mount, args, go, back }) {
       );
     }
     const lastMine = messages.map((m) => m.role === "user").lastIndexOf(true);
+    const lastReplyId = [...messages].reverse().find((m) => m.role === "assistant")?.id;
     bubbles.forEach((bub, i) => {
       const { m, me } = bub;
       if (bub.ev) {
@@ -498,7 +503,18 @@ export function convoScreen({ mount, args, go, back }) {
         ),
         bub.sub ? h("span", { class: "bub-tr" }, bub.sub) : null,
       );
-      if (on && bub.last && (m.swipeCount || 1) > 1) wrap.append(swipeNav(m));
+      // Other replies to this turn: always under the newest reply (› there asks for a new one), else when tapped.
+      const newest = m.id === lastReplyId;
+      if (bub.last && m.role === "assistant" && (newest || (on && (m.swipeCount || 1) > 1)))
+        wrap.append(
+          swipeNav({
+            chatId,
+            message: m,
+            reload: () => load(),
+            regenerate: newest ? () => generate({ regenerateMessageId: m.id }) : null,
+            busy,
+          }),
+        );
       if (on && bub.last) {
         const { shown, more } = toolsFor(m);
         wrap.append(
@@ -684,36 +700,6 @@ export function convoScreen({ mount, args, go, back }) {
   }
 
   // Other replies to the same turn (the Engine's swipes): shown under a tapped message that has them.
-  function swipeNav(m) {
-    const i = m.activeSwipeIndex ?? 0;
-    const n = m.swipeCount || 1;
-    const set = async (to) => {
-      try {
-        await api.put(`/chats/${encodeURIComponent(chatId)}/messages/${encodeURIComponent(m.id)}/active-swipe`, {
-          index: to,
-        });
-        await load();
-      } catch (error) {
-        toast(error.message);
-      }
-    };
-    const stop = (fn) => (e) => (e.stopPropagation(), fn());
-    return h(
-      "div",
-      { class: "hint", style: { display: "flex", alignItems: "center", gap: "4px", marginTop: "6px" } },
-      h(
-        "button",
-        { type: "button", class: "ma", "aria-label": "이전 답", disabled: i <= 0, onClick: stop(() => set(i - 1)) },
-        icon(I.back, 14),
-      ),
-      h("span", { style: { fontVariantNumeric: "tabular-nums" } }, `${i + 1} / ${n}`),
-      h(
-        "button",
-        { type: "button", class: "ma", "aria-label": "다음 답", disabled: i >= n - 1, onClick: stop(() => set(i + 1)) },
-        icon("M9 5l7 7-7 7", 14),
-      ),
-    );
-  }
 
   function tool(id, m) {
     picked = null;
@@ -740,9 +726,11 @@ export function convoScreen({ mount, args, go, back }) {
         signal: abort.signal,
         onToken: (text) => {
           if (!alive) return;
+          // Follow the new text only for a reader at the bottom (someone reading older messages stays put).
+          const follow = scroll.nearBottom();
           live = text;
           draw();
-          scroller.scrollTop = scroller.scrollHeight;
+          if (follow) scroller.scrollTop = scroller.scrollHeight;
         },
         onSaved: (saved) => {
           if (saved) produced = true;
@@ -762,9 +750,10 @@ export function convoScreen({ mount, args, go, back }) {
       abort = null;
       if (alive) {
         const before = new Set(messages.map((m) => m.id));
+        const follow = scroll.nearBottom();
         await load(false, true);
         ringCheck?.();
-        scroller.scrollTop = scroller.scrollHeight;
+        if (follow) scroller.scrollTop = scroller.scrollHeight;
         // 자동 재생: the character messages this turn added, in order.
         if (ttsConfig && voiceSet?.convo && voiceSet.autoplay !== "off")
           tts.speakSequence(messages.filter((m) => m.role === "assistant" && !before.has(m.id)).map(messageRequest));
@@ -846,6 +835,7 @@ export function convoScreen({ mount, args, go, back }) {
   return {
     dispose: () => {
       strip.dispose();
+      scroll.dispose();
       alive = false;
       off();
       tts.stop();

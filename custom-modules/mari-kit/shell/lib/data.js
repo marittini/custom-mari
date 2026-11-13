@@ -1,6 +1,6 @@
 // Engine data the screens share, fetched once per load and refreshed on demand.
 
-import { api, characterCard, parseJson, chatWriteCount } from "./api.js";
+import { api, characterCard, parseJson, chatWriteCount, touchedChats } from "./api.js";
 
 let chatsP = null;
 let chatsAt = 0;
@@ -99,9 +99,13 @@ export const data = {
    * Engine keeps on recent replies. Kept per chat until the chat's last activity changes.
    */
   previews: async (chats) => {
-    const want = chats.filter((c) => previewMemo.get(c.id)?.key !== activityKey(c));
+    const want = chats.filter((c) => touchedChats.has(c.id) || previewMemo.get(c.id)?.key !== activityKey(c));
     if (want.length) {
-      const got = await api.get(`/mari-kit/shell/previews?ids=${want.map((c) => encodeURIComponent(c.id)).join(",")}`);
+      const fresh = want.filter((c) => touchedChats.has(c.id)).map((c) => encodeURIComponent(c.id));
+      const got = await api.get(
+        `/mari-kit/shell/previews?ids=${want.map((c) => encodeURIComponent(c.id)).join(",")}${fresh.length ? `&fresh=${fresh.join(",")}` : ""}`,
+      );
+      for (const c of want) touchedChats.delete(c.id);
       for (const c of want)
         previewMemo.set(c.id, { key: activityKey(c), value: got?.[c.id] || { line: "", assistant: "" } });
     }

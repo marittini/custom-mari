@@ -3,6 +3,7 @@
 //   #/voice/settings   감정 표현 · 자동 재생 · 쓰는 곳 · 대사 옆 버튼 · 엔진 TTS 연결
 //   #/voice/tune       ElevenLabs 다듬기 (account voice settings, key kept on the Mari Kit server)
 
+import { prefs, setPrefs } from "../lib/prefs.js";
 import { h, icon, I, setChildren, dots } from "../lib/h.js";
 import { api, characterCard } from "../lib/api.js";
 import { data, firstLetter } from "../lib/data.js";
@@ -490,7 +491,20 @@ export function voiceScreen({ mount, args, go, back }) {
         ),
         toggle("RP에서 쓰기", "대사를 화자별 목소리로", "rp"),
         toggle("Convo에서 쓰기", "메시지를 그 사람 목소리로", "convo"),
-        toggle("대사 옆 재생 버튼", "엔진 화면 · 끄면 대사를 눌러 재생", "lineButtons"),
+        // Mari's own switch (this phone): the Engine's switch below is for the Engine's chat screen only.
+        h(
+          "button",
+          {
+            type: "button",
+            class: "grow",
+            role: "switch",
+            "aria-checked": prefs().lineVoice !== false ? "true" : "false",
+            onClick: () => (setPrefs({ lineVoice: prefs().lineVoice === false }), draw()),
+          },
+          h("span", null, "Mari 화면 · 대사 옆 ▶ 버튼", h("small", null, "RP 대사마다 바로 듣기 버튼")),
+          sw(prefs().lineVoice !== false),
+        ),
+        toggle("엔진 화면 · 대사 옆 재생 버튼", "엔진 채팅 화면에서만 · 끄면 대사를 눌러 재생", "lineButtons"),
       ),
       h("p", { class: "label", style: { padding: "10px 4px 0" } }, "방마다 음성 지침 끄기 · 채팅 설정 › 확장"),
       h("div", { class: "gsec" }, h("span", null, "ElevenLabs")),
