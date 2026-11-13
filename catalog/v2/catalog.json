@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "generatedAt": "2026-11-13T00:22:32.929Z",
+  "generatedAt": "2026-11-13T03:36:46.657Z",
   "packages": [
     {
       "manifest": {
@@ -4677,7 +4677,7 @@
         },
         "id": "mari-kit",
         "name": "Mari Kit",
-        "version": "0.10.1",
+        "version": "0.11.0",
         "description": "개인 기능 모음(TTS·번역·날씨·기억)을 엔진 소스 수정 없이 붙이는 패키지입니다.",
         "engine": {
           "min": "2.5.2",
@@ -4715,7 +4715,7 @@
         "restartRequired": true,
         "builtAgainst": {
           "engineVersion": "2.5.2",
-          "engineCommit": "e73ac6c778a57efe3f2ef6f0ae06ef69f81478ae"
+          "engineCommit": "ec255b630992c16e4e489b713e02db14824f0355"
         },
         "files": [
           {
@@ -4735,8 +4735,8 @@
           },
           {
             "path": "credit.server.mjs",
-            "sha256": "d607e75e7f63d943fd9bdbc7120b5c47d419c3dd01b8404958fef3a67a70ade0",
-            "bytes": 17812
+            "sha256": "cc13499c6119466cc1620d3203705c5ba28f11df92f57fc6e9f58bae226fe322",
+            "bytes": 23788
           },
           {
             "path": "fonts.server.mjs",
@@ -4785,8 +4785,8 @@
           },
           {
             "path": "tts.server.mjs",
-            "sha256": "c73686738e76f86a2e8bd05dd18a4faa0e0739298cbbbdc00d2437851783ad33",
-            "bytes": 13119
+            "sha256": "286f17753c8fc9b91c3641cd991c081dbb86c59acf1121c298ff8bfb91047ca8",
+            "bytes": 13126
           },
           {
             "path": "weather.server.mjs",
@@ -4795,8 +4795,8 @@
           },
           {
             "path": "shell/app.js",
-            "sha256": "dcbdfd0f68c09cea8db7c765390bdf8f8d1a904451d8140f7ed628ace1786879",
-            "bytes": 8517
+            "sha256": "a950a89b0568b6c9574df80f3c832c827c75cd7c63cb96aef9d738428c28e49b",
+            "bytes": 8595
           },
           {
             "path": "shell/lib/actions.js",
@@ -4805,8 +4805,8 @@
           },
           {
             "path": "shell/lib/api.js",
-            "sha256": "bf34d11d7a66aadea1f061078b35332ae7cbf4731fd5f22d057ce8f17effaa35",
-            "bytes": 3555
+            "sha256": "180986d859d4a1e56d561275a92d9e7b1e81a59d165d31a42c595cf749f2bfcf",
+            "bytes": 4668
           },
           {
             "path": "shell/lib/autonomy.js",
@@ -4820,8 +4820,8 @@
           },
           {
             "path": "shell/lib/credit.js",
-            "sha256": "127f7291e39fcbb982ee29ed9c2ff7862454670e8ebbb01284acd0aa16e455ee",
-            "bytes": 12203
+            "sha256": "91ddc6d404f7b281e55baf99aed87470731d84fc0f72ddb2cc585c6a5d7b25ab",
+            "bytes": 13406
           },
           {
             "path": "shell/lib/data.js",
@@ -4860,8 +4860,8 @@
           },
           {
             "path": "shell/lib/prefs.js",
-            "sha256": "fcc950c549709be3b24afb8cfc1ceb8210139cbdf598725e465462274930e49b",
-            "bytes": 4636
+            "sha256": "f7429ec718eb68cf6d2fa0577760c374b5f60cce986a46d153668621985fdc90",
+            "bytes": 4813
           },
           {
             "path": "shell/lib/render.js",
@@ -4880,8 +4880,8 @@
           },
           {
             "path": "shell/lib/translate.js",
-            "sha256": "c011b2eef0b3498e9209d7ae9061abd4601f758753713521f140a8f04b2adc09",
-            "bytes": 3320
+            "sha256": "553414d6b68346517656eeeb06308d5eb2e9f278f3c3118eeb7431dea586b5ef",
+            "bytes": 3567
           },
           {
             "path": "shell/lib/tts.js",
@@ -4890,8 +4890,8 @@
           },
           {
             "path": "shell/lib/ui.js",
-            "sha256": "0faac7f010952a7d04d8c50ad18762f9434547e4ddd4e18a6f05568d66c4ada4",
-            "bytes": 8952
+            "sha256": "fd22d87b9162dbd9a612728beb82840de3ef35135aeb60e13019556acf89ae36",
+            "bytes": 9361
           },
           {
             "path": "shell/lib/voice.js",
@@ -4910,23 +4910,28 @@
           },
           {
             "path": "shell/screens/chat-settings.js",
-            "sha256": "26eb28ad35f70158f1754ab252b899ad220f99963e4ce9cca6a70edeeead5341",
-            "bytes": 42345
+            "sha256": "5eacc1036de39167e580d52494ac9e175a097ebdd236ac2e1a6154fbf8b6f5c3",
+            "bytes": 43911
           },
           {
             "path": "shell/screens/convo.js",
-            "sha256": "56fee4ce7a8c07022b3d515cfeb7a8a98ff6cced06ac04f35c2a6e31263c3254",
-            "bytes": 27427
+            "sha256": "56a9a4dd7252c889788841d597e64bc17a97956823ae2d1c7acafe753727e55b",
+            "bytes": 27523
           },
           {
             "path": "shell/screens/convos.js",
-            "sha256": "7da0d98ce97e6c32936a70c35c9973b357ccc6cd6760b44b11beab0d50e3a9af",
-            "bytes": 5832
+            "sha256": "dea7e2e6f0add6304dba3297ec453487890f9a5b61aed594f043115ff6ed6ae2",
+            "bytes": 5778
           },
           {
             "path": "shell/screens/credit.js",
-            "sha256": "26507f0089632871bffd6b29c6b7089458b8c445ba105172b7dca069f3610139",
-            "bytes": 12249
+            "sha256": "fafae9c0932d91cb27d7105e0ecb78c11be1c4491f4fcd419c74d08f641c2d3e",
+            "bytes": 15584
+          },
+          {
+            "path": "shell/screens/folders.js",
+            "sha256": "2a97d847fda7696c54bf943700fd9dba744716ce5e6d5766fadbce0cddbc5cfd",
+            "bytes": 11186
           },
           {
             "path": "shell/screens/groups.js",
@@ -4940,13 +4945,13 @@
           },
           {
             "path": "shell/screens/library.js",
-            "sha256": "68d4005227e828048381641ce6f9f842ee941281f8f323df2edbd73f3bdd003b",
-            "bytes": 10512
+            "sha256": "c392737d2455ccf7346eabbca28554078282b6c3112f472998a73b6c7202e903",
+            "bytes": 10056
           },
           {
             "path": "shell/screens/manage.js",
-            "sha256": "178e43d54c1e26463d0e0bac71b5aab1cdd367471910fb67d1bf38fd52438a71",
-            "bytes": 19509
+            "sha256": "4da06b5df8b00520ecd7acafd50f79c4412fdf77800552f43e7c7065099b318b",
+            "bytes": 20317
           },
           {
             "path": "shell/screens/memory.js",
@@ -4955,8 +4960,8 @@
           },
           {
             "path": "shell/screens/radio.js",
-            "sha256": "cc548f98d6094836de11c00d7e874998764041c83884a865fb4f836e3eaf1dda",
-            "bytes": 22786
+            "sha256": "c65b6095d8dbe885f3d72e243a66bca704ee0f265cf636fe1de1542790cb4883",
+            "bytes": 23420
           },
           {
             "path": "shell/screens/reader.js",
@@ -4965,8 +4970,8 @@
           },
           {
             "path": "shell/screens/rp.js",
-            "sha256": "f0904e0814bb4bec64f2b2f547aba6cdb2acb4d2c55ea91d380e24cb22425cae",
-            "bytes": 23909
+            "sha256": "72bb92a962af9a56ee863586e96e29424d4bbf9284ab431034b2e7dd09c3b884",
+            "bytes": 24203
           },
           {
             "path": "shell/screens/schedule.js",
@@ -4995,16 +5000,16 @@
           },
           {
             "path": "shell/shell.css",
-            "sha256": "8cdd66e94d8b90a651a9a536a3f784ef046ad5b94db817a18b1086141a722374",
-            "bytes": 39569
+            "sha256": "a8cf5f8444274b689a7a45056ca0a579c4993f81cc9999d528357115b4fcf42b",
+            "bytes": 39927
           }
         ]
       },
       "category": "misc",
       "artifact": {
-        "url": "https://raw.githubusercontent.com/marittini/custom-mari/mari-catalog/artifacts/mari-kit-0.10.1.zip",
-        "sha256": "e39628fffcc173d1cd36b9a2e3c0cee6ee9a90133f3b3852efcc193699ba6b8b",
-        "bytes": 261870
+        "url": "https://raw.githubusercontent.com/marittini/custom-mari/mari-catalog/artifacts/mari-kit-0.11.0.zip",
+        "sha256": "cb0f3c01a3f6a22ffb55348417a4dc295eaac7fc17c4cfcc678c5fdab1ff6014",
+        "bytes": 269777
       },
       "documentationUrl": "https://github.com/marittini/custom-mari/tree/main/custom-modules"
     }
