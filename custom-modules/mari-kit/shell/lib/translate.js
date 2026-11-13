@@ -68,13 +68,13 @@ export async function translate(text, direction, meta, chatId) {
   }
 }
 
-/** A message's saved translation, when it is shown and still matches the text on screen (not an older swipe). */
+/** Raw saved translation: retain speaker tags and cues until after speech metadata has been parsed. */
 export function savedTranslation(m) {
   const extra = typeof m?.extra === "string" ? parseJson(m.extra, {}) || {} : m?.extra || {};
   const text = typeof extra.translation === "string" ? extra.translation.trim() : "";
   if (!text || extra.translationHidden === true) return "";
   if (typeof extra.translationSource === "string" && extra.translationSource !== m.content) return "";
-  return hideCues(text, m.content);
+  return text;
 }
 
 // Voice cues are read by the TTS and never shown. The Engine's automatic translation sends a reply as written,
@@ -84,19 +84,19 @@ export function savedTranslation(m) {
 const BRACKETED = /[ \t]*(?:\[[^\]\n]{1,40}\]|［[^］\n]{1,40}］|【[^】\n]{1,40}】)/g;
 const PARENS = /[ \t]*(?:\([^()\n]{1,20}\)|（[^（）\n]{1,20}）)/g;
 const HAS_CUES = /\[[a-z][a-z ,.'-]{0,40}\]/;
-export function hideCues(text, original = "") {
+export function hideCues(text, original = "", trim = true) {
   let out = String(text).replace(BRACKETED, "");
   if (HAS_CUES.test(String(original))) out = out.replace(PARENS, "");
-  return out
+  out = out
     .replace(/(["“「『])[ \t]+/g, "$1")
     .replace(/[ \t]{2,}/g, " ")
-    .replace(/[ \t]+([,.!?…])/g, "$1")
-    .trim();
+    .replace(/[ \t]+([,.!?…])/g, "$1");
+  return trim ? out.trim() : out;
 }
 
 /** What a message shows: { main, sub } — the translation in place (display-only) or under the original. */
 export function shownText(m, meta, original) {
-  const tr = savedTranslation(m);
+  const tr = hideCues(savedTranslation(m), m.content);
   if (!tr) return { main: original, sub: "" };
   return meta?.translationDisplayOnly === true ? { main: tr, sub: "" } : { main: original, sub: tr };
 }

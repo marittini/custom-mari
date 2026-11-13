@@ -11,7 +11,14 @@ import { api } from "../lib/api.js";
 import { data, characterIndex, chatTitle, chatMeta, messageText, messageWindow, charLabel } from "../lib/data.js";
 import { TOOL_DEFS, toolPlace, prefs } from "../lib/prefs.js";
 import { olderButton, topBar, toast, errorBox, fitMenus, jumpTo } from "../lib/ui.js";
-import { parseMessage, inline, buildPronunciations, applyPronunciations, pickVoice } from "../lib/render.js";
+import {
+  parseMessage,
+  resolveTranslationSpeechLines,
+  inline,
+  buildPronunciations,
+  applyPronunciations,
+  pickVoice,
+} from "../lib/render.js";
 import * as tts from "../lib/tts.js";
 import { syncVoiceSettings } from "../lib/voice.js";
 import { runSlash } from "../lib/slash.js";
@@ -25,7 +32,7 @@ import {
   hiddenFromAI,
   toolLabel,
 } from "../lib/actions.js";
-import { savedTranslation, shownText, translate } from "../lib/translate.js";
+import { savedTranslation, shownText, hideCues, translate } from "../lib/translate.js";
 
 export function rpScreen({ mount, args, go, back }) {
   const chatId = args[0];
@@ -388,16 +395,19 @@ export function rpScreen({ mount, args, go, back }) {
 
   function assistantBlock(m, isLast) {
     const parsed = parseMessage(messageText(m), m.characterId);
-    // speakAs(seg): the line of the ORIGINAL that a shown line reads aloud (itself, or for a translation shown in
-    // the original's place, the original line at the same position).
+    const original = parseMessage(m.content, m.characterId);
+    const originalSpeech = resolveTranslationSpeechLines(original, parsed);
+    // Read from the original only after validating the displayed dialogue's correspondence.
     const draw_ = (shown, speakAs, tag) =>
       shown.paragraphs.map((para) =>
         h(
           "p",
           { style: { textAlign: prefs().align } },
           para.map((seg) => {
-            if (seg.kind === "text") return inline(seg.text);
+            const text = tag === "t" ? hideCues(seg.text, m.content, false) : seg.text;
+            if (seg.kind === "text") return inline(text);
             const line = speakAs(seg);
+            if (ttsConfig && !line?.spoken) return inline(text);
             const key = `${m.id}:${tag}${seg.index}`;
             const on = picked === key;
             const node = h(
@@ -413,7 +423,7 @@ export function rpScreen({ mount, args, go, back }) {
                   draw();
                 },
               },
-              inline(seg.text),
+              inline(text),
             );
             // A small play/stop right after each spoken line (설정 › 음성 › Mari 화면 대사 옆 ▶), one tap to listen.
             const quick = ttsConfig && prefs().lineVoice === true && line?.spoken ? lineButton(line) : null;
@@ -422,14 +432,16 @@ export function rpScreen({ mount, args, go, back }) {
           }),
         ),
       );
-    const paragraphs = draw_(parsed, (seg) => seg, "");
+    const paragraphs = draw_(parsed, (seg) => originalSpeech[seg.index], "");
     const translation = savedTranslation(m);
+    const translated = parseMessage(translation, m.characterId);
+    const translationSpeech = resolveTranslationSpeechLines(original, translated);
     // 원문 대신 번역: the translation takes the original's place; its quoted lines read the original's lines in order.
     const only = translation && chatMeta(chat).translationDisplayOnly === true;
     return h(
       "div",
       { class: hiddenFromAI(m) ? "read hid" : "read", "data-message-id": m.id },
-      only ? draw_(parseMessage(translation, m.characterId), (seg) => parsed.lines[seg.index], "t") : paragraphs,
+      only ? draw_(translated, (seg) => translationSpeech[seg.index], "t") : paragraphs,
       translation && !only
         ? h(
             "div",
@@ -442,7 +454,7 @@ export function rpScreen({ mount, args, go, back }) {
                 whiteSpace: "pre-wrap",
               },
             },
-            translation,
+            inline(hideCues(translation, m.content)),
           )
         : null,
       // Other replies to this turn; on the newest reply always, so › can ask for a new one.
