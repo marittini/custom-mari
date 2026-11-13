@@ -72,14 +72,23 @@ export const data = {
       )
       .catch(() => [])),
   /** The Engine's own synced UI settings (quick replies live here). */
+  /**
+   * The Engine's UI settings (quick replies live here), the newer of the two copies the Engine keeps: the server's
+   * (with __updatedAt) and this browser's, like the Engine's own sync decides. A reply added in the Engine on this
+   * phone shows even when its server copy has not caught up.
+   */
   engineUi: () =>
     uiP ||
     (uiP = api
       .get("/app-settings/ui")
       .then((res) => {
-        // The Engine stores its synced UI settings as one JSON string.
         const value = typeof res?.value === "string" ? JSON.parse(res.value) : res?.value;
-        return value && typeof value === "object" ? value : localUi();
+        const server = value && typeof value === "object" ? value : null;
+        const local = localUi();
+        const localAt = Number(localStorageGet("marinara-engine-ui-updated-at")) || 0;
+        const serverAt = Number(server?.__updatedAt) || 0;
+        if (!server) return local;
+        return Object.keys(local).length && localAt > serverAt ? { ...server, ...local } : server;
       })
       .catch(() => localUi())),
   messages: (chatId, limit) =>
@@ -162,6 +171,14 @@ export function messageWindow(chatId, page = 40) {
       return got.length;
     },
   };
+}
+
+function localStorageGet(key) {
+  try {
+    return localStorage.getItem(key);
+  } catch {
+    return null;
+  }
 }
 
 function localUi() {
