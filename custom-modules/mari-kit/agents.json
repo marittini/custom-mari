@@ -6,6 +6,7 @@
     "author": "marittini",
     "phase": "post_processing",
     "enabledByDefault": false,
+    "runtimeDisabled": true,
     "category": "misc",
     "modeAllowlist": ["roleplay", "conversation"],
     "defaultTools": [],

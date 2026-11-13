@@ -17,12 +17,19 @@ const [mariKit] = packagedAgentDefinitionsSchema.parse(
 );
 assert.ok(mariKit);
 assert.equal(mariKit.execution, "feature");
+assert.equal(mariKit.runtimeDisabled, true, "catalog updates also skip the LLM pipeline on existing Engines");
 assert.equal(mariKit.defaultPromptTemplate, "");
 
 const definitions = [
   mariKit,
-  { ...mariKit, id: "host-fixture", execution: "host" as const },
-  { ...mariKit, id: "pipeline-fixture", execution: "pipeline" as const, defaultPromptTemplate: "Return a note." },
+  { ...mariKit, id: "host-fixture", execution: "host" as const, runtimeDisabled: false },
+  {
+    ...mariKit,
+    id: "pipeline-fixture",
+    execution: "pipeline" as const,
+    runtimeDisabled: false,
+    defaultPromptTemplate: "Return a note.",
+  },
 ];
 replaceBuiltInAgentDefinitions(definitions);
 
