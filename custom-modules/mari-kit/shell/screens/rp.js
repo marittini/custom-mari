@@ -323,12 +323,14 @@ export function rpScreen({ mount, args, go, back }) {
     );
   }
 
+  // Tapping a spoken line opens this small popup under it: 듣기 / 멈춤, and 다시 만들기 once a clip exists.
   function linePopover(m, line) {
     const req = speakRequest(line);
-    const playing = tts.activeLine() === req.key;
+    const state = tts.ttsState();
+    const mine = state.key === req.key;
     const has = cachedLines.has(req.key);
     const play = async (fresh) => {
-      if (playing && !fresh) return tts.stop();
+      if (mine && !fresh) return tts.stop();
       if (!line.spoken) return toast("읽을 대사가 없어요");
       try {
         if (fresh) await tts.forget(req.key);
@@ -339,42 +341,48 @@ export function rpScreen({ mount, args, go, back }) {
       }
       draw();
     };
+    const button = (label, ic, onClick) =>
+      h(
+        "button",
+        {
+          type: "button",
+          class: "pb",
+          onClick: (e) => {
+            e.stopPropagation();
+            onClick();
+          },
+        },
+        ic,
+        label,
+      );
     return h(
       "span",
       { class: "host" },
       h(
         "span",
         { class: "pop", role: "group", "aria-label": `${line.index + 1}번째 대사` },
-        h(
-          "button",
-          {
-            type: "button",
-            class: "pb",
-            "aria-label": playing ? "멈춤" : has ? "재생" : "음성 만들기",
-            onClick: (e) => {
-              e.stopPropagation();
-              play(false);
-            },
-          },
-          icon(playing ? I.stop : has ? I.play : I.plus, 12, 2),
-        ),
-        has
-          ? h(
-              "button",
-              {
-                type: "button",
-                class: "pb",
-                "aria-label": "다시 생성",
-                onClick: (e) => {
-                  e.stopPropagation();
-                  play(true);
-                },
-              },
-              icon(["M20 12a8 8 0 1 1-2.3-5.7", "M20 4v5h-5"], 12, 2),
-            )
+        mine && state.phase === "loading"
+          ? button("만드는 중… 멈춤", h("span", { class: "act-dot" }), () => tts.stop())
+          : mine
+            ? button("멈춤", icon(I.stop, 14, 2), () => play(false))
+            : button("듣기", icon(I.play, 14, 2), () => play(false)),
+        has && !mine
+          ? button("다시 만들기", icon(["M20 12a8 8 0 1 1-2.3-5.7", "M20 4v5h-5"], 14, 2), () => play(true))
           : null,
       ),
     );
+  }
+
+  // Keeps an open line popup inside the screen (a line can end at the right edge).
+  function fitPopover() {
+    const pop = page.querySelector(".pop");
+    if (!pop) return;
+    pop.style.transform = "";
+    const r = pop.getBoundingClientRect();
+    const right = r.right - (innerWidth - 12);
+    const left = 12 - r.left;
+    if (right > 0) pop.style.transform = `translateX(${-Math.min(right, r.left - 12)}px)`;
+    else if (left > 0) pop.style.transform = `translateX(${left}px)`;
   }
 
   function assistantBlock(m, isLast) {
@@ -407,7 +415,7 @@ export function rpScreen({ mount, args, go, back }) {
               inline(seg.text),
             );
             // A small play/stop right after each spoken line (설정 › 음성 › Mari 화면 대사 옆 ▶), one tap to listen.
-            const quick = ttsConfig && prefs().lineVoice !== false && line?.spoken ? lineButton(line) : null;
+            const quick = ttsConfig && prefs().lineVoice === true && line?.spoken ? lineButton(line) : null;
             if (!on) return quick ? [node, quick] : node;
             return [node, quick, !ttsConfig ? voiceOffPopover() : line ? linePopover(m, line) : null];
           }),
@@ -554,6 +562,7 @@ export function rpScreen({ mount, args, go, back }) {
     setChildren(sendBtn, icon(busy ? I.stop : I.send, busy ? 14 : 16, 2));
     clampPopover();
     fitMenus(page);
+    fitPopover();
     refreshCached(visible);
   }
 

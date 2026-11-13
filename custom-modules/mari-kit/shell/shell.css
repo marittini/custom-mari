@@ -704,12 +704,13 @@ a {
 }
 .pop {
   position: absolute;
-  top: calc(100% + 6px);
-  left: 0;
+  top: calc(100% + 8px);
+  left: -24px;
   z-index: 3;
   display: inline-flex;
-  gap: 2px;
-  padding: 3px;
+  gap: 0;
+  padding: 2px;
+  line-height: 1;
   border: 1px solid var(--line);
   border-radius: 10px;
   background: var(--surface);
@@ -717,17 +718,23 @@ a {
   white-space: nowrap;
 }
 .pb {
-  width: 28px;
-  height: 28px;
+  min-height: 40px;
   display: inline-flex;
   align-items: center;
   justify-content: center;
+  gap: 6px;
+  padding: 0 14px;
   border: 0;
-  border-radius: 6px;
+  border-radius: 8px;
   background: transparent;
   color: var(--ink);
+  font-size: 14px;
+  font-family: var(--font-ui);
   cursor: pointer;
-  padding: 0;
+}
+.pb + .pb {
+  border-left: 1px solid var(--line);
+  border-radius: 0 8px 8px 0;
 }
 .tools {
   position: relative;
