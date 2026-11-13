@@ -164,16 +164,14 @@ export function rpScreen({ mount, args, go, back }) {
         data.characters(),
         win.reload(tail),
         // Read fresh each time: the screen's length counts what was just written.
-        api
-          .get(`/mari-kit/shell/previews?ids=${encodeURIComponent(chatId)}&fresh=${encodeURIComponent(chatId)}`)
-          .catch(() => null),
+        data.previews([{ id: chatId }], true).catch(() => null),
       ]);
       if (!alive) return;
       chat = c;
       trBtn.hidden = chatMeta(chat).showInputTranslateButton !== true;
       index = characterIndex(chars);
       messages = win.list;
-      total = Number.isFinite(count?.[chatId]?.chars) ? count[chatId].chars : null;
+      total = Number.isFinite(count?.get(chatId)?.chars) ? count.get(chatId).chars : null;
       title.textContent = chatTitle(chat, index);
       sub.textContent = [
         (chat.characterIds || [])

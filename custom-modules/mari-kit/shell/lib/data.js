@@ -92,24 +92,34 @@ export const data = {
       })
       .catch(() => localUi())),
   messages: (chatId, limit) =>
-    api.get(`/chats/${encodeURIComponent(chatId)}/messages${limit ? `?limit=${limit}` : ""}`),
+    api.get(`/chats/${encodeURIComponent(chatId)}/messages?includePromptCache=false${limit ? `&limit=${limit}` : ""}`),
   chat: (chatId) => api.get(`/chats/${encodeURIComponent(chatId)}`),
   /**
    * One line per chat for lists ({ line, assistant }), from Mari Kit's preview route: it never sends the prompt the
    * Engine keeps on recent replies. Kept per chat until the chat's last activity changes.
    */
-  previews: async (chats) => {
-    const want = chats.filter((c) => touchedChats.has(c.id) || previewMemo.get(c.id)?.key !== activityKey(c));
+  previews: async (chats, force = false) => {
+    const want = chats.filter((c) => force || touchedChats.has(c.id) || previewMemo.get(c.id)?.key !== activityKey(c));
+    let fetched = null;
     if (want.length) {
-      const fresh = want.filter((c) => touchedChats.has(c.id)).map((c) => encodeURIComponent(c.id));
-      const got = await api.get(
+      const writes = chatWriteCount();
+      const fresh = want.filter((c) => force || touchedChats.has(c.id)).map((c) => encodeURIComponent(c.id));
+      fetched = await api.get(
         `/mari-kit/shell/previews?ids=${want.map((c) => encodeURIComponent(c.id)).join(",")}${fresh.length ? `&fresh=${fresh.join(",")}` : ""}`,
       );
-      for (const c of want) touchedChats.delete(c.id);
-      for (const c of want)
-        previewMemo.set(c.id, { key: activityKey(c), value: got?.[c.id] || { line: "", assistant: "" } });
+      // A response from before a write must not replace a newer cached preview or consume its invalidation.
+      if (writes === chatWriteCount())
+        for (const c of want) {
+          touchedChats.delete(c.id);
+          previewMemo.set(c.id, {
+            key: fetched?.[c.id]?.at ?? activityKey(c),
+            value: fetched?.[c.id] || { line: "", assistant: "" },
+          });
+        }
     }
-    return new Map(chats.map((c) => [c.id, previewMemo.get(c.id)?.value || { line: "", assistant: "" }]));
+    return new Map(
+      chats.map((c) => [c.id, fetched?.[c.id] || previewMemo.get(c.id)?.value || { line: "", assistant: "" }]),
+    );
   },
 };
 const previewMemo = new Map();
@@ -141,7 +151,7 @@ export function messageWindow(chatId, page = 40) {
      */
     async reload(tail = false) {
       if (tail && list.length) {
-        const rows = await api.get(`${base}?limit=${TAIL}`);
+        const rows = await api.get(`${base}?limit=${TAIL}&includePromptCache=false`);
         const got = Array.isArray(rows) ? rows : [];
         const at = got.length ? list.findIndex((m) => m.id === got[0].id) : -1;
         if (at >= 0) return (list = [...list.slice(0, at), ...got]);
@@ -151,7 +161,7 @@ export function messageWindow(chatId, page = 40) {
       // A reply adds messages at the end; ask a few past what is on screen so the oldest one stays.
       const firstId = list[0]?.id;
       const limit = Math.max(page, list.length + 4);
-      const rows = await api.get(`${base}?limit=${limit}`);
+      const rows = await api.get(`${base}?limit=${limit}&includePromptCache=false`);
       list = Array.isArray(rows) ? rows : [];
       more = list.length >= limit;
       // More arrived than that (another device wrote meanwhile): read back until the reader's first message.
@@ -168,7 +178,7 @@ export function messageWindow(chatId, page = 40) {
       const first = list[0];
       if (!first || !more) return 0;
       const cursor = `${first.createdAt}|${encodeURIComponent(first.id)}`;
-      const rows = await api.get(`${base}?limit=${page}&before=${encodeURIComponent(cursor)}`);
+      const rows = await api.get(`${base}?limit=${page}&before=${encodeURIComponent(cursor)}&includePromptCache=false`);
       const got = Array.isArray(rows) ? rows : [];
       more = got.length >= page;
       list = [...got, ...list];

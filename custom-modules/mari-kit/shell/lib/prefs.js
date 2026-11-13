@@ -2,6 +2,7 @@
 // Nothing here names a font: the default is the device's own UI font.
 
 const KEY = "mari-shell";
+const PENDING_THEME_KEY = "mari-kit:pending-theme";
 
 export const TOOL_DEFS = [
   { id: "regen", label: "다시 생성", icon: "M20 12a8 8 0 1 1-2.3-5.7M20 4v5h-5", def: "show", assistantOnly: true },
@@ -79,12 +80,36 @@ export function prefs() {
 }
 
 export function setPrefs(patch) {
-  cache = { ...prefs(), ...patch };
+  let current = prefs();
+  try {
+    const stored = JSON.parse(localStorage.getItem(KEY) || "{}");
+    if (stored && typeof stored === "object" && !Array.isArray(stored)) current = { ...current, ...stored };
+  } catch {}
+  cache = { ...current, ...patch };
   try {
     localStorage.setItem(KEY, JSON.stringify(cache));
   } catch {}
+  if (patch && (patch.theme === "dark" || patch.theme === "light")) {
+    try {
+      localStorage.setItem(PENDING_THEME_KEY, patch.theme);
+    } catch {}
+  }
   applyPrefs();
   for (const fn of listeners) fn(cache);
+}
+
+/** Apply preference changes made in another tab without re-publishing a pending theme selection. */
+export function installPrefsStorageSync(storage = globalThis.localStorage, events = globalThis.window) {
+  if (!storage || !events?.addEventListener) return () => {};
+  const onStorage = (event) => {
+    if (event.key !== KEY) return;
+    cache = null;
+    const current = prefs();
+    applyPrefs();
+    for (const fn of listeners) fn(current);
+  };
+  events.addEventListener("storage", onStorage);
+  return () => events.removeEventListener("storage", onStorage);
 }
 
 export function onPrefs(fn) {
@@ -157,4 +182,8 @@ export function parseFamilies(css) {
   for (const m of css.matchAll(/font-family\s*:\s*['"]?([^;'"}]+?)['"]?\s*[;}]/g)) out.push(m[1].trim());
   for (const m of css.matchAll(/family=([^:&;)'"]+)/g)) out.push(decodeURIComponent(m[1]).replace(/\+/g, " ").trim());
   return [...new Set(out.filter(Boolean))];
+}
+
+if (typeof window !== "undefined" && typeof localStorage !== "undefined") {
+  installPrefsStorageSync(localStorage, window);
 }
