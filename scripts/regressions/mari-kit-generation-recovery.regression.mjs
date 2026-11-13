@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { stopGeneration, watchGeneration } from "../../custom-modules/mari-kit/shell/lib/generation.js";
 
 class TestDocument extends EventTarget {
-  hidden = true;
+  hidden = false;
 }
 
 function response(body, status = 200) {
@@ -25,6 +25,28 @@ const originalFetch = globalThis.fetch;
 globalThis.document = new TestDocument();
 
 try {
+  {
+    document.hidden = true;
+    let requests = 0;
+    globalThis.fetch = async () => {
+      requests++;
+      return response({ active: true });
+    };
+    const watcher = watchGeneration("background-chat");
+    await flush();
+    await watcher.check();
+    assert.equal(requests, 0, "a hidden page does not fetch generation status");
+    document.hidden = false;
+    document.dispatchEvent(new Event("visibilitychange"));
+    await flush();
+    assert.equal(requests, 1, "returning to the page immediately recovers status");
+    document.hidden = true;
+    document.dispatchEvent(new Event("visibilitychange"));
+    await watcher.check();
+    assert.equal(requests, 1, "backgrounding an active recovery stops further reads");
+    watcher.dispose();
+    document.hidden = false;
+  }
   {
     const states = [
       { active: true, translating: false },

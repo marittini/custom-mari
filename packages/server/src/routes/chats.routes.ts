@@ -935,12 +935,20 @@ function resolveEntryStateOverrides(value: unknown): EntryStateOverrides | undef
   return overrides;
 }
 
-/** Slice 70: Mari's continuity snapshot is prompt-only (her run reads it from storage; the client never does). It was
- *  ~30 % of a long Mari thread's bytes on every load, so the message list leaves it out. Storage is unchanged. */
-export function withoutPromptOnlyExtra<T extends { extra?: unknown }>(rows: T[]): T[] {
+/** Prompt-only extras are omitted from the message list without changing stored rows. */
+export function withoutPromptOnlyExtra<T extends { extra?: unknown }>(
+  rows: T[],
+  options: { includePromptCache?: boolean } = {},
+): T[] {
+  const includePromptCache = options.includePromptCache !== false;
   return rows.map((row) => {
     const raw = row.extra;
-    if (typeof raw === "string" && !raw.includes('"mariWorkspaceContinuity"')) return row;
+    if (
+      typeof raw === "string" &&
+      !raw.includes('"mariWorkspaceContinuity"') &&
+      (includePromptCache || !raw.includes('"cachedPrompt"'))
+    )
+      return row;
     let extra: unknown = raw;
     if (typeof raw === "string") {
       try {
@@ -949,8 +957,13 @@ export function withoutPromptOnlyExtra<T extends { extra?: unknown }>(rows: T[])
         return row;
       }
     }
-    if (!extra || typeof extra !== "object" || !("mariWorkspaceContinuity" in extra)) return row;
-    const { mariWorkspaceContinuity: _promptOnly, ...rest } = extra as Record<string, unknown>;
+    if (!extra || typeof extra !== "object") return row;
+    const rest = { ...(extra as Record<string, unknown>) };
+    const hadContinuity = "mariWorkspaceContinuity" in rest;
+    delete rest.mariWorkspaceContinuity;
+    const hadPromptCache = !includePromptCache && "cachedPrompt" in rest;
+    if (!includePromptCache) delete rest.cachedPrompt;
+    if (!hadContinuity && !hadPromptCache) return row;
     return { ...row, extra: typeof raw === "string" ? JSON.stringify(rest) : rest };
   });
 }
@@ -2670,28 +2683,30 @@ export async function chatsRoutes(app: FastifyInstance) {
   // ── Messages ──
 
   // List messages for a chat (supports pagination via ?limit=N&before=CURSOR)
-  app.get<{ Params: { id: string }; Querystring: { limit?: string; before?: string } }>(
-    "/:id/messages",
-    async (req, reply) => {
-      const limit = req.query.limit ? parseInt(req.query.limit, 10) : 0;
-      if (limit > 0) {
-        if (req.query.before && !parseMessageCursor(req.query.before)) {
-          return reply.status(400).send({ error: "Invalid message cursor" });
-        }
-        try {
-          return withoutPromptOnlyExtra(
-            await storage.listMessagesPaginated(req.params.id, limit, req.query.before || undefined),
-          );
-        } catch (error) {
-          if (error instanceof InvalidMessageCursorError) {
-            return reply.status(400).send({ error: error.message });
-          }
-          throw error;
-        }
+  app.get<{
+    Params: { id: string };
+    Querystring: { limit?: string; before?: string; includePromptCache?: string };
+  }>("/:id/messages", async (req, reply) => {
+    const includePromptCache = req.query.includePromptCache !== "false";
+    const limit = req.query.limit ? parseInt(req.query.limit, 10) : 0;
+    if (limit > 0) {
+      if (req.query.before && !parseMessageCursor(req.query.before)) {
+        return reply.status(400).send({ error: "Invalid message cursor" });
       }
-      return withoutPromptOnlyExtra(await storage.listMessages(req.params.id));
-    },
-  );
+      try {
+        return withoutPromptOnlyExtra(
+          await storage.listMessagesPaginated(req.params.id, limit, req.query.before || undefined),
+          { includePromptCache },
+        );
+      } catch (error) {
+        if (error instanceof InvalidMessageCursorError) {
+          return reply.status(400).send({ error: error.message });
+        }
+        throw error;
+      }
+    }
+    return withoutPromptOnlyExtra(await storage.listMessages(req.params.id), { includePromptCache });
+  });
 
   // Total message count for a chat (lightweight, for absolute numbering)
   app.get<{ Params: { id: string } }>("/:id/message-count", async (req) => {

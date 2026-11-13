@@ -12,6 +12,119 @@
 
 const PACKAGE_ID = "mari-kit";
 const TAG = `marinara-capability-${PACKAGE_ID}`;
+const SHELL_PREFS_KEY = "mari-shell";
+const PENDING_THEME_KEY = "mari-kit:pending-theme";
+
+const isTheme = (value) => value === "dark" || value === "light";
+
+function writeShellTheme(storage, theme) {
+  if (!isTheme(theme)) return;
+  try {
+    const raw = storage.getItem(SHELL_PREFS_KEY);
+    let prefs = {};
+    try {
+      prefs = raw ? JSON.parse(raw) || {} : {};
+    } catch {}
+    if (prefs.theme === theme) return;
+    storage.setItem(SHELL_PREFS_KEY, JSON.stringify({ ...prefs, theme }));
+  } catch {}
+}
+
+/** Keep the shell's theme preference and the Engine UI store in step without writing Engine persistence directly. */
+export function installThemeBridge(store, storage = globalThis.localStorage, events = globalThis.window) {
+  if (!store?.getState || !store?.subscribe || !storage || !events?.addEventListener) return () => {};
+  let deferredTheme = null;
+  try {
+    const pending = storage.getItem(PENDING_THEME_KEY);
+    if (isTheme(pending)) deferredTheme = pending;
+  } catch {}
+
+  const applyPendingOrMirror = () => {
+    const state = store.getState();
+    if (state.settingsSyncReady !== true) return;
+    let pending = null;
+    try {
+      pending = storage.getItem(PENDING_THEME_KEY);
+    } catch {}
+    const requested = isTheme(pending) ? pending : deferredTheme;
+    deferredTheme = null;
+    if (isTheme(requested)) {
+      // Read again before applying/removing: another tab may have chosen a newer theme meanwhile.
+      try {
+        if (isTheme(pending) && storage.getItem(PENDING_THEME_KEY) !== pending) return;
+      } catch {
+        return;
+      }
+      if (state.theme !== requested) {
+        if (typeof state.setTheme !== "function") return;
+        state.setTheme(requested);
+      }
+      try {
+        if (isTheme(pending) && storage.getItem(PENDING_THEME_KEY) === pending) storage.removeItem(PENDING_THEME_KEY);
+      } catch {}
+      writeShellTheme(storage, store.getState().theme);
+      return;
+    }
+    writeShellTheme(storage, state.theme);
+  };
+
+  const applyExternalTheme = (theme) => {
+    if (!isTheme(theme)) return;
+    if (store.getState().settingsSyncReady !== true) {
+      deferredTheme = theme;
+      return;
+    }
+    let pending = null;
+    try {
+      pending = storage.getItem(PENDING_THEME_KEY);
+    } catch {}
+    if (isTheme(pending)) {
+      applyPendingOrMirror();
+      return;
+    }
+    const state = store.getState();
+    if (state.theme !== theme && typeof state.setTheme === "function") state.setTheme(theme);
+  };
+
+  const unsubscribe = store.subscribe((state, previous) => {
+    if (state.settingsSyncReady !== true) return;
+    if (previous.settingsSyncReady !== true) {
+      applyPendingOrMirror();
+      return;
+    }
+    if (state.theme !== previous.theme) writeShellTheme(storage, state.theme);
+  });
+  const onStorage = (event) => {
+    if (event.key === PENDING_THEME_KEY) {
+      if (!isTheme(event.newValue)) return;
+      try {
+        // A ready tab can consume the shared request before a still-hydrating peer sees this event.
+        const pending = storage.getItem(PENDING_THEME_KEY);
+        const latest = isTheme(pending) ? pending : JSON.parse(storage.getItem(SHELL_PREFS_KEY) || "{}")?.theme;
+        applyExternalTheme(latest);
+      } catch {
+        return;
+      }
+    } else if (event.key === SHELL_PREFS_KEY) {
+      let theme = null;
+      try {
+        theme = JSON.parse(storage.getItem(SHELL_PREFS_KEY) || "{}")?.theme;
+        if (JSON.parse(event.oldValue || "{}")?.theme === theme) return;
+      } catch {}
+      applyExternalTheme(theme);
+    }
+  };
+  const onPageShow = () => applyPendingOrMirror();
+  events.addEventListener("storage", onStorage);
+  events.addEventListener("pageshow", onPageShow);
+  applyPendingOrMirror();
+
+  return () => {
+    unsubscribe();
+    events.removeEventListener("storage", onStorage);
+    events.removeEventListener("pageshow", onPageShow);
+  };
+}
 
 // ── Voice markup ────────────────────────────────
 
@@ -1417,6 +1530,8 @@ function defineElement() {
 
 if (typeof HTMLElement !== "undefined" && typeof customElements !== "undefined") {
   defineElement();
+  const uiStore = globalThis.__MARINARA_HOST__?.stores?.ui;
+  if (uiStore) installThemeBridge(uiStore);
   openShellOnStart();
   if (typeof document !== "undefined") void openFromShell();
 }

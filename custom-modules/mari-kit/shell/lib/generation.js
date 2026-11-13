@@ -11,7 +11,7 @@ export function watchGeneration(chatId, { isAttached = () => false, onState, onS
   let timer = null;
   const check = () => {
     clearTimeout(timer);
-    if (disposed || isAttached()) return Promise.resolve();
+    if (disposed || document.hidden || isAttached()) return Promise.resolve();
     if (checking) return checking;
     checking = (async () => {
       try {
@@ -25,12 +25,13 @@ export function watchGeneration(chatId, { isAttached = () => false, onState, onS
         if (!disposed) onError?.(error);
       } finally {
         checking = null;
-        if (!disposed && pending) timer = setTimeout(check, 1500);
+        if (!disposed && !document.hidden && pending) timer = setTimeout(check, 1500);
       }
     })();
     return checking;
   };
   const visible = () => {
+    clearTimeout(timer);
     if (!document.hidden) check();
   };
   document.addEventListener("visibilitychange", visible);
