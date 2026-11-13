@@ -1,6 +1,6 @@
 // Turns a stored message into paragraphs of text and spoken lines.
-// A line is either Mari Kit voice markup (<audio_character id="…">…</audio_…>, written by the main model when
-// TTS guidance is on) or, without markup, a quoted passage ("…", “…”, 「…」).
+// A line is either Mari Kit voice markup (<audio_character id="…">…</audio_…>) or a quoted passage outside
+// that markup ("…", “…”, 「…」). A reply may contain both.
 
 import { h } from "./h.js";
 
@@ -22,39 +22,45 @@ export function parseMessage(content, fallbackSpeakerId) {
   const tagged = OPEN.test(source);
   OPEN.lastIndex = 0;
   const segments = [];
+  const appendQuotedText = (text) => {
+    let at = 0;
+    for (const m of text.matchAll(QUOTE)) {
+      if (m.index > at) segments.push({ kind: "text", text: text.slice(at, m.index) });
+      segments.push({
+        kind: "line",
+        text: m[0],
+        speakerKind: "character",
+        speakerId: fallbackSpeakerId || null,
+        hasSpeakerTag: false,
+      });
+      at = m.index + m[0].length;
+    }
+    if (at < text.length) segments.push({ kind: "text", text: text.slice(at) });
+  };
   if (tagged) {
     let at = 0;
     for (const m of source.matchAll(OPEN)) {
-      if (m.index > at) segments.push({ kind: "text", text: source.slice(at, m.index) });
+      if (m.index > at) appendQuotedText(source.slice(at, m.index));
       const start = m.index + m[0].length;
       const rest = source.slice(start);
       const close = rest.search(new RegExp(`</audio_${m[1]}\\s*>`, "i"));
       const next = rest.search(/<audio_(?:character|persona)\s/i);
       const ends = [close, next].filter((x) => x >= 0);
       const end = ends.length ? Math.min(...ends) : rest.length;
-      let body = rest.slice(0, end);
-      const cueMatch = /^\s*(["“]?)\s*\[([^\]\n]{1,80})\]\s*/.exec(body);
-      const cue = cueMatch ? cueMatch[2].trim() : "";
-      if (cueMatch) body = cueMatch[1] + body.slice(cueMatch[0].length);
-      segments.push({ kind: "line", text: body, speakerKind: m[1].toLowerCase(), speakerId: m[2], cue });
+      const body = rest.slice(0, end);
+      segments.push({
+        kind: "line",
+        text: body,
+        speakerKind: m[1].toLowerCase(),
+        speakerId: m[2],
+        hasSpeakerTag: true,
+      });
       const closeLen = close === end ? (rest.slice(close).match(/^<\/audio_[a-z]+\s*>/i)?.[0].length ?? 0) : 0;
       at = start + end + closeLen;
     }
-    if (at < source.length) segments.push({ kind: "text", text: source.slice(at) });
+    if (at < source.length) appendQuotedText(source.slice(at));
   } else {
-    let at = 0;
-    for (const m of source.matchAll(QUOTE)) {
-      if (m.index > at) segments.push({ kind: "text", text: source.slice(at, m.index) });
-      segments.push({
-        kind: "line",
-        text: m[0],
-        speakerKind: "character",
-        speakerId: fallbackSpeakerId || null,
-        cue: "",
-      });
-      at = m.index + m[0].length;
-    }
-    if (at < source.length) segments.push({ kind: "text", text: source.slice(at) });
+    appendQuotedText(source);
   }
   // Split text segments at blank lines into paragraphs.
   const paragraphs = [[]];
@@ -62,7 +68,10 @@ export function parseMessage(content, fallbackSpeakerId) {
   for (const seg of segments) {
     if (seg.kind === "line") {
       seg.index = lines.length;
-      const raw = seg.text;
+      let raw = seg.text;
+      const cueMatch = /^\s*(["“「『]?)\s*\[([^\]\n]{1,80})\]\s*/.exec(raw);
+      seg.cue = cueMatch ? cueMatch[2].trim() : "";
+      if (cueMatch) raw = cueMatch[1] + raw.slice(cueMatch[0].length);
       seg.text = stripCues(raw);
       seg.spoken = stripMarkup(raw)
         .replace(/^["“”「『]+|["“”」』]+$/g, "")
@@ -78,6 +87,22 @@ export function parseMessage(content, fallbackSpeakerId) {
     });
   }
   return { paragraphs: paragraphs.filter((p) => p.some((s) => s.kind === "line" || s.text.trim())), lines };
+}
+
+/** Play the original only when the translated dialogue still has an unambiguous correspondence. */
+export function resolveTranslationSpeechLines(original, translation) {
+  if (original.lines.length !== translation.lines.length) return [];
+  if (
+    translation.lines.some((line, index) => {
+      const source = original.lines[index];
+      return (
+        (line.hasSpeakerTag && (line.speakerKind !== source.speakerKind || line.speakerId !== source.speakerId)) ||
+        (line.cue && line.cue !== source.cue)
+      );
+    })
+  )
+    return [];
+  return original.lines;
 }
 
 // ElevenLabs-style audio tags ([sighs], [short pause]) are read aloud by the TTS but not shown.
