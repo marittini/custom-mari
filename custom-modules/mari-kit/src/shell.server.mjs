@@ -39,10 +39,12 @@ export function shellPage(version) {
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, interactive-widget=resizes-content">
 <meta name="color-scheme" content="light dark">
+<meta name="theme-color" content="#ffffff">
 <title>Marinara</title>
 <link rel="manifest" href="/api/mari-kit/manifest">
 <link rel="apple-touch-icon" href="/icon-192.png">
 <meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
 <meta name="mobile-web-app-capable" content="yes">
 <link rel="stylesheet" href="${base}/shell.css">
 <script type="module" src="${base}/app.js"></script>
@@ -469,6 +471,7 @@ export async function shellRoutes(app, { runtime } = {}) {
       String(request.query?.name || "")
         .trim()
         .slice(0, 40) || "Marinara";
+    const color = request.query?.theme === "dark" ? "#000000" : "#ffffff";
     reply.header("Cache-Control", "no-cache");
     reply.header("Content-Type", "application/manifest+json; charset=utf-8");
     return reply.send(
@@ -479,8 +482,8 @@ export async function shellRoutes(app, { runtime } = {}) {
         start_url: "/api/mari-kit/app#/home",
         scope: "/api/mari-kit/",
         display: "standalone",
-        background_color: "#ffffff",
-        theme_color: "#ffffff",
+        background_color: color,
+        theme_color: color,
         icons: [
           { src: "/icon-192.png", sizes: "192x192", type: "image/png" },
           { src: "/icon-512.png", sizes: "512x512", type: "image/png" },

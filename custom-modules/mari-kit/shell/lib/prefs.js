@@ -132,7 +132,27 @@ export function applyPrefs() {
   const p = prefs();
   const root = document.getElementById("app");
   if (!root) return;
-  root.classList.toggle("dark", isDark());
+  const dark = isDark();
+  const mode = dark ? "dark" : "light";
+  const color = dark ? "#000000" : "#ffffff";
+  root.classList.toggle("dark", dark);
+  // Browser/PWA chrome and the safe-area backing belong to the document, outside #app.
+  document.documentElement.style.colorScheme = mode;
+  document.documentElement.style.backgroundColor = color;
+  document.body.style.backgroundColor = color;
+  for (const [name, content] of [
+    ["theme-color", color],
+    ["color-scheme", mode],
+    ["apple-mobile-web-app-status-bar-style", dark ? "black" : "default"],
+  ]) {
+    let meta = document.querySelector(`meta[name="${name}"]`);
+    if (!meta) {
+      meta = document.createElement("meta");
+      meta.name = name;
+      document.head.append(meta);
+    }
+    if (meta.content !== content) meta.content = content;
+  }
   const style = root.style;
   style.setProperty("--user-font", p.font ? `${quote(p.font)}, system-ui, sans-serif` : "system-ui, sans-serif");
   const family = (name) => (name ? `${quote(name)}, system-ui, sans-serif` : "var(--user-font)");
@@ -158,7 +178,12 @@ export function applyPrefs() {
   }
   document.title = p.appName || "Marinara";
   const manifest = document.querySelector('link[rel="manifest"]');
-  if (manifest) manifest.href = `/api/mari-kit/manifest${p.appName ? `?name=${encodeURIComponent(p.appName)}` : ""}`;
+  if (manifest) {
+    const params = new URLSearchParams({ theme: mode });
+    if (p.appName) params.set("name", p.appName);
+    const href = `/api/mari-kit/manifest?${params}`;
+    if (manifest.getAttribute("href") !== href) manifest.setAttribute("href", href);
+  }
   let fav = document.querySelector('link[rel="icon"]');
   if (p.icon) {
     if (!fav) {
