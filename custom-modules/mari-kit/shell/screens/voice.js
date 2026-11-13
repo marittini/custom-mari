@@ -9,6 +9,7 @@ import { data, firstLetter } from "../lib/data.js";
 import { pageHead, toast, errorBox, sheet, popMenu, hbox, avatar } from "../lib/ui.js";
 import { voiceList, syncVoiceSettings, patchVoice, voiceSettings } from "../lib/voice.js";
 import * as tts from "../lib/tts.js";
+import { groupsOf, splitByGroup, foldGroup } from "../lib/groups.js";
 
 const chip = (label, on, onClick) =>
   h(
@@ -101,60 +102,220 @@ export function voiceScreen({ mount, args, go, back }) {
 
   // ── 사람 ─────────────────────────────
   let query = "";
-  function personRow(p) {
+  let selecting = false;
+  const picked = new Set();
+  function personCard(p, onToggle) {
     const vid = voiceOf(p.id);
-    const sub = [vid ? voiceName(vid) : "기본 목소리", p.pron].filter(Boolean).join(" · ");
+    const on = picked.has(p.id);
     return h(
-      "div",
-      { class: "row", style: { gridTemplateColumns: "40px minmax(0,1fr) 44px" } },
+      "button",
+      {
+        type: "button",
+        class: selecting && on ? "vc-card on" : "vc-card",
+        ...(selecting ? { "aria-pressed": on ? "true" : "false" } : {}),
+        onClick: () => (selecting ? onToggle(p) : editPerson(p)),
+      },
       avatar(p.avatar, firstLetter(p.name), 40),
       h(
-        "button",
-        { type: "button", class: "plain", onClick: () => editPerson(p) },
-        h("span", { style: { fontSize: "15px" } }, p.name),
-        h("span", { style: { fontSize: "12px", color: "var(--ink-3)" } }, sub),
+        "span",
+        { class: "vc-txt" },
+        h("span", { class: "vc-name" }, p.name),
+        h("span", { class: "vc-voice" }, vid ? voiceName(vid) : "기본 목소리"),
+        p.pron ? h("span", { class: "vc-pron" }, p.pron) : null,
       ),
+      selecting ? h("span", { class: "vc-check", "aria-hidden": "true" }, on ? "✓" : null) : null,
+    );
+  }
+  // Voice list for one or many people. onPick(voiceId) — "" means the default voice.
+  function voiceListSheet({ title, current = "", onPick }) {
+    let s;
+    const choose = async (id) => {
+      try {
+        await onPick(id);
+        s.close();
+      } catch (error) {
+        toast(error.message);
+      }
+    };
+    const row = (id, name) =>
       h(
         "button",
-        { type: "button", class: "ib", "aria-label": `${p.name} 들어보기`, onClick: () => listen(p) },
-        icon(I.play, 14),
+        { type: "button", class: id === current ? "vc-vrow on" : "vc-vrow", onClick: () => choose(id) },
+        h("span", null, name),
+        id === current ? "✓" : null,
+      );
+    let free = null;
+    if (!voices.length)
+      free = h("input", { class: "uline", type: "text", placeholder: "목소리 ID", "aria-label": "목소리 ID" });
+    s = sheet(
+      h(
+        "div",
+        { class: "vc-vlist" },
+        h("span", { class: "vc-vtitle" }, title),
+        row("", "기본 목소리로"),
+        ...voices.map((x) => row(x.id, x.name)),
+        free
+          ? [
+              free,
+              h(
+                "button",
+                { type: "button", class: "pill main", onClick: () => free.value.trim() && choose(free.value.trim()) },
+                "정하기",
+              ),
+            ]
+          : null,
       ),
+      { label: title },
     );
+  }
+  // One save for everyone: read the stored config fresh, replace these people's entries, keep the rest.
+  async function assignMany(list, voice) {
+    const fresh = (await api.get("/tts/config")) || config;
+    const ids = new Set(list.map((p) => p.id));
+    const kept = (fresh.voiceAssignments || []).filter((a) => !ids.has(a.characterId));
+    const added = voice ? list.map((p) => ({ characterId: p.id, characterName: p.name.split(" · ")[0], voice })) : [];
+    await api.put("/tts/config", { ...fresh, voiceAssignments: [...kept, ...added] });
   }
   function peopleView() {
     if (!people.length) return [h("div", { class: "empty" }, "캐릭터나 페르소나가 아직 없어요")];
-    const listEl = h("div", { style: { borderTop: "1px solid var(--line)" } });
-    const fill = () => {
+    const listEl = h("div", { class: "vc-wrap" });
+    const bar = h("div", { class: "vc-bar", hidden: true });
+    const modeBtn = h("button", { type: "button", class: "chip", onClick: () => toggleMode() }, "여러 명 고르기");
+    let kinds = null; // [{ key, label, parts }] once the groups are read
+    const visible = () => {
       const q = query.trim().toLowerCase();
-      const list = q ? people.filter((p) => `${p.name} ${p.pron}`.toLowerCase().includes(q)) : people;
-      setChildren(listEl, list.length ? list.map(personRow) : h("div", { class: "empty" }, "찾는 사람이 없어요"));
+      return q ? people.filter((p) => `${p.name} ${p.pron}`.toLowerCase().includes(q)) : people;
     };
+    const refreshBar = () => {
+      modeBtn.className = selecting ? "chip on" : "chip";
+      modeBtn.setAttribute("aria-pressed", selecting ? "true" : "false");
+      modeBtn.textContent = selecting ? "고르기 끝내기" : "여러 명 고르기";
+      bar.hidden = !(selecting && picked.size);
+      setChildren(
+        bar,
+        h("span", { class: "vc-count" }, `${picked.size}명 골랐어요`),
+        h("button", { type: "button", class: "pill main", onClick: bulkPick }, "목소리 정하기 ›"),
+      );
+    };
+    function toggleMode() {
+      selecting = !selecting;
+      picked.clear();
+      fill();
+    }
+    function toggle(p) {
+      picked.has(p.id) ? picked.delete(p.id) : picked.add(p.id);
+      fill();
+    }
+    function bulkPick() {
+      const list = people.filter((p) => picked.has(p.id));
+      if (!list.length) return;
+      voiceListSheet({
+        title: `${list.length}명의 목소리`,
+        onPick: async (id) => {
+          await assignMany(list, id);
+          const name = id ? voiceName(id) : "기본 목소리";
+          selecting = false;
+          picked.clear();
+          toast(`${list.length}명에게 '${name}'`);
+          load();
+        },
+      });
+    }
+    const grid = (list) =>
+      h(
+        "div",
+        { class: "vc-grid" },
+        list.map((p) => personCard(p, toggle)),
+      );
+    const section = (key, title, parts) => {
+      const grouped = parts.length > 1 || (parts.length === 1 && parts[0].label);
+      return [
+        h("div", { class: "gsec vc-sec" }, h("span", null, title)),
+        ...parts.map((part) => {
+          const g = grid(part.items);
+          if (!grouped) return h("div", { class: "vc-part" }, selectAll(part.items), g);
+          const label = part.label || "그룹 없음";
+          const el = foldGroup(
+            h,
+            key,
+            label,
+            part.items.length,
+            h("div", { class: "vc-part" }, selectAll(part.items), g),
+          );
+          return el;
+        }),
+      ];
+    };
+    const selectAll = (items) => {
+      if (!selecting) return null;
+      const all = items.every((p) => picked.has(p.id));
+      return h(
+        "div",
+        { class: "vc-all" },
+        h(
+          "button",
+          {
+            type: "button",
+            class: "chip",
+            onClick: () => {
+              for (const p of items) all ? picked.delete(p.id) : picked.add(p.id);
+              fill();
+            },
+          },
+          all ? "전체 해제" : "전체 선택",
+        ),
+      );
+    };
+    function fill() {
+      const q = query.trim();
+      const list = visible();
+      refreshBar();
+      if (!list.length) return setChildren(listEl, h("div", { class: "empty" }, "찾는 사람이 없어요"));
+      if (q || !kinds) return setChildren(listEl, h("div", { class: "vc-part" }, selectAll(list), grid(list)));
+      const out = [];
+      for (const k of kinds) {
+        const items = list.filter((p) => p.kind === k.kind);
+        if (!items.length) continue;
+        out.push(...section(k.key, k.title, splitByGroup(items, k.groups)));
+      }
+      setChildren(listEl, out);
+    }
     fill();
+    Promise.all([groupsOf("characters"), groupsOf("personas")]).then(([cg, pg]) => {
+      if (!alive) return;
+      kinds = [
+        { kind: "character", key: "voice-characters", title: "캐릭터", groups: cg },
+        { kind: "persona", key: "voice-personas", title: "페르소나", groups: pg },
+      ];
+      fill();
+    });
     return [
-      // A long cast gets a search box; only the list redraws, so typing keeps focus.
-      people.length > 8
-        ? h(
-            "div",
-            { style: { padding: "0 20px 12px" } },
-            h("input", {
+      h(
+        "div",
+        { class: "vc-top" },
+        // A long cast gets a search box; only the list redraws, so typing keeps focus.
+        people.length > 8
+          ? h("input", {
               class: "inp",
               type: "search",
               placeholder: "이름으로 찾기",
               "aria-label": "이름으로 찾기",
               value: query,
               onInput: (e) => ((query = e.target.value), fill()),
-            }),
-          )
-        : null,
+            })
+          : null,
+        config ? modeBtn : null,
+      ),
       listEl,
       config
         ? null
         : h("p", { class: "hint", style: { padding: "16px 20px" } }, "엔진 TTS가 꺼져 있어요 · ⋯ › 엔진 TTS 연결"),
+      bar,
     ];
   }
-  async function listen(p) {
+  async function listen(p, picked) {
     if (!config) return toast("엔진 TTS가 꺼져 있어요");
-    const vid = voiceOf(p.id) || config.voice || "";
+    const vid = (picked ?? voiceOf(p.id)) || config.voice || "";
     const sample = p.kind === "persona" ? "안녕, 나야." : `안녕, ${p.name.split(" · ")[0]}이야.`;
     try {
       await tts.speak(tts.hashKey(["sample", p.id, vid, config.source, config.model]), {
@@ -198,6 +359,17 @@ export function voiceScreen({ mount, args, go, back }) {
           { style: { display: "flex", flexDirection: "column", gap: "8px" } },
           h("span", { class: "label" }, "목소리"),
           pick,
+        ),
+        h(
+          "button",
+          {
+            type: "button",
+            class: "pill",
+            style: { alignSelf: "flex-start" },
+            // 미리 듣기 with the voice picked in this sheet (saved or not).
+            onClick: () => listen(p, pick.value),
+          },
+          "미리 듣기",
         ),
         h(
           "button",

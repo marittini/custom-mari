@@ -6,12 +6,13 @@
 
 import { h, icon, I, setChildren } from "../lib/h.js";
 import { api, download } from "../lib/api.js";
-import { data, characterIndex, chatMeta, chatTitle, coverOf, textConnections } from "../lib/data.js";
+import { data, characterIndex, chatMeta, chatTitle, coverOf, coverPos, textConnections } from "../lib/data.js";
 import { setPrefs, isDark, TOOL_DEFS, toolPlace } from "../lib/prefs.js";
 import { topBar, toast, errorBox, openEngine, sheet, avatar, thumb } from "../lib/ui.js";
 import { lorebookViews, REASON_LABEL } from "../lib/lorebooks.js";
 import { ENGINE_SECTIONS } from "../lib/engine-sections.js";
 import { pickPerson } from "../lib/picker.js";
+import { profileSheet } from "../lib/profiles.js";
 import { groupsOf, splitByGroup, groupedOptions, sectioned, forgetGroups } from "../lib/groups.js";
 
 const VIEW_TITLES = {
@@ -504,6 +505,7 @@ export function chatSettingsScreen({ mount, args, go, back }) {
         chat.mode === "roleplay" && chat.promptPresetId
           ? linkRow(I.list, "프리셋 선택지", choiceSummary(meta), () => presetChoices(chat))
           : null,
+        linkRow(I.sliders, "채팅 프로필", "", () => profileSheet({ chat: state.chat, changed: () => load() })),
         linkRow(I.person, "페르소나", personas.find((p) => p.id === chat.personaId)?.name || "없음", () =>
           pickPerson({
             title: "페르소나",
@@ -571,7 +573,9 @@ export function chatSettingsScreen({ mount, args, go, back }) {
     try {
       const cover = coverOf(chat);
       if (cover)
-        await api.delete(`/mari-kit/shell/cover/${encodeURIComponent(cover.split("/").pop())}`).catch(() => {});
+        await api
+          .delete(`/mari-kit/shell/cover/${encodeURIComponent(cover.replace(/#.*$/, "").split("/").pop())}`)
+          .catch(() => {});
       await api.delete(`/chats/${encodeURIComponent(chatId)}`);
       await data.chats(true);
       toast("채팅을 지웠어요");
@@ -870,19 +874,72 @@ export function chatSettingsScreen({ mount, args, go, back }) {
   function coverView() {
     const { chat, index } = state;
     const current = coverOf(chat);
+    const raw = current ? current.replace(/#.*$/, "") : null;
     const lead = index.get((chat.characterIds || [])[0]);
-    const preview = h("div", {
-      class: "ph",
-      style: {
-        width: "150px",
-        aspectRatio: "3 / 4",
-        margin: "20px auto 8px",
-        borderRadius: "12px",
-        backgroundSize: "cover",
-        backgroundPosition: "center",
-        backgroundImage: current ? `url("${current}")` : lead?.avatar ? `url("${thumb(lead.avatar, 240)}")` : "",
+    // 표지 위치: drag (or tap) on the picture to choose the point the lists keep in view.
+    let at = coverPos(chatMeta(chat)) || { x: 50, y: 50 };
+    const bg = raw ? `url("${raw}")` : lead?.avatar ? `url("${thumb(lead.avatar, 240)}")` : "";
+    const dot = h("span", { class: "cov-dot", hidden: !raw });
+    const preview = h(
+      "div",
+      {
+        class: raw ? "ph cov-pick" : "ph",
+        style: {
+          position: "relative",
+          width: "180px",
+          aspectRatio: "3 / 4",
+          margin: "20px auto 8px",
+          borderRadius: "12px",
+          backgroundSize: "cover",
+          backgroundPosition: "center",
+          backgroundImage: bg,
+          touchAction: raw ? "none" : "auto",
+        },
+        "aria-label": raw ? "표지에서 보일 곳 고르기" : null,
       },
-    });
+      dot,
+    );
+    const smalls = raw
+      ? [
+          ["목록", { width: "56px", height: "56px", borderRadius: "50%" }],
+          ["서재 카드", { width: "56px", height: "76px", borderRadius: "10px" }],
+        ].map(([label, size]) =>
+          h(
+            "span",
+            { style: { display: "flex", flexDirection: "column", alignItems: "center", gap: "6px" } },
+            h("span", {
+              class: "ph cov-small",
+              style: { ...size, backgroundSize: "cover", backgroundImage: `url("${raw}?w=96")` },
+            }),
+            h("span", { class: "hint" }, label),
+          ),
+        )
+      : [];
+    const show = () => {
+      dot.style.left = `${at.x}%`;
+      dot.style.top = `${at.y}%`;
+      for (const el of [preview, ...(preview.parentNode?.querySelectorAll?.(".cov-small") || [])])
+        el.style.backgroundPosition = `${at.x}% ${at.y}%`;
+    };
+    if (raw) {
+      const move = (e) => {
+        const r = preview.getBoundingClientRect();
+        at = {
+          x: Math.round(Math.min(100, Math.max(0, ((e.clientX - r.left) / r.width) * 100))),
+          y: Math.round(Math.min(100, Math.max(0, ((e.clientY - r.top) / r.height) * 100))),
+        };
+        show();
+      };
+      preview.addEventListener("pointerdown", (e) => {
+        preview.setPointerCapture(e.pointerId);
+        move(e);
+      });
+      preview.addEventListener("pointermove", (e) => e.buttons && move(e));
+    }
+    const savePos = (pos) =>
+      patchMeta({ mariKitCoverPos: pos && !(pos.x === 50 && pos.y === 50) ? pos : null }).then(() =>
+        toast("표지 위치를 저장했어요"),
+      );
     const file = h("input", {
       type: "file",
       accept: "image/*",
@@ -894,49 +951,72 @@ export function chatSettingsScreen({ mount, args, go, back }) {
           const data = await coverWebp(f);
           const res = await api.post(`/mari-kit/shell/cover/${encodeURIComponent(chatId)}`, {
             data,
-            replaces: current ? current.split("/").pop() : null,
+            replaces: raw ? raw.split("/").pop() : null,
           });
-          await patchMeta({ mariKitCover: res.url });
+          await patchMeta({ mariKitCover: res.url, mariKitCoverPos: null });
           toast(`표지를 바꿨어요 (${Math.round(res.bytes / 1024)}KB)`);
         } catch (error) {
           toast(`표지를 바꾸지 못했어요: ${error.message}`);
         }
       },
     });
-    return [
+    const out = [
       preview,
       h(
         "p",
         { class: "hint", style: { textAlign: "center", margin: "0 0 12px" } },
-        current ? "이 채팅의 표지" : "표지가 없어서 첫 캐릭터 사진(엔진에서 자른 모양)을 써요",
+        raw ? "사진을 눌러 목록에서 보일 곳을 고르세요" : "표지가 없어서 첫 캐릭터 사진(엔진에서 자른 모양)을 써요",
       ),
+      raw
+        ? h(
+            "div",
+            {
+              style: {
+                display: "flex",
+                justifyContent: "center",
+                alignItems: "flex-end",
+                gap: "24px",
+                margin: "4px 0 18px",
+              },
+            },
+            smalls,
+          )
+        : null,
       file,
+      raw
+        ? h(
+            "div",
+            { style: { display: "flex", justifyContent: "center", gap: "8px", marginBottom: "12px" } },
+            h(
+              "button",
+              { type: "button", class: "pill", onClick: () => ((at = { x: 50, y: 50 }), show(), savePos(null)) },
+              "가운데로",
+            ),
+            h("button", { type: "button", class: "pill main", onClick: () => savePos(at) }, "위치 저장"),
+          )
+        : null,
       h(
         "div",
         { style: { display: "flex", justifyContent: "center", gap: "8px" } },
-        current
+        raw
           ? h(
               "button",
               {
                 type: "button",
                 class: "pill",
                 onClick: async () => {
-                  await api
-                    .delete(`/mari-kit/shell/cover/${encodeURIComponent(current.split("/").pop())}`)
-                    .catch(() => {});
-                  await patchMeta({ mariKitCover: null });
+                  await api.delete(`/mari-kit/shell/cover/${encodeURIComponent(raw.split("/").pop())}`).catch(() => {});
+                  await patchMeta({ mariKitCover: null, mariKitCoverPos: null });
                 },
               },
               "표지 지우기",
             )
           : null,
-        h(
-          "button",
-          { type: "button", class: "pill main", onClick: () => file.click() },
-          current ? "다른 사진" : "사진 고르기",
-        ),
+        h("button", { type: "button", class: "pill", onClick: () => file.click() }, raw ? "다른 사진" : "사진 고르기"),
       ),
     ];
+    requestAnimationFrame(show);
+    return out;
   }
 
   function castView() {

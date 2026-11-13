@@ -296,8 +296,19 @@ export function withCrop(url, crop) {
 
 /** The chat's own cover picture (chosen in 채팅 설정 › 표지), when it has one. */
 export function coverOf(chat) {
-  const url = chatMeta(chat).mariKitCover;
-  return typeof url === "string" && url.startsWith("/api/mari-kit/shell/cover/") ? url : null;
+  const meta = chatMeta(chat);
+  const url = meta.mariKitCover;
+  if (typeof url !== "string" || !url.startsWith("/api/mari-kit/shell/cover/")) return null;
+  // 표지 위치: the point to keep in view, carried on the URL (#p=x,y in percent) so every list shows it.
+  const at = coverPos(meta);
+  return at ? `${url}#p=${at.x},${at.y}` : url;
+}
+
+/** The chosen focus of a chat's cover ({ x, y } in percent), or null for the middle. */
+export function coverPos(meta) {
+  const p = meta?.mariKitCoverPos;
+  const ok = (v) => Number.isFinite(v) && v >= 0 && v <= 100;
+  return p && ok(p.x) && ok(p.y) && !(p.x === 50 && p.y === 50) ? { x: Math.round(p.x), y: Math.round(p.y) } : null;
 }
 
 /**

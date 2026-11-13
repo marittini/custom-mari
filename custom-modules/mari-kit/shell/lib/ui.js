@@ -42,8 +42,9 @@ let seen = null;
 
 /** A small WebP of an Engine avatar (Mari Kit makes it); other pictures stay as they are. */
 export function thumb(src, width = 96) {
-  // A chat cover (Mari Kit keeps these) has its own small versions.
-  if (/^\/api\/mari-kit\/shell\/cover\/[^/?#]+$/.test(String(src || ""))) return `${src}?w=${width}`;
+  // A chat cover (Mari Kit keeps these) has its own small versions; #p=x,y (its focus) stays on the end.
+  const cover = /^(\/api\/mari-kit\/shell\/cover\/[^/?#]+)(#p=[\d.]+,[\d.]+)?$/.exec(String(src || ""));
+  if (cover) return `${cover[1]}?w=${width}${cover[2] || ""}`;
   const m = /^\/api\/avatars\/file\/([^/?#]+)(?:\?crop=([RL][-\d.,]+))?$/.exec(String(src || ""));
   return m ? `/api/mari-kit/shell/avatar?f=${m[1]}&w=${width}${m[2] ? `&c=${m[2]}` : ""}` : src;
 }
@@ -51,6 +52,8 @@ export function thumb(src, width = 96) {
 export function lazyBg(el, src, width = 240) {
   if (!src) return el;
   src = thumb(src, width);
+  const at = /#p=([\d.]+),([\d.]+)$/.exec(src);
+  if (at) el.style.backgroundPosition = `${at[1]}% ${at[2]}%`;
   if (typeof IntersectionObserver !== "function") {
     el.style.backgroundImage = `url("${src}")`;
     return el;
