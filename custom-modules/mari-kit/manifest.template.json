@@ -3,7 +3,7 @@
   "capabilityApi": { "major": 1, "minor": 391 },
   "id": "mari-kit",
   "name": "Mari Kit",
-  "version": "0.16.3",
+  "version": "0.16.4",
   "description": "개인 기능 모음(TTS·번역·날씨·기억)을 엔진 소스 수정 없이 붙이는 패키지입니다.",
   "engine": { "min": "2.5.2", "maxExclusive": "3.0.0" },
   "kind": ["agent"],
