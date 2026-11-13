@@ -4,6 +4,7 @@ import { prefs, setPrefs, isDark, TOOL_DEFS, toolPlace, parseFamilies } from "..
 import { pageHead, toast, openEngine } from "../lib/ui.js";
 import { data, byLastActivity } from "../lib/data.js";
 import { QUICK_ITEMS, quickIds } from "../lib/quick.js";
+import { kitUpdatePage, kitStatus } from "./kit-update.js";
 import { connectionsPage, connectionPage, presetsPage, presetPage, voicePage, personasPage } from "./manage.js";
 
 const startsInShell = () => {
@@ -23,6 +24,7 @@ export function settingsScreen({ mount, args, go, back }) {
     brand: "앱 이름 · 아이콘",
     tools: "메시지 도구",
     quick: "빠른 설정",
+    kit: "Mari Kit 업데이트",
     connections: "연결",
     connection: "연결",
     presets: "프리셋",
@@ -42,6 +44,7 @@ export function settingsScreen({ mount, args, go, back }) {
     preset: () => presetPage(body, go, args[1]),
     voice: () => voicePage(body),
     personas: () => personasPage(body, go),
+    kit: () => kitUpdatePage(body),
   };
   const draw = () => {
     if (manage[page]) return manage[page]();
@@ -78,9 +81,22 @@ export function settingsScreen({ mount, args, go, back }) {
     const shown = TOOL_DEFS.filter((t) => toolPlace(t) === "show").length;
     const more = TOOL_DEFS.filter((t) => toolPlace(t) === "more").length;
     const results = h("div");
+    // Mari Kit's version on top; "새 버전" appears once the Engine has checked the catalog.
+    const kitVal = val("확인 중…");
+    kitStatus()
+      .then((k) => {
+        kitVal.textContent = `${k.update ? `새 버전 ${k.update.version}` : k.restartNeeded ? "다시 시작 필요" : k.running || ""} ›`;
+        kitVal.style.fontWeight = k.update || k.restartNeeded ? "700" : "";
+      })
+      .catch(() => (kitVal.textContent = "›"));
     const groups = h(
       "div",
       null,
+      h(
+        "div",
+        { class: "list" },
+        row(I.square, "Mari Kit", kitVal, () => go("settings/kit")),
+      ),
       sec("화면"),
       h(
         "div",
@@ -161,6 +177,7 @@ export function settingsScreen({ mount, args, go, back }) {
     ["글꼴", "설정 › 화면", "font 폰트", () => go("settings/font")],
     ["읽기", "설정 › 화면", "글자 크기 줄 간격 정렬 글꼴 롤플레이 대화 대사 형광펜 reading", () => go("reader")],
     ["메시지 도구", "설정 › 화면", "버튼 tools 복사 수정", () => go("settings/tools")],
+    ["Mari Kit 업데이트", "설정", "버전 update 새 버전 설치 다시 시작", () => go("settings/kit")],
     ["빠른 설정", "설정 › 화면", "채팅 입력창 왼쪽 슬라이더 버튼 quick 순서 고르기", () => go("settings/quick")],
     ["앱 이름 · 아이콘", "설정 › 화면", "brand 홈 화면", () => go("settings/brand")],
     ["연결", "설정 › 모델", "connection api 모델 키", () => go("settings/connections")],

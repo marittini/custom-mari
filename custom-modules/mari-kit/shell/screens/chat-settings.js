@@ -13,6 +13,7 @@ import { lorebookViews, REASON_LABEL } from "../lib/lorebooks.js";
 import { ENGINE_SECTIONS } from "../lib/engine-sections.js";
 import { pickPerson } from "../lib/picker.js";
 import { profileSheet } from "../lib/profiles.js";
+import { startJob } from "../lib/activity.js";
 import { groupsOf, splitByGroup, groupedOptions, sectioned, forgetGroups } from "../lib/groups.js";
 
 const VIEW_TITLES = {
@@ -22,9 +23,32 @@ const VIEW_TITLES = {
   cover: "표지",
   lorebooks: "로어북",
   kit: "Mari Kit · 기능",
+  convo: "대화 기능",
   view: "화면",
   all: "모든 채팅 설정",
 };
+
+// The Engine's Convo commands (ChatSettingsDrawer CONVERSATION_COMMAND_TOGGLE_OPTIONS), in its order.
+const CONVO_COMMANDS = [
+  ["schedule_update", "상태 바꾸기", "지금 하는 일·상태를 스스로 바꿔요"],
+  ["cross_post", "다른 채팅으로 보내기", "메시지를 함께 쓰는 다른 채팅으로 옮겨요"],
+  ["selfie", "셀카", "사진을 만들어 보내요"],
+  ["video", "영상", "짧은 영상 메시지를 보내요"],
+  ["memory", "기억 남기기", "다른 캐릭터에게 기억을 만들어 줘요"],
+  ["scene", "장면", "대화에서 몰입형 장면을 시작해요"],
+  ["music", "음악", "음악 플레이어로 노래를 틀어요"],
+  ["haptic", "진동", "연결된 진동 기기를 움직여요"],
+  ["influence", "영향", "연결된 채팅에 한 번 영향을 줘요"],
+  ["note", "메모", "연결된 채팅에 오래 남는 메모를 써요"],
+  ["call", "전화 걸기 명령", "캐릭터가 통화를 걸어요"],
+  ["react", "반응", "메시지에 이모지 반응을 달아요"],
+  ["uno", "UNO", "함께 하자면 UNO를 시작해요"],
+  ["chess", "체스", "체스 대결을 받아요"],
+  ["poker", "포커", "텍사스 홀덤을 같이 해요"],
+  ["eightball", "포켓볼", "8볼 당구를 같이 해요"],
+  ["tic_tac_toe", "틱택토", "틱택토 대결을 받아요"],
+  ["rock_paper_scissors", "가위바위보", "가위바위보를 같이 해요"],
+];
 
 export function chatSettingsScreen({ mount, args, go, back }) {
   const chatId = args[0];
@@ -543,6 +567,19 @@ export function chatSettingsScreen({ mount, args, go, back }) {
             )
           : null,
         linkRow(I.translate, "번역", meta.autoTranslate === true ? "자동 번역 켬" : "", () => go(here("translation"))),
+        chat.mode === "conversation"
+          ? linkRow(
+              I.chat,
+              "대화 기능",
+              [
+                meta.autonomousMessages === true ? "먼저 말 걸기" : "",
+                meta.conversationCallsEnabled === true ? "통화" : "",
+              ]
+                .filter(Boolean)
+                .join(" · ") || "자율 메시지 · 일정 · 통화",
+              () => go(here("convo")),
+            )
+          : null,
         linkRow(I.square, "Mari Kit · 기능", "", () => go(here("kit"))),
         linkRow(I.contrast, "화면", "", () => go(here("view"))),
       ),
@@ -1224,6 +1261,9 @@ export function chatSettingsScreen({ mount, args, go, back }) {
               chat.mode === "conversation"
                 ? linkRow(I.phone, "통화 설정", "", () => go(`call-settings/${encodeURIComponent(chatId)}`))
                 : null,
+              chat.mode === "conversation"
+                ? linkRow(I.chat, "대화 기능", "자율 메시지 · 일정 · 통화", () => go(here("convo")))
+                : null,
             ),
           ]
         : null,
@@ -1250,6 +1290,200 @@ export function chatSettingsScreen({ mount, args, go, back }) {
     ];
   }
 
+  // 대화 기능 (Convo only): the Engine's own per-chat switches for what characters do by themselves — messaging
+  // first, their daily routines, calls, cross-chat memory and their commands. Same keys as the Engine's Chat
+  // Settings (autonomousMessages, conversationSchedulesEnabled, conversationCallsEnabled, …).
+  function convoView() {
+    const { chat } = state;
+    const meta = chatMeta(chat);
+    const many = (chat.characterIds || []).length > 1;
+    const auto = meta.autonomousMessages === true;
+    const cap = Number.isInteger(meta.autonomousDailyCapOverride) ? meta.autonomousDailyCapOverride : null;
+    const schedules =
+      meta.characterSchedules && typeof meta.characterSchedules === "object" ? meta.characterSchedules : {};
+    const hasSchedules = Object.keys(schedules).length > 0;
+    const schedOn =
+      typeof meta.conversationSchedulesEnabled === "boolean" ? meta.conversationSchedulesEnabled : hasSchedules;
+    const toggles =
+      meta.conversationCommandToggles && typeof meta.conversationCommandToggles === "object"
+        ? meta.conversationCommandToggles
+        : {};
+    const commandsOn = meta.characterCommands !== false;
+    const capBox = h("input", {
+      class: "inp",
+      type: "number",
+      inputmode: "numeric",
+      min: 1,
+      value: cap ?? 8,
+      "aria-label": "하루 횟수",
+      style: { width: "88px", textAlign: "center" },
+      onChange: (e) => {
+        const n = Math.max(1, Math.floor(Number(e.target.value) || 1));
+        patchMeta({ autonomousDailyCapOverride: n });
+      },
+    });
+    const regenerate = async () => {
+      const done = startJob("캐릭터 일정 만드는 중…");
+      try {
+        await api.post("/conversation/schedule/generate", {
+          chatId,
+          characterIds: chat.characterIds || [],
+          forceRefresh: true,
+          timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone || "",
+        });
+        toast("캐릭터 일정을 새로 만들었어요");
+        await load();
+      } catch (error) {
+        toast(`일정을 만들지 못했어요: ${error.message}`);
+      } finally {
+        done();
+      }
+    };
+    return [
+      h("div", { class: "gsec", style: { margin: "24px 20px 8px" } }, h("span", null, "자율 메시지")),
+      h(
+        "div",
+        { class: "list" },
+        switchRow(
+          I.chat,
+          "캐릭터가 먼저 말 걸기",
+          auto,
+          () => patchMeta({ autonomousMessages: !auto }),
+          "내가 조용할 때 캐릭터가 먼저 메시지를 보내요",
+        ),
+        auto
+          ? h(
+              "div",
+              { class: "r static", style: { flexWrap: "wrap", gap: "10px", minHeight: "60px" } },
+              h("span", { class: "ic" }, icon(I.calendar)),
+              h(
+                "span",
+                { style: { flex: "1", minWidth: "140px" } },
+                "하루 횟수",
+                h(
+                  "small",
+                  { class: "hint", style: { display: "block" } },
+                  cap === null ? "캐릭터 말수에 맞춰 정해요" : `하루 최대 ${cap}번`,
+                ),
+              ),
+              h(
+                "span",
+                { style: { display: "flex", gap: "6px", alignItems: "center" } },
+                h(
+                  "button",
+                  {
+                    type: "button",
+                    class: cap === null ? "chip on" : "chip",
+                    onClick: () => patchMeta({ autonomousDailyCapOverride: null }),
+                  },
+                  "자동",
+                ),
+                cap === null
+                  ? h(
+                      "button",
+                      { type: "button", class: "chip", onClick: () => patchMeta({ autonomousDailyCapOverride: 8 }) },
+                      "직접",
+                    )
+                  : capBox,
+              ),
+            )
+          : null,
+        many
+          ? switchRow(
+              I.person,
+              "캐릭터끼리 대화",
+              meta.characterExchanges === true,
+              () => patchMeta({ characterExchanges: meta.characterExchanges !== true }),
+              "등장 캐릭터들이 서로 이야기해요",
+            )
+          : null,
+      ),
+      h("div", { class: "gsec", style: { margin: "24px 20px 8px" } }, h("span", null, "캐릭터 일정")),
+      h(
+        "div",
+        { class: "list" },
+        switchRow(
+          I.calendar,
+          "캐릭터 일정 쓰기",
+          schedOn,
+          () => patchMeta({ conversationSchedulesEnabled: !schedOn }),
+          "시간대마다 바쁨·잠 같은 상태가 바뀌고 답이 늦어지기도 해요",
+        ),
+        schedOn
+          ? linkRow(
+              I.calendar,
+              hasSchedules ? "일정 다시 만들기" : "일정 만들기",
+              hasSchedules ? `${Object.keys(schedules).length}명 있음` : "없음",
+              regenerate,
+            )
+          : null,
+        schedOn
+          ? linkRow(I.person, "캐릭터별 일정 고치기", "엔진", () =>
+              openEngine(null, { character: (chat.characterIds || [])[0], tab: "convo" }),
+            )
+          : null,
+      ),
+      h("div", { class: "gsec", style: { margin: "24px 20px 8px" } }, h("span", null, "통화")),
+      h(
+        "div",
+        { class: "list" },
+        switchRow(I.phone, "이 방에서 통화", meta.conversationCallsEnabled === true, () =>
+          patchMeta({ conversationCallsEnabled: meta.conversationCallsEnabled !== true }),
+        ),
+        meta.conversationCallsEnabled === true
+          ? switchRow(I.phone, "캐릭터가 전화 걸기", meta.conversationCharactersCanCall !== false, () =>
+              patchMeta({ conversationCharactersCanCall: meta.conversationCharactersCanCall === false }),
+            )
+          : null,
+        meta.conversationCallsEnabled === true
+          ? switchRow(
+              I.voice,
+              "통화 대사에 감정 표시",
+              meta.conversationCallVoiceCues !== false,
+              () => patchMeta({ conversationCallVoiceCues: meta.conversationCallVoiceCues === false }),
+              "음성이 [속삭임] 같은 표시를 읽어요",
+            )
+          : null,
+        linkRow(I.phone, "통화 설정 더보기", "", () => go(`call-settings/${encodeURIComponent(chatId)}`)),
+      ),
+      h("div", { class: "gsec", style: { margin: "24px 20px 8px" } }, h("span", null, "다른 채팅")),
+      h(
+        "div",
+        { class: "list" },
+        switchRow(
+          I.link,
+          "다른 채팅 알기",
+          meta.crossChatAwareness !== false,
+          () => patchMeta({ crossChatAwareness: meta.crossChatAwareness === false }),
+          "같은 캐릭터가 다른 채팅에서 있었던 일을 알아요",
+        ),
+      ),
+      h("div", { class: "gsec", style: { margin: "24px 20px 8px" } }, h("span", null, "캐릭터가 할 수 있는 일")),
+      h(
+        "div",
+        { class: "list" },
+        switchRow(
+          I.guide,
+          "명령 쓰기",
+          commandsOn,
+          () => patchMeta({ characterCommands: !commandsOn }),
+          "끄면 아래 모두 꺼져요",
+        ),
+        commandsOn
+          ? CONVO_COMMANDS.map(([id, label, about]) =>
+              switchRow(
+                I.square,
+                label,
+                toggles[id] !== false,
+                () => patchMeta({ conversationCommandToggles: { ...toggles, [id]: toggles[id] === false } }),
+                about,
+              ),
+            )
+          : null,
+      ),
+    ];
+  }
+
   function draw() {
     if (!state) return;
     const { chat, conns, index } = state;
@@ -1266,6 +1500,7 @@ export function chatSettingsScreen({ mount, args, go, back }) {
       translation: () => [gap(), translationList(chat, conns)],
       kit: kitView,
       view: viewView,
+      convo: convoView,
     };
     const content = (views[view] || homeView)();
     setChildren(body, content);
