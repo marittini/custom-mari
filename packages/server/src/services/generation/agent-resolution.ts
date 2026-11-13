@@ -420,6 +420,8 @@ export async function resolveAgentPipelineAgents({
     (agent) =>
       roomAgentAllowed(agent.type as string, parseAgentSettings(agent.settings)) &&
       !isAgentConfigDeleted(agent.settings) &&
+      // Feature packages supply their own runtime and prompt context, without a generic LLM call.
+      BUILT_IN_AGENTS.find((builtIn) => builtIn.id === agent.type)?.execution !== "feature" &&
       !isBuiltInAgentHostManaged(agent.type as string) &&
       !isBuiltInAgentRuntimeDisabled(agent.type as string) &&
       !isRetiredBuiltInAgentId(agent.type as string),
@@ -602,6 +604,7 @@ export async function resolveAgentPipelineAgents({
       ? BUILT_IN_AGENTS.filter((agent) => {
           if (resolvedTypes.has(agent.id)) return false;
           if (deletedBuiltInTypes.has(agent.id)) return false;
+          if (agent.execution === "feature") return false;
           if (isBuiltInAgentHostManaged(agent.id)) return false;
           if (isBuiltInAgentRuntimeDisabled(agent.id)) return false;
           return perChatAgentSet.has(agent.id);

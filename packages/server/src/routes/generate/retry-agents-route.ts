@@ -1872,6 +1872,7 @@ export async function resolveRetryAgents(args: {
   const enabledConfigs = configs.filter(
     (config: any) =>
       !isAgentConfigDeleted(config.settings) &&
+      BUILT_IN_AGENTS.find((agent) => agent.id === config.type)?.execution !== "feature" &&
       !isBuiltInAgentRuntimeDisabled(config.type) &&
       !isBuiltInAgentHostManaged(config.type) &&
       !isRetiredBuiltInAgentId(config.type) &&
@@ -1882,6 +1883,7 @@ export async function resolveRetryAgents(args: {
     (agent) =>
       agentTypeSet.has(agent.id) &&
       !resolvedTypeSet.has(agent.id) &&
+      agent.execution !== "feature" &&
       !isBuiltInAgentRuntimeDisabled(agent.id) &&
       !isBuiltInAgentHostManaged(agent.id) &&
       !isRetiredBuiltInAgentId(agent.id),
