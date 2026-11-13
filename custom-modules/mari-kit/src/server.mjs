@@ -25,6 +25,9 @@ export const FEATURE_IDS = Object.freeze(["tts", "translation", "weather", "memo
 const SETTINGS_DOC_ID = `${PACKAGE_ID}:settings`;
 const SETTINGS_KIND = "settings";
 
+// The Engine gives the whole package 2 seconds. Keep completed features when another is slow.
+const PROMPT_CONTEXT_BUDGET_MS = 1500;
+
 /** Feature modules. Each may add routes and contribute prompt text for a turn. */
 const features = [
   ttsFeature,
@@ -146,22 +149,42 @@ async function routes(app) {
  * chats that added the Mari Kit agent.
  */
 async function promptContext(request) {
+  const deadline = Date.now() + PROMPT_CONTEXT_BUDGET_MS;
+  const runtime = host();
   const withFeatures = features.filter((feature) => typeof feature.promptContext === "function");
   if (!withFeatures.length) return null;
   const agentAdded = chatUsesMariKit(request.chatMeta);
   if (!agentAdded && !withFeatures.some((feature) => feature.ownChatSwitch)) return null;
   const { settings } = await readSettings();
-  const blocks = [];
-  for (const feature of withFeatures) {
-    if (!settings.features[feature.id] || (!agentAdded && !feature.ownChatSwitch)) continue;
-    try {
-      const text = await feature.promptContext(request, { runtime: host(), settings });
-      if (typeof text === "string" && text.trim()) blocks.push(text.trim());
-    } catch (error) {
-      host().logger?.error?.(error, "[mari-kit] %s prompt context failed", feature.id);
-    }
-  }
-  return blocks.length ? blocks.join("\n\n") : null;
+  const active = withFeatures.filter(
+    (feature) => settings.features[feature.id] && (agentAdded || feature.ownChatSwitch),
+  );
+  const blocks = await Promise.all(
+    active.map(async (feature) => {
+      let timer;
+      try {
+        const text = await Promise.race([
+          feature.promptContext(request, { runtime, settings }),
+          new Promise((resolve) => {
+            timer = setTimeout(
+              () => {
+                runtime.logger?.warn?.("[mari-kit] %s prompt context timed out; keeping other features", feature.id);
+                resolve(null);
+              },
+              Math.max(0, deadline - Date.now()),
+            );
+          }),
+        ]);
+        return typeof text === "string" && text.trim() ? text.trim() : null;
+      } catch (error) {
+        runtime.logger?.error?.(error, "[mari-kit] %s prompt context failed", feature.id);
+        return null;
+      } finally {
+        clearTimeout(timer);
+      }
+    }),
+  );
+  return blocks.filter(Boolean).join("\n\n") || null;
 }
 
 let ready = false;
