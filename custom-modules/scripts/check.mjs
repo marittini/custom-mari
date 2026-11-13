@@ -602,6 +602,39 @@ if (id === "mari-kit") {
     );
     assert.deepEqual(searchMessages(rows, "  "), []);
   }
+  // 글자수: shown text only (cue tags, system and hidden messages left out).
+  {
+    const { charsOf } = await import(pathToFileURL(join(outDir, "shell.server.mjs")).href);
+    assert.equal(
+      charsOf([
+        { role: "assistant", content: "[whispers] 안녕 하세요" },
+        { role: "system", content: "dice" },
+        { role: "user", content: "숨김", extra: { hiddenFromUser: true } },
+        { role: "user", content: "x", extra: JSON.stringify({ displayText: "보인 말" }) },
+      ]),
+      10,
+    );
+  }
+  // 기억 설정 프리셋 and 최근 제외: any whole number 0–40, presets clamp and drop nameless ones.
+  {
+    const { normalizePresets, normalizeSettings } = await import(pathToFileURL(join(outDir, "memory.server.mjs")).href);
+    assert.equal(normalizeSettings({ keepRecent: 17 }).keepRecent, 17);
+    assert.equal(normalizeSettings({ keepRecent: 99 }).keepRecent, normalizeSettings({}).keepRecent);
+    const [p, ...rest] = normalizePresets([
+      {
+        name: "길게",
+        chunkMessages: 200,
+        contextMessageLimit: 80,
+        settings: { keepRecent: 2, translateConnectionId: "x" },
+      },
+      { name: "  " },
+    ]);
+    assert.equal(rest.length, 0);
+    assert.equal(p.chunkMessages, 60);
+    assert.equal(p.contextMessageLimit, 80);
+    assert.equal(p.settings.keepRecent, 2);
+    assert.equal("translateConnectionId" in p.settings, false);
+  }
   // List previews: newest shown line (hidden and command-only skipped, a call reads 음성 통화) and newest reply.
   const { previewOf } = await import(pathToFileURL(join(outDir, "shell.server.mjs")).href);
   const big = JSON.stringify({ cachedPrompt: "x".repeat(50000) });

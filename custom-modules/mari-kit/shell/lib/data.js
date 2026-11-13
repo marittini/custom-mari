@@ -190,6 +190,10 @@ function localUi() {
   }
 }
 
+// Connections that write text: image, video, audio and decision connections are for other jobs.
+const NOT_TEXT = ["image_generation", "video_generation", "audio_generation", "audio", "decision"];
+export const textConnections = (list) => (list || []).filter((c) => !NOT_TEXT.includes(c.provider));
+
 export function chatMeta(chat) {
   return parseJson(chat?.metadata, {}) || {};
 }
@@ -250,6 +254,11 @@ export function shortTime(iso) {
 export function todayLabel() {
   const d = new Date();
   return `${d.getMonth() + 1}월 ${d.getDate()}일 ${"일월화수목금토"[d.getDay()]}요일`;
+}
+
+/** "3,421자" · "12.3만 자": the length of a chat, in characters. */
+export function charLabel(n) {
+  return n >= 10000 ? `${(n / 10000).toFixed(n >= 100000 ? 0 : 1)}만 자` : `${n.toLocaleString("ko-KR")}자`;
 }
 
 export function chatTitle(chat, chars) {

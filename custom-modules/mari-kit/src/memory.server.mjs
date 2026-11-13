@@ -47,7 +47,6 @@ export function estimateTokens(text) {
 }
 
 export const SETTING_CHOICES = Object.freeze({
-  keepRecent: [4, 6, 10],
   budget: [2000, 5000, 8000],
   detail: ["standard", "detailed", "very_detailed"],
   npc: ["standard", "expanded"],
@@ -78,9 +77,32 @@ export function normalizeSettings(raw) {
   const out = { ...DEFAULT_SETTINGS };
   for (const [key, choices] of Object.entries(SETTING_CHOICES))
     if (choices.includes(source[key])) out[key] = source[key];
+  // 최근 제외: any whole number from 0 to 40 (the newest replies can still be swiped or edited).
+  const keep = Number(source.keepRecent);
+  if (Number.isInteger(keep) && keep >= 0 && keep <= 40) out.keepRecent = keep;
   out.translateConnectionId = str(source.translateConnectionId, 200) || null;
   out.embedding = source.embedding === true;
   return out;
+}
+
+/** 기억 설정 프리셋 list: [{ id, name, chunkMessages, contextMessageLimit, settings }] (up to 30). */
+export function normalizePresets(raw) {
+  return (Array.isArray(raw) ? raw : [])
+    .filter((p) => p && typeof p === "object" && str(p.name, 40))
+    .slice(0, 30)
+    .map((p) => {
+      const settings = normalizeSettings(p.settings);
+      delete settings.translateConnectionId;
+      const chunk = Number(p.chunkMessages);
+      const limit = Number(p.contextMessageLimit);
+      return {
+        id: str(p.id, 40) || Math.random().toString(36).slice(2, 10),
+        name: str(p.name, 40),
+        chunkMessages: Number.isInteger(chunk) ? Math.min(60, Math.max(6, chunk)) : DEFAULT_CHUNK_MESSAGES,
+        contextMessageLimit: Number.isInteger(limit) && limit > 0 ? Math.min(2000, limit) : null,
+        settings,
+      };
+    });
 }
 
 export function emptyMemory() {
@@ -980,6 +1002,43 @@ export const memoryFeature = {
 
     // 다른 방에서 가져오기: which roleplay chats have memory, in one request (the picker used to ask once per chat,
     // and each of those also read the whole transcript). Counts only, from the memory files.
+    // 기억 설정 프리셋: named sets of 정리·회상 settings, shared by every chat.
+    const PRESETS_ID = "mari-kit:memory-presets";
+    app.get("/memory-presets", async () => {
+      const doc = await runtime.persistence.documents.getById("mari-kit", PRESETS_ID);
+      return { presets: normalizePresets(doc?.data?.presets) };
+    });
+    app.put("/memory-presets", async (request) => {
+      const presets = normalizePresets(request.body?.presets);
+      const documents = runtime.persistence.documents;
+      const doc = await documents.getById("mari-kit", PRESETS_ID);
+      const now = new Date().toISOString();
+      if (!doc)
+        await documents.create({
+          id: PRESETS_ID,
+          packageId: "mari-kit",
+          kind: "memory-presets",
+          name: "Memory presets",
+          description: "",
+          data: { presets },
+          createdAt: now,
+          updatedAt: now,
+        });
+      else {
+        const saved = await documents.update({
+          id: doc.id,
+          packageId: "mari-kit",
+          expectedRevision: doc.revision,
+          name: doc.name,
+          description: doc.description,
+          data: { presets },
+          updatedAt: now,
+        });
+        if (!saved) throw Object.assign(new Error("Presets changed while saving; try again."), { statusCode: 409 });
+      }
+      return { presets };
+    });
+
     app.get("/memory-rooms", async () => {
       const rooms = (await runtime.persistence.listChats()).filter((c) => c.mode === "roleplay");
       const out = [];
@@ -1242,6 +1301,8 @@ export const memoryFeature = {
           label: host?.label ?? "",
           available: Boolean(host?.embed),
           indexed: memory.scenes.filter((s) => s.vec?.space === host?.spaceId).length,
+          // The connection whose embedding settings Mari Kit uses (the Engine's agent setting for this package).
+          connectionId: (await runtime.getAgentConfig?.())?.connectionId ?? null,
         };
       } catch {}
       return {

@@ -262,6 +262,20 @@ export function previewOf(messages) {
   return { line: line || "", assistant };
 }
 
+/** Characters the reader sees in a transcript (spaces included, cue tags and hidden messages left out). */
+export function charsOf(messages) {
+  let n = 0;
+  for (const m of messages) {
+    if (m.role === "system") continue;
+    const extra = parseExtra(m.extra);
+    if (extra.hiddenFromUser === true || extra.commandOnly === true) continue;
+    const text =
+      typeof extra.displayText === "string" && extra.displayText ? extra.displayText : String(m.content ?? "");
+    n += stripCueTags(text).trim().length;
+  }
+  return n;
+}
+
 const previewCache = new Map(); // chatId -> { at, value }
 
 /** Messages of a transcript that contain every word of the query (shown text, translation): newest first. */
@@ -319,7 +333,8 @@ export async function shellRoutes(app, { runtime } = {}) {
       const at = String(chat.lastMessageAt || chat.updatedAt || "");
       let hit = previewCache.get(id);
       if (!hit || hit.at !== at) {
-        hit = { at, value: previewOf(await runtime.persistence.listMessages(id)) };
+        const messages = await runtime.persistence.listMessages(id);
+        hit = { at, value: { ...previewOf(messages), chars: charsOf(messages), count: messages.length } };
         previewCache.set(id, hit);
       }
       out[id] = { ...hit.value, at };

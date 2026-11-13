@@ -4,6 +4,7 @@
 //   #/radio/shelf       지난 방송: bookmarks, several at once
 //   #/radio/settings    연결 · 시간대 · 라디오 네임 · 사연을 가져올 방 · 진행 지침과 저장해 둔 지침
 
+import { connectionSelect } from "../lib/connpick.js";
 import { h, icon, I, setChildren, dots } from "../lib/h.js";
 import { api } from "../lib/api.js";
 import { data, characterIndex, chatTitle, firstLetter } from "../lib/data.js";
@@ -464,16 +465,11 @@ export function radioScreen({ mount, args, go, back }) {
   function settingsView() {
     const s = state.settings;
     setChildren(head, pageHead("라디오 설정", { label: "모든 방송 공통", back: () => back("radio") }));
-    const conn = h(
-      "select",
-      { class: "sel", style: { width: "160px" }, onChange: (e) => saveSettings({ connectionId: e.target.value }) },
-      h("option", { value: "" }, "기본 연결"),
-    );
-    data
-      .connections()
-      .then((list) =>
-        list.forEach((c) => conn.append(h("option", { value: c.id, selected: c.id === s.connectionId }, c.name))),
-      );
+    const conn = connectionSelect({
+      value: s.connectionId,
+      onPick: (v) => saveSettings({ connectionId: v }),
+      attrs: { class: "sel", style: { width: "160px" } },
+    });
     const name = h("input", {
       class: "bare",
       type: "text",
