@@ -1,7 +1,7 @@
 // The Convo status sheet: what the Engine's Conversation Presence card shows, for each character in the chat —
 // status and activity, following the schedule or set by hand, last contact, change the status (saved on the
 // character card like the Engine), back to the schedule, reply now while a reply waits, the next blocks and the
-// week view. At the bottom, the user's own schedule line (Mari Kit 내 일정).
+// week view. At the bottom, the user's own status and schedule line (Mari Kit 내 일정) and this room's weather.
 
 import { h, setChildren } from "./h.js";
 import { api } from "./api.js";
@@ -41,6 +41,7 @@ export function presenceSheet({ chat, index, fresh, me, waiting = [], replyNow, 
   const s = sheet(box, { label: "상태와 일정" });
   let statuses = fresh;
   let editing = null; // character id whose status chips are open
+  let weather = null; // { on, enabled, line } once read (Mari Kit weather for this room)
 
   async function refresh() {
     try {
@@ -305,6 +306,23 @@ export function presenceSheet({ chat, index, fresh, me, waiting = [], replyNow, 
               h("span", { class: "val" }, "›"),
             )
           : null,
+        weather
+          ? h(
+              "button",
+              {
+                type: "button",
+                class: "r",
+                onClick: () => (s.close(), go(`weather/${encodeURIComponent(chatId)}`)),
+              },
+              h("span", { class: "ic" }),
+              h(
+                "span",
+                null,
+                weather.on && weather.enabled ? `날씨 · ${weather.line || "넣는 중"}` : "날씨 · 이 방에 넣지 않음",
+              ),
+              h("span", { class: "val" }, "›"),
+            )
+          : null,
         h(
           "button",
           {
@@ -320,7 +338,21 @@ export function presenceSheet({ chat, index, fresh, me, waiting = [], replyNow, 
     );
   }
 
+  // The weather row: read when the sheet opens (the place's weather is cached on the server for 15 minutes).
+  async function loadWeather() {
+    try {
+      const [wx, settings] = await Promise.all([
+        api.get(`/mari-kit/weather/${encodeURIComponent(chatId)}`),
+        api.get("/mari-kit/settings"),
+      ]);
+      const now = String(wx?.summaries?.user || "").split("\n")[1] || "";
+      weather = { on: settings?.features?.weather === true, enabled: wx?.room?.enabled === true, line: now };
+      if (box.isConnected) draw();
+    } catch {}
+  }
+
   draw();
   if (!statuses) refresh();
+  if (chat.mode === "conversation") loadWeather();
   return s;
 }

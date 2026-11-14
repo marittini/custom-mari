@@ -358,6 +358,37 @@ const flows = {
     await page.locator(`a[href="#/convo/${encodeURIComponent(scheduled.id)}"] .avp .sdot`).waitFor({ timeout: 10000 });
   },
 
+  // 날씨 (Mari Kit weather): from chat settings, turn it on, pick my place and the character's from the built-in
+  // cities, put it in this room; the status sheet shows the row and opens the same screen.
+  async "convo-weather"({ page }) {
+    const room = () => api("GET", `/mari-kit/weather/${convo.id}`);
+    await open(page);
+    await goIn(page, `#/chat-settings/${encodeURIComponent(convo.id)}/kit`);
+    await page.getByRole("button", { name: /^날씨/ }).click();
+    await until(async () => (await hash(page)).startsWith("#/weather/"), 5000, "weather screen");
+    await page.getByRole("switch", { name: /Mari Kit 날씨/ }).click();
+    await until(async () => (await api("GET", "/mari-kit/settings")).features?.weather === true, 5000, "feature on");
+    await page.getByRole("button", { name: "고르기" }).first().click();
+    await page.locator(".sheet").getByRole("button", { name: /^서울/ }).click();
+    await until(async () => (await room()).userLocation?.name === "서울", 8000, "my place saved");
+    await page.getByRole("switch", { name: /이 방에 날씨 넣기/ }).click();
+    await until(async () => (await room()).room?.enabled === true, 8000, "room on");
+    await page.getByRole("button", { name: "고르기" }).click();
+    await page.locator(".sheet").getByRole("button", { name: /^부산/ }).click();
+    await until(async () => (await room()).room?.characterLocation?.name === "부산", 8000, "character place saved");
+    await page.locator(".wx-sum").first().waitFor({ timeout: 10000 });
+    await snap(page, "weather");
+    await page.getByRole("button", { name: "뒤로" }).click();
+    await until(async () => (await hash(page)).startsWith("#/chat-settings/"), 5000, "back to chat settings");
+    await goIn(page, `#/convo/${encodeURIComponent(convo.id)}`);
+    await page.locator(".me-line").click();
+    await page.getByRole("button", { name: /^날씨 · / }).click();
+    await until(async () => (await hash(page)).startsWith("#/weather/"), 5000, "weather from the status sheet");
+    await api("PUT", `/mari-kit/weather/${convo.id}`, { enabled: false, characterLocation: null });
+    await api("PUT", "/mari-kit/weather/user", { location: null });
+    await api("PATCH", "/mari-kit/settings", { features: { weather: false } });
+  },
+
   // Reactions and replies (the Engine's data): react from the quick row and take it back, see a character's
   // reaction, reply to a message (sent as replyTo) and see its quote.
   async "convo-react"({ page }) {

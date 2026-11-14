@@ -3665,3 +3665,26 @@ button.toast {
 .pcard > .pcard-name {
   flex: none;
 }
+
+/* 날씨: place rows, the place sheet's search, what the model is told now */
+.wx-acts {
+  display: inline-flex;
+  gap: 6px;
+}
+.wx-find {
+  display: flex;
+  gap: 8px;
+}
+.wx-find .inp {
+  flex: 1;
+  min-width: 0;
+}
+.wx-sum {
+  margin: 0;
+  padding: 12px 16px 14px;
+  border-top: 1px solid var(--line);
+  font-size: 13px;
+  line-height: 1.6;
+  color: var(--ink-2);
+  white-space: pre-line;
+}

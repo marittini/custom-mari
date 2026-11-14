@@ -20,6 +20,7 @@ export function tourScreens(ids) {
     ["채팅 설정 Convo", `chat-settings/${e(ids.convo)}`],
     ["채팅 설정 RP", `chat-settings/${e(ids.rp)}`],
     ["통화 설정", `call-settings/${e(ids.convo)}`],
+    ["날씨", `weather/${e(ids.convo)}`],
     ["번역 설정", `translation/${e(ids.rp)}`],
     ["캐릭터 프로필", `character/${e(ids.a)}`],
     ["캐릭터 편집", `edit/character/${e(ids.a)}`],
@@ -88,6 +89,7 @@ export const FLOW_SCREENS = {
   "convo-react": ["convo"],
   "convo-compose": ["convo"],
   "convo-schedule": ["convo", "convos", "char-schedule"],
+  "convo-weather": ["chat-settings", "weather", "convo"],
 };
 
 /** Runs the tour (only screens drawn by `mods`, if given). Returns { rows, failed }. app: the shell URL. */

@@ -1267,6 +1267,11 @@ export function chatSettingsScreen({ mount, args, go, back }) {
                 ? linkRow(I.phone, "통화 설정", "", () => go(`call-settings/${encodeURIComponent(chatId)}`))
                 : null,
               chat.mode === "conversation"
+                ? linkRow(I.sun, "날씨", features.weather ? "" : "꺼짐", () =>
+                    go(`weather/${encodeURIComponent(chatId)}`),
+                  )
+                : null,
+              chat.mode === "conversation"
                 ? linkRow(I.chat, "대화 기능", "자율 메시지 · 일정 · 통화", () => go(here("convo")))
                 : null,
             ),
