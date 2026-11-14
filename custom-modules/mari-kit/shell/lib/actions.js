@@ -167,8 +167,14 @@ function editMessage(message, base, reload) {
   );
 }
 
-/** Runs one /generate stream; onToken gets the text so far, onSaved each saved message. */
-export async function streamGenerate({ chatId, body, signal, onToken, onSaved }) {
+/**
+ * Runs one /generate stream; onToken gets the text so far, onSaved each saved message. Convo presence (the Engine's
+ * conversation-presence-runtime): onPresence gets { kind: "typing", names } when a character starts writing,
+ * { kind: "delayed", names, characterIds, characterStatuses, status, delayMs } when a busy or away character will
+ * answer later (the Engine waits on this same request), and { kind: "offline", names, reason } when they will not
+ * answer now (the stream then ends; reason "scene_busy" means they are in a Scene).
+ */
+export async function streamGenerate({ chatId, body, signal, onToken, onSaved, onPresence }) {
   const streaming = (await data.engineUi(true)).enableStreaming !== false;
   let text = "";
   for await (const event of api.stream(
@@ -188,6 +194,23 @@ export async function streamGenerate({ chatId, body, signal, onToken, onSaved })
     } else if (event.type === "message_saved") {
       onSaved?.(event.data);
       if (event.data?.role === "assistant") text = "";
+    } else if (event.type === "typing" || event.type === "delayed" || event.type === "offline") {
+      const names = Array.isArray(event.characters) ? event.characters.filter(Boolean) : [];
+      if (event.type === "typing") onPresence?.({ kind: "typing", names });
+      else if (event.type === "delayed")
+        onPresence?.({
+          kind: "delayed",
+          names,
+          characterIds: Array.isArray(event.characterIds) ? event.characterIds : [],
+          characterStatuses: event.characterStatuses || {},
+          status: event.status || "idle",
+          delayMs: Number(event.delayMs) || 0,
+        });
+      else if (!body?.autonomous) onPresence?.({ kind: "offline", names, reason: event.reason || "" });
+    } else if (event.type === "selfie" && !body?.autonomous) {
+      toast(`${event.data?.characterName || "캐릭터"} · 사진을 보냈어요`);
+    } else if (event.type === "selfie_error" && !body?.autonomous) {
+      toast(`사진을 만들지 못했어요: ${event.data?.error || ""}`.trim());
     } else if (event.type === "error" && !body?.autonomous) {
       // A character's own (autonomous) message failing is not the user's error to see.
       toast(typeof event.data === "string" ? event.data : event.data?.message || "생성하지 못했어요");

@@ -13,26 +13,6 @@ _(none)_
 
 ## Ready
 
-### M-1 Convo: 바쁨·오프라인·입력 중 알림 — bug
-
-The Engine streams `delayed`, `offline` (also `scene_busy`) and `typing` events; Mari's `streamGenerate`
-(`shell/lib/actions.js`) reads only `token`, `message_saved` and `error`. A busy character shows "…" for 1–5 minutes,
-an offline one shows nothing, and a group does not say who is typing.
-
-- Show "○○는 지금 바빠요 · 틈나면 답해요 (약 N분)" with the Engine's 지금 답하게 (Reply now).
-- Show why there is no reply for offline / in a scene.
-- "○○가 입력 중…" with face and name, in order for groups.
-- Engine: `packages/server/src/routes/generate/conversation-presence-runtime.ts`.
-- Proof: fake-model scenario and a character on a dnd/offline schedule; a `shell-e2e` flow.
-
-### M-2 Convo: 캐릭터 셀카·영상이 안 보임 — bug
-
-`[selfie]` / `[video]` results are stored in the message's `extra.attachments` (per swipe;
-`services/generation/conversation-selfie-command-runtime.ts`). Mari Convo does not draw attachments.
-
-- Image/video under the bubble, small in the list, large on tap; follow the shown swipe; `loading=lazy`.
-- Proof: a seeded message with an attachment at 360px; a `shell-e2e` flow.
-
 ### M-3 Convo: 캐릭터 일정 보기 — step (plan §3)
 
 Plan with mockups: https://claude.ai/artifact/375D4DH6fcBQHXme3Tmnv5
@@ -56,24 +36,21 @@ Plan with mockups: https://claude.ai/artifact/375D4DH6fcBQHXme3Tmnv5
   Engine's format (a lone reaction can make the character answer: `recordUserReaction`).
 - 답장 tool (`TOOL_DEFS`): quote above the composer, sent as `extra.replyTo`, quote shown on the sent bubble.
 
-### M-5 Convo: 시각·날짜 구분선, '읽음' 정리 — step
-
-- Day separators (오늘/어제/날짜) and a small time on the last bubble of a run (the Engine groups the same speaker
-  within 5 minutes).
-- '읽음' is not Engine data (always shown under my last message): remove it or show the sent time.
-
 ### M-7 Engine 원본을 고친 PR 4개 정리 — engine
 
-PRs #35, #38, #41, #42 changed Engine files (`agent-resolution.ts`, `retry-agents-route.ts`, `generate.routes.ts`,
-`translation.service.ts`, `chats.routes.ts`). The owner's Engine updates from upstream, so these never reach the
-phone; Mari Kit features that rely on them do not work there.
+PRs #35, #38, #41, #42 changed Engine files. The owner's Engine updates from upstream, so these never reach the
+phone. Investigation done (read-only); upstream issue drafts for the owner are in `custom-modules/UPSTREAM.md`.
 
-- For each change: what it fixes, whether Mari Kit can do it itself (workaround), and the upstream issue text for the
-  owner to file.
-- Then put the Engine files back to upstream's text (PR with the `mari:engine-restore` label; labels can be added to PRs even with Issues off) and make sure the
-  verify run still passes.
-- Move the Mari Kit tests in `scripts/regressions/mari-kit-*` that do not need Engine source into
-  `custom-modules/tests/`; the rest go with the upstream issue.
+| PR  | Engine change                                                                           | Mari Kit can do it itself?                                                                                                                             |
+| --- | --------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| #35 | feature agents (`execution: "feature"`) kept out of the LLM agent pipeline and Retry    | No (Engine resolution code). Until upstream: check whether enabling the Mari Kit agent on a chat makes an empty agent call; if so, say so in the shell |
+| #38 | translation keeps `<audio_…>` wrappers and `[cues]` (placeholder tokens, 422 if broken) | Partly: Mari's own translate calls can tokenize in `shell/lib/translate.js`; the Engine's automatic translation cannot                                 |
+| #41 | a generation that fails during setup no longer stays "generating"                       | Partly: `watchGeneration` can offer 멈추기 for a stuck entry; root cause is Engine                                                                     |
+| #42 | `includePromptCache=false` drops `extra.cachedPrompt` from message lists                | Yes, likely: a Mari Kit route that reads messages (`runtime.persistence.listMessages`) and strips it                                                   |
+
+Next: do the Mari Kit side (#42 route, #38 manual translation, #41 stuck notice), then put the Engine files back
+(PR labelled `mari:engine-restore`), move the `scripts/regressions/mari-kit-*.mjs` tests that need no Engine source
+into `custom-modules/tests/` (all but `mari-kit-tts-generation.regression.ts`), and give the owner `UPSTREAM.md`.
 
 ### M-8 화면을 못 불러올 때 다시 시도 — bug
 
@@ -108,4 +85,5 @@ _(none)_
 
 ## Done
 
+- M-1 Convo 바쁨·오프라인·입력 중 알림, M-2 셀카·영상·사진, M-5 시각·날짜 구분선 — Mari Kit 0.17.0 (PR #47).
 - Workflow: `WORKFLOW.md`, `AGENTS.override.md`, Engine guard, `verify.mjs` with the 360px screen tour, this list.

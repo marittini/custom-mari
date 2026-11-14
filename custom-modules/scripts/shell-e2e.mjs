@@ -70,6 +70,9 @@ const convo = await newChat("e2e convo", "conversation", [a.id]);
 const group = await newChat("e2e group", "conversation", [a.id, b.id]);
 const rp = await newChat("e2e rp", "roleplay", [a.id]);
 const other = await newChat("e2e other", "conversation", [b.id]);
+// Its own character, because a status override lives on the character card (the Engine's presence).
+const yui = await api("POST", "/characters", { data: { name: "Yui", description: "e2e" } });
+const presence = await newChat("e2e presence", "conversation", [yui.id]);
 
 const browser = await chromium.launch();
 async function phone() {
@@ -209,6 +212,64 @@ const flows = {
       5000,
       "cover in the list",
     );
+  },
+
+  // The Engine's presence: an offline character does not answer (and Mari says why); an away one answers later,
+  // with 지금 답하게 to ask again without the wait. Pictures on messages; day separator and times.
+  async "convo-presence"({ page }) {
+    // The status override lives on the character card (extensions.conversationStatusOverride).
+    const status = async (st) => {
+      const row = await api("GET", `/characters/${yui.id}`);
+      const card = typeof row.data === "string" ? JSON.parse(row.data) : row.data;
+      const override = {
+        status: st,
+        activity: "e2e",
+        createdAt: new Date().toISOString(),
+        expiresAt: new Date(Date.now() + 3600e3).toISOString(),
+      };
+      await api("PATCH", `/characters/${yui.id}`, {
+        data: { extensions: { ...(card.extensions || {}), conversationStatusOverride: override } },
+        skipVersionSnapshot: true,
+      });
+    };
+    await status("offline");
+    await open(page);
+    await goIn(page, `#/convo/${encodeURIComponent(presence.id)}`);
+    await page.waitForSelector(".cmp textarea");
+    const say = async (text) => {
+      await page.locator(".cmp textarea").fill(text);
+      await page.getByRole("button", { name: "보내기" }).click();
+    };
+    await say("자?");
+    await until(() => page.locator(".pnote").filter({ hasText: "오프라인" }).isVisible(), 15000, "offline note");
+    await status("idle");
+    const before = await messageCount(presence.id);
+    await say("@Yui 일어났어?");
+    await until(
+      () => page.locator(".pwait.delayed").filter({ hasText: "자리를 비웠어요" }).isVisible(),
+      15000,
+      "away note",
+    );
+    if (await page.locator(".pnote").count()) throw new Error("the offline note stayed after sending again");
+    await page.getByRole("button", { name: "지금 답하게" }).click();
+    await until(async () => (await messageCount(presence.id)) > before + 1, 10000, "reply now answered");
+    await until(async () => !(await page.locator(".pwait").count()), 5000, "notice gone after the answer");
+    await status("online");
+    // A picture on a message (a user upload: data URL) and the message tools from its viewer.
+    const msgs = await api("GET", `/chats/${presence.id}/messages`);
+    const last = msgs[msgs.length - 1];
+    const png = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==";
+    await api("PATCH", `/chats/${presence.id}/messages/${last.id}/extra`, {
+      attachments: [{ type: "image/png", data: png, name: "e2e.png" }],
+    });
+    await goIn(page, "#/convos");
+    await goIn(page, `#/convo/${encodeURIComponent(presence.id)}`);
+    await page.locator(".att-i").first().click();
+    await page.locator(".att-view img").waitFor();
+    await page.getByRole("button", { name: "메시지 도구" }).click();
+    await page.getByRole("toolbar", { name: "메시지 도구" }).waitFor();
+    if (!(await page.locator(".daysep").filter({ hasText: "오늘" }).count())) throw new Error("no 오늘 separator");
+    if (!(await page.locator(".btime").count())) throw new Error("no message times");
   },
 
   // Characters write first (the Engine's Convo autonomy): in the open chat, and in another chat with an unread
