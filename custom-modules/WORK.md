@@ -9,12 +9,7 @@ needs the owner, a real account or a phone.
 
 ## Doing
 
-### M-12 번역 찾기·지침 직접 편집·입출력 구분 — doing (codex mari/translation-direction-fix)
-
-Fix discarded glossary scan results; expose independent incoming/outgoing custom prompts and their effective
-preview, with explicit AI-provider limits and safe fitting feedback. Keep existing glossary and original-prompt
-restore behavior. Mari Kit only; do not modify paused PR #49 or its feature files. Shared release-version metadata
-will need its later 0.19.0 merge resolution. Target a separate 0.18.1 patch.
+_(none)_
 
 ## Ready
 
@@ -64,3 +59,4 @@ _(none)_
   업스트림 이슈 초안은 `UPSTREAM.md`.
 - M-1 Convo 바쁨·오프라인·입력 중 알림, M-2 셀카·영상·사진, M-5 시각·날짜 구분선 — Mari Kit 0.17.0 (PR #47).
 - Workflow: `WORKFLOW.md`, `AGENTS.override.md`, Engine guard, `verify.mjs` with the 360px screen tour, this list.
+- M-12 번역 단어장 찾기, 입출력별 지침 직접 편집·미리보기, 독립된 원본 복원 — Mari Kit 0.18.1 (PR #50).
