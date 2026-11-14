@@ -83,6 +83,7 @@ export const FLOW_SCREENS = {
   "chat-settings": ["chat-settings"],
   cover: ["chat-settings", "convos"],
   autonomy: ["convo", "convos"],
+  "convo-presence": ["convo"],
 };
 
 /** Runs the tour (only screens drawn by `mods`, if given). Returns { rows, failed }. app: the shell URL. */

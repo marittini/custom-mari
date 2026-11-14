@@ -9,7 +9,8 @@ apply. When they disagree, the owner's latest words win, then `CLAUDE.md`, then 
 - **The Engine is upstream's.** Everything outside `custom-modules/` is Pasta-Devs/Marinara-Engine, unmodified. The
   owner's Engine updates straight from upstream, so a change in `packages/` never reaches the owner's phone: it only
   makes this repository's test Engine differ from the real one.
-- **Never edit Engine files.** Work through the capability package API inside `custom-modules/mari-kit/`. A PR that
+- **Never edit Engine files.** Four earlier edits are kept on purpose; `ENGINE-EDITS.md` lists them.
+  Otherwise work through the capability package API inside `custom-modules/mari-kit/`. A PR that
   changes a path outside the fork's own files (list below) fails the `Mari Engine guard` check.
 - **An Engine bug** is handled in two parts: work around it inside Mari Kit (shell or package), and write up the
   upstream issue text for the owner to file, in its `WORK.md` item (what breaks, smallest reproduction, the fix you

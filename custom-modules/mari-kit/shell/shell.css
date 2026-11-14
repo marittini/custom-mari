@@ -3008,3 +3008,148 @@ button.toast {
   object-fit: contain;
   vertical-align: middle;
 }
+
+/* Convo: day separators and times (the Engine's 5-minute groups) */
+.daysep {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin: 22px 0 6px;
+  font-size: 11px;
+  color: var(--ink-3);
+}
+.daysep::before,
+.daysep::after {
+  content: "";
+  flex: 1;
+  height: 1px;
+  background: var(--line);
+}
+.btime {
+  margin: 4px 6px 0;
+  font-size: 10.5px;
+  color: var(--ink-3);
+  font-variant-numeric: tabular-nums;
+}
+/* Convo presence: typing, busy/away (answers later), offline */
+.pwait {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 22px;
+  font-size: 13px;
+  color: var(--ink-2);
+}
+.pwait-t {
+  flex: 1 1 160px;
+  min-width: 0;
+}
+.pwait .pill {
+  min-height: 36px;
+}
+.tdots {
+  display: inline-flex;
+  gap: 3px;
+  margin-left: 6px;
+  vertical-align: middle;
+}
+.tdots i {
+  width: 4px;
+  height: 4px;
+  border-radius: 50%;
+  background: var(--ink-3);
+  animation: tdot 1.2s infinite ease-in-out;
+}
+.tdots i:nth-child(2) {
+  animation-delay: 0.15s;
+}
+.tdots i:nth-child(3) {
+  animation-delay: 0.3s;
+}
+@keyframes tdot {
+  0%,
+  80%,
+  100% {
+    opacity: 0.25;
+  }
+  40% {
+    opacity: 1;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .tdots i {
+    animation: none;
+  }
+}
+.pnote {
+  align-self: stretch;
+  margin-top: 22px;
+  padding: 10px 14px;
+  border: 1px dashed var(--line-2);
+  border-radius: 12px;
+  font-size: 12.5px;
+  line-height: 1.5;
+  color: var(--ink-2);
+  text-align: center;
+}
+/* Convo attachments: selfies, videos, pictures */
+.att {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  max-width: 75%;
+  margin-top: 6px;
+}
+.att.me {
+  justify-content: flex-end;
+}
+.att-i {
+  padding: 0;
+  border: 0;
+  background: var(--fill);
+  border-radius: 14px;
+  overflow: hidden;
+  cursor: pointer;
+  max-width: 100%;
+}
+.att-i img {
+  display: block;
+  max-width: 100%;
+  max-height: 320px;
+  object-fit: cover;
+}
+.att-v {
+  display: block;
+  max-width: 100%;
+  max-height: 60vh;
+  border-radius: 14px;
+  background: var(--fill);
+}
+.att-f {
+  padding: 8px 12px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  font-size: 12px;
+  color: var(--ink-2);
+  overflow-wrap: anywhere;
+}
+.att-view {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 4px 20px 24px;
+  overflow-y: auto;
+}
+.att-view img {
+  display: block;
+  max-width: 100%;
+  max-height: 70vh;
+  margin: 0 auto;
+  border-radius: 12px;
+}
+.att-view .hint {
+  margin: 0;
+  font-size: 12.5px;
+  line-height: 1.5;
+}

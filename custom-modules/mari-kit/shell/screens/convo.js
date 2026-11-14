@@ -19,7 +19,7 @@ import {
   messageWindow,
 } from "../lib/data.js";
 import { TOOL_DEFS, toolPlace } from "../lib/prefs.js";
-import { toast, errorBox, avatar, avatarStack, olderButton, fitMenus, jumpTo } from "../lib/ui.js";
+import { toast, errorBox, avatar, avatarStack, olderButton, fitMenus, jumpTo, sheet } from "../lib/ui.js";
 import { pickVoice, stripCues, inline } from "../lib/render.js";
 import * as tts from "../lib/tts.js";
 import { syncVoiceSettings } from "../lib/voice.js";
@@ -27,6 +27,7 @@ import { callsAvailable, callScreen, callPrefs } from "../lib/call.js";
 import { shownText, translateStickerInput, stickerTokensMatch } from "../lib/translate.js";
 import { loadStickers, stickerContent, stickerPicker, stickerLabel, withoutStickerTokens } from "../lib/stickers.js";
 import { watchGeneration, stopGeneration } from "../lib/generation.js";
+import { attachmentsOf, closeInTime, dayKey, dayLabel, presenceText, timeLabel } from "../lib/convo-bits.js";
 import { activeAutonomy, clearUnread } from "../lib/autonomy.js";
 import { runSlash } from "../lib/slash.js";
 import {
@@ -58,6 +59,11 @@ export function convoScreen({ mount, args, go, back }) {
   let callAudio = false;
   let voiceSet = null;
   let abort = null;
+  // The Engine's presence notices: wait = a character typing, or busy/away and answering later (during a
+  // generation); offNote = why the last message got no answer (offline, in a Scene), until the next send.
+  let wait = null;
+  let offNote = null;
+  let queued = null; // 지금 답하게: { body, ready } runs once the delayed generation has stopped
   let me = null; // the persona's schedule state (Mari Kit 내 일정), when there is one
   let phoneBtn = null;
   let call = null; // the call screen, when the Calls package is installed
@@ -475,15 +481,6 @@ export function convoScreen({ mount, args, go, back }) {
       refreshStickers().catch(() => {}); // A failed read leaves the token visible; the picker offers retry.
     const items = [];
     if (win.more) items.push(olderButton(win, scroller, () => ((messages = shown()), draw())));
-    const first = messages[0];
-    if (first)
-      items.push(
-        h(
-          "span",
-          { style: { alignSelf: "center", padding: "0 0 20px", fontSize: "11px", color: "var(--ink-3)" } },
-          shortTime(first.createdAt),
-        ),
-      );
     // Like the Engine's Convo, a blank line starts a new bubble.
     const meta = chatMeta(chat);
     const bubbles = [];
@@ -520,6 +517,11 @@ export function convoScreen({ mount, args, go, back }) {
           .map((p) => p.trim())
           .filter(Boolean);
       const each = parts.length > 1 && subs.length === parts.length;
+      const atts = attachmentsOf(m);
+      if (!parts.length && atts.length) {
+        bubbles.push({ m, text: "", media: true, me: m.role === "user", first: true, last: true, sub });
+        continue;
+      }
       (parts.length ? parts : [""]).forEach((text, k, all) =>
         bubbles.push({
           m,
@@ -531,10 +533,16 @@ export function convoScreen({ mount, args, go, back }) {
         }),
       );
     }
-    const lastMine = messages.map((m) => m.role === "user").lastIndexOf(true);
     const lastReplyId = [...messages].reverse().find((m) => m.role === "assistant")?.id;
+    let lastDay = "";
     bubbles.forEach((bub, i) => {
       const { m, me } = bub;
+      // A line with the day whenever the day changes (오늘, 어제, 11월 12일 목요일), like the Engine.
+      const day = dayKey(m.createdAt);
+      if (bub.first && day && day !== lastDay) {
+        lastDay = day;
+        items.push(h("div", { class: "daysep", role: "separator" }, h("span", null, dayLabel(m.createdAt))));
+      }
       if (bub.ev) {
         items.push(
           h(
@@ -550,8 +558,15 @@ export function convoScreen({ mount, args, go, back }) {
       const prev = bubbles[i - 1];
       const next = bubbles[i + 1];
       // A run is one speaker's bubbles in a row: in a group, another character starts a new run.
+      // Like the Engine, a run also ends after 5 minutes or at a new day.
       const sameRun = (o) =>
-        o && !o.ev && !o.sys && !bub.sys && o.me === me && (me || o.m.characterId === m.characterId);
+        o &&
+        !o.ev &&
+        !o.sys &&
+        !bub.sys &&
+        o.me === me &&
+        (me || o.m.characterId === m.characterId) &&
+        closeInTime(o.m.createdAt, m.createdAt);
       const firstOfRun = !sameRun(prev);
       const lastOfRun = !sameRun(next);
       const radius = me
@@ -573,23 +588,28 @@ export function convoScreen({ mount, args, go, back }) {
         },
         speaker && firstOfRun ? avatar(speaker.avatar, speaker.name?.[0] || "·", 28) : null,
         speaker && firstOfRun ? h("span", { class: "who-name" }, speaker.name) : null,
-        h(
-          "button",
-          {
-            type: "button",
-            class: bub.sys ? `sysmsg${on ? " on" : ""}` : `bub ${me ? "me" : "them"}${on ? " on" : ""}`,
-            style: bub.sys ? null : { borderRadius: radius },
-            "aria-expanded": on ? "true" : "false",
-            onClick: (e) => {
-              e.stopPropagation();
-              picked = on ? null : m.id;
-              moreOpen = false;
-              draw();
-            },
-          },
-          bub.sys ? inline(bub.text) : stickerContent(bub.text, stickers.map),
-        ),
+        bub.media
+          ? null
+          : h(
+              "button",
+              {
+                type: "button",
+                class: bub.sys ? `sysmsg${on ? " on" : ""}` : `bub ${me ? "me" : "them"}${on ? " on" : ""}`,
+                style: bub.sys ? null : { borderRadius: radius },
+                "aria-expanded": on ? "true" : "false",
+                onClick: (e) => {
+                  e.stopPropagation();
+                  picked = on ? null : m.id;
+                  moreOpen = false;
+                  draw();
+                },
+              },
+              bub.sys ? inline(bub.text) : stickerContent(bub.text, stickers.map),
+            ),
         bub.sub ? h("span", { class: "bub-tr" }, stickerContent(bub.sub, stickers.map)) : null,
+        bub.last && !bub.sys ? mediaOf(m, me) : null,
+        // The time under the last bubble of a run (one speaker within 5 minutes).
+        lastOfRun && bub.last && !bub.sys ? h("span", { class: "btime" }, timeLabel(m.createdAt)) : null,
       );
       // Other replies to this turn: always under the newest reply (› there asks for a new one), else when tapped.
       const newest = m.id === lastReplyId;
@@ -677,17 +697,10 @@ export function convoScreen({ mount, args, go, back }) {
           ),
         );
       }
-      if (bub.last && messages.indexOf(m) === lastMine && !busy)
-        wrap.append(
-          h(
-            "span",
-            { style: { marginTop: "6px", paddingRight: "4px", fontSize: "11px", color: "var(--ink-3)" } },
-            "읽음",
-          ),
-        );
       items.push(wrap);
     });
-    if (busy) {
+    if (busy && !live && wait) items.push(waitRow());
+    else if (busy) {
       const parts = String(live || "")
         .split(/\n{2,}/)
         .map((p) => p.trim())
@@ -702,11 +715,129 @@ export function convoScreen({ mount, args, go, back }) {
         ),
       );
     }
+    if (offNote && !busy) items.push(h("div", { class: "pnote", role: "status" }, presenceText(offNote)));
     if (!messages.length && !busy) items.push(h("div", { class: "empty" }, "첫 메시지를 보내 보세요."));
     setChildren(list, items);
     setChildren(sendBtn, icon(busy ? I.stop : I.send, busy ? 14 : 16, 2));
     sendBtn.setAttribute("aria-label", busy ? "멈춤" : "보내기");
     fitMenus(list);
+  }
+
+  // Attachments under a message: a character's selfies and videos, pictures the user sent.
+  function mediaOf(m, me) {
+    const atts = attachmentsOf(m);
+    if (!atts.length) return null;
+    return h(
+      "div",
+      { class: `att ${me ? "me" : "them"}` },
+      atts.map((a) =>
+        a.kind === "video"
+          ? h("video", {
+              class: "att-v",
+              src: a.src,
+              controls: true,
+              playsinline: true,
+              preload: "metadata",
+              title: a.prompt,
+              onLoadedmetadata: (e) => {
+                const gap = scroller.scrollHeight - scroller.scrollTop - scroller.clientHeight;
+                if (gap <= e.currentTarget.offsetHeight + 120) scroller.scrollTop = scroller.scrollHeight;
+              },
+            })
+          : a.kind === "image"
+            ? h(
+                "button",
+                {
+                  type: "button",
+                  class: "att-i",
+                  "aria-label": a.prompt ? `사진: ${a.prompt.slice(0, 60)}` : "사진 크게 보기",
+                  onClick: (e) => {
+                    e.stopPropagation();
+                    viewImage(a, m);
+                  },
+                },
+                h("img", {
+                  src: a.thumb,
+                  alt: a.prompt || "",
+                  loading: "lazy",
+                  decoding: "async",
+                  // A picture grows the chat when it arrives: a reader who was at the bottom stays there.
+                  onLoad: (e) => {
+                    const gap = scroller.scrollHeight - scroller.scrollTop - scroller.clientHeight;
+                    if (gap <= e.currentTarget.offsetHeight + 120) scroller.scrollTop = scroller.scrollHeight;
+                  },
+                }),
+              )
+            : h("span", { class: "att-f" }, a.name),
+      ),
+    );
+  }
+  function viewImage(a, m) {
+    const s = sheet(
+      h(
+        "div",
+        { class: "att-view" },
+        h("img", { src: a.src, alt: a.prompt || "" }),
+        a.prompt ? h("p", { class: "hint" }, a.prompt) : null,
+        h(
+          "div",
+          { style: { display: "flex", gap: "8px", flexWrap: "wrap" } },
+          h(
+            "button",
+            {
+              type: "button",
+              class: "pill",
+              onClick: () => {
+                s.close();
+                picked = m.id;
+                moreOpen = false;
+                draw();
+              },
+            },
+            "메시지 도구",
+          ),
+          h("button", { type: "button", class: "pill", onClick: () => s.close() }, "닫기"),
+        ),
+      ),
+      { label: "사진" },
+    );
+  }
+  // While a character is typing, or busy/away and answering later (the Engine waits on the same request).
+  function waitRow() {
+    // A typing notice carries names only; find their faces by name among the room's characters.
+    const cast = (chat?.characterIds || []).map((id) => index.get(id)).filter(Boolean);
+    const faces = wait.characterIds?.length
+      ? wait.characterIds.map((id) => index.get(id)).filter(Boolean)
+      : (wait.names || []).map((n) => cast.find((c) => c.name === n)).filter(Boolean);
+    const names = wait.characterIds?.length
+      ? wait.characterIds.map((id) => index.get(id)?.name).filter(Boolean)
+      : wait.names;
+    const info = { ...wait, names: names?.length ? names : wait.names };
+    return h(
+      "div",
+      { class: `pwait ${wait.kind}`, role: "status" },
+      faces.length > 1
+        ? avatarStack(faces, 24)
+        : faces[0]
+          ? avatar(faces[0].avatar, faces[0].name?.[0] || "·", 24)
+          : null,
+      h(
+        "span",
+        { class: "pwait-t" },
+        presenceText(info),
+        wait.kind === "typing" ? h("span", { class: "tdots" }, h("i"), h("i"), h("i")) : null,
+      ),
+      wait.kind === "delayed" && wait.characterIds?.length === 1
+        ? h("button", { type: "button", class: "pill", onClick: () => replyNow(wait.characterIds[0]) }, "지금 답하게")
+        : null,
+    );
+  }
+  // The Engine's Reply now: stop the delayed generation and ask that character again without the delay.
+  function replyNow(characterId) {
+    if (queued) return;
+    queued = { body: { forCharacterId: characterId, skipPresenceDelay: true }, ready: null };
+    abort?.abort();
+    queued.ready = stopGeneration(chatId).catch(() => {});
   }
 
   function drawQuick() {
@@ -803,6 +934,8 @@ export function convoScreen({ mount, args, go, back }) {
     let produced = false;
     busy = true;
     live = "";
+    wait = null;
+    offNote = null;
     draw();
     scroller.scrollTop = scroller.scrollHeight;
     abort = new AbortController();
@@ -816,11 +949,18 @@ export function convoScreen({ mount, args, go, back }) {
         signal: abort.signal,
         onToken: (text) => {
           if (!alive) return;
+          wait = null;
           // Follow the new text only for a reader at the bottom (someone reading older messages stays put).
           const follow = scroll.nearBottom();
           live = text;
           draw();
           if (follow) scroller.scrollTop = scroller.scrollHeight;
+        },
+        onPresence: (info) => {
+          if (!alive || body?.autonomous) return;
+          if (info.kind === "offline") offNote = info;
+          else wait = info;
+          draw();
         },
         onSaved: (saved) => {
           if (saved) produced = true;
@@ -837,6 +977,7 @@ export function convoScreen({ mount, args, go, back }) {
       done();
       busy = false;
       live = null;
+      wait = null;
       abort = null;
       if (alive) {
         const before = new Set(messages.map((m) => m.id));
@@ -853,6 +994,12 @@ export function convoScreen({ mount, args, go, back }) {
               .filter((request) => stripCues(request.body.text).trim()),
           );
         await recovery.check();
+        if (queued) {
+          const next = queued;
+          queued = null;
+          await next.ready;
+          if (alive) return generate(next.body);
+        }
       }
     }
     return produced;

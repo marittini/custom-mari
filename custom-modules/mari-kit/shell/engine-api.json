@@ -132,6 +132,8 @@
     "GET /custom-stickers",
     "POST /custom-stickers/upload",
     "PATCH /custom-stickers/:id",
-    "DELETE /custom-stickers/:id"
+    "DELETE /custom-stickers/:id",
+    "GET /gallery/file/:id/:id",
+    "GET /gallery/scene-videos/file/:id/:id"
   ]
 }
