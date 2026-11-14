@@ -50,7 +50,7 @@ jobs:
           pnpm exec playwright install --with-deps chromium > /dev/null
 
       - name: Verify Mari Kit
-        run: node custom-modules/scripts/verify.mjs --shots mari-screens
+        run: node custom-modules/scripts/verify.mjs --all --shots mari-screens
 
       - name: Keep the 360px screenshots
         if: always()

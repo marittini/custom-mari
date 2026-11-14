@@ -71,8 +71,22 @@ function settle(page, { quiet = 700, max = 10000 } = {}) {
   });
 }
 
-/** Runs the tour. Returns { rows, failed }. app: the shell URL. */
-export async function screenTour({ browser, app, ids, shots = null, log = console.log }) {
+/** Which screen modules (shell/screens/<mod>.js) each shell-e2e flow goes through, so a change can run only the
+ *  flows that reach it. Keep it in step with the flows. */
+export const FLOW_SCREENS = {
+  home: ["home", "credit"],
+  "fresh-open": ["home", "settings", "convos"],
+  back: ["convos", "convo", "chat-settings"],
+  "convo-send": ["convo", "convos"],
+  "rp-send": ["rp"],
+  "group-speakers": ["convo"],
+  "chat-settings": ["chat-settings"],
+  cover: ["chat-settings", "convos"],
+  autonomy: ["convo", "convos"],
+};
+
+/** Runs the tour (only screens drawn by `mods`, if given). Returns { rows, failed }. app: the shell URL. */
+export async function screenTour({ browser, app, ids, mods = null, shots = null, log = console.log }) {
   if (shots) await mkdir(shots, { recursive: true });
   const ctx = await browser.newContext({
     viewport: { width: 360, height: 780 },
@@ -94,7 +108,8 @@ export async function screenTour({ browser, app, ids, shots = null, log = consol
 
   const rows = [];
   let failed = 0;
-  for (const [name, hash] of tourScreens(ids)) {
+  const screens = tourScreens(ids).filter(([, hash]) => !mods || mods.includes(hash.split("/")[0]));
+  for (const [name, hash] of screens) {
     errors = [];
     bytes = 0;
     const waiting = settle(page);

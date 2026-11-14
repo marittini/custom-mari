@@ -32,7 +32,7 @@ it is used.
 | 1. Intake  | Restate the request in one line. Read `WORK.md` and open PRs so two AIs do not do the same work. Ask the owner briefly if the request is genuinely ambiguous.                                                                                              | The work has one `WORK.md` item and nobody else is on it.          |
 | 2. Plan    | For anything the owner sees: an artifact with principles, structure map, screen mockups, tap paths and the transfer it will cost. List everything the Engine already does for this feature (inventory), and say which parts are reused, redrawn or linked. | The owner agreed. Agreed steps become `WORK.md` items (section 4). |
 | 3. Build   | Branch, smallest change that does the step, Engine calls added to `mari-kit/shell/engine-api.json`, `manifest.template.json` version bumped.                                                                                                               | `verify.mjs --quick` passes.                                       |
-| 4. Verify  | `verify.mjs` (full). Then use it like a user at 360px: whole flows, back, reload, group chats, several personas. Add a flow to `shell-e2e.mjs` or a test to `custom-modules/tests/` for what you built.                                                    | Everything passes, screenshots looked at, transfer recorded.       |
+| 4. Verify  | `verify.mjs` (scoped; `--all` for release-sized changes). Then use it like a user at 360px: whole flows, back, reload, group chats, several personas. Add a flow to `shell-e2e.mjs` or a test to `custom-modules/tests/` for what you built.               | Everything passes, screenshots looked at, transfer recorded.       |
 | 5. Release | PR (section 5), squash merge into `main`, catalog published (section 6).                                                                                                                                                                                   | The catalog shows the new version.                                 |
 | 6. Report  | To the owner, in Korean, short: what changed, what the owner does (copy-pasteable), what was not verified. Move the item to Done with the PR link.                                                                                                         | The item is in Done.                                               |
 
@@ -77,13 +77,32 @@ Leave checkboxes unchecked. Do not claim pending CI as passed.
 
 ## 7. Checks
 
-| Command                                                | What it checks                                                                                                                                                                                                            | When                  |
-| ------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------- |
-| `node custom-modules/scripts/verify.mjs --quick`       | formatting, package build and schema, shell files parse                                                                                                                                                                   | after each edit       |
-| `node custom-modules/scripts/verify.mjs`               | the above, then a throwaway Engine with a fake model: Engine routes the shell calls, chat-settings sections, `custom-modules/tests`, shell flows, every main screen at 360px (overflow, page errors, transfer per screen) | before a PR           |
-| `node custom-modules/scripts/verify.mjs --shots <dir>` | the same, and keeps a 360px screenshot of each screen                                                                                                                                                                     | when a screen changed |
-| `Mari verify` (CI, `mari-verify.yml`)                  | the full run on every PR that touches `custom-modules/`                                                                                                                                                                   | automatic             |
-| `Upstream Check` (CI, daily)                           | Mari Kit on the newest upstream Engine; a failure shows as a failed run (and an issue, if Issues are turned on)                                                                                                           | automatic             |
+By default `verify.mjs` checks only what the change reaches, so a small change costs little time and output (tokens).
+It reads the files changed since `origin/main` (commits, staged, unstaged, new) and picks, through the shell's
+imports (`scripts/e2e/scope.mjs`):
+
+- formatting and parsing of the changed files, and the package build when anything in `mari-kit/` changed;
+- the Engine-routes check when shell code or `engine-api.json` changed, the chat-settings-sections check only for
+  `chat-settings.js` / `engine-sections.js`;
+- the 360px tour only for the screens that load a changed file (a lib used by one screen tours that screen; `app.js`
+  or `shell.css` tours all), and only the shell flows that go through those screens (`FLOW_SCREENS` in
+  `scripts/e2e/screens.mjs`);
+- the tests in `custom-modules/tests/` that changed or name a changed file. A test that needs an Engine is named
+  `*.engine.test.mjs`; the Engine starts only when something needs it.
+
+Each check prints one line; a toured screen prints its transfer; a failure prints its tail.
+
+| Command                                          | What it checks                                                                                                  | When                                                              |
+| ------------------------------------------------ | --------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------- |
+| `node custom-modules/scripts/verify.mjs --quick` | formatting, parsing, package build — no Engine                                                                  | after each edit                                                   |
+| `node custom-modules/scripts/verify.mjs`         | the scoped run above                                                                                            | before a PR                                                       |
+| `node custom-modules/scripts/verify.mjs --all`   | everything: every flow and screen, every test, first-visit transfer, the old Mari Kit regressions               | before a release-sized merge (several steps, `app.js`, the build) |
+| add `--shots <dir>`                              | keeps a 360px screenshot of each toured screen                                                                  | when a screen changed                                             |
+| add `--verbose`                                  | full output and why each check was picked                                                                       | when a check fails or looks wrong                                 |
+| `Mari verify` (CI)                               | `--all` on every PR that touches Mari Kit (costs no tokens)                                                     | automatic                                                         |
+| `Upstream Check` (CI, daily)                     | Mari Kit on the newest upstream Engine; a failure shows as a failed run (and an issue, if Issues are turned on) | automatic                                                         |
+
+When you add a flow to `shell-e2e.mjs`, add it to `FLOW_SCREENS` too, or the scoped run never picks it.
 
 The fake model (`scripts/e2e/fake-llm.mjs`) answers every request with fixed text. A flow that needs a particular
 reply (a reaction, a selfie command, a schedule) adds a scenario there instead of calling a real model.

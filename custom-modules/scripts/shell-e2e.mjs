@@ -5,8 +5,10 @@
 // characters writing first. Also prints the transfer of the first visit, and tours every main screen at 360px
 // (transfer per screen, sideways page scroll, page errors; e2e/screens.mjs). Needs Playwright's Chromium.
 //
-//   node custom-modules/scripts/shell-e2e.mjs [http://127.0.0.1:7860] [--only name,name] [--shots <dir>]
-//   (--only screens runs just the tour)
+//   node custom-modules/scripts/shell-e2e.mjs [http://127.0.0.1:7860] [--only flow,flow] [--screens mod,mod]
+//                                             [--shots <dir>]
+//   --only: just these flows (none: "--only -"). --screens: tour only the screens drawn by these screen modules
+//   (shell/screens/<mod>.js; "-" for none). Without either, everything runs, with the first-visit transfer.
 
 import { createRequire } from "node:module";
 import { dirname, join, resolve } from "node:path";
@@ -17,7 +19,10 @@ import { screenTour } from "./e2e/screens.mjs";
 
 const here = dirname(fileURLToPath(import.meta.url));
 const args = process.argv.slice(2);
-const only = args.includes("--only") ? args[args.indexOf("--only") + 1].split(",") : null;
+const list = (name) =>
+  args.includes(name) ? args[args.indexOf(name) + 1].split(",").filter((x) => x && x !== "-") : null;
+const only = list("--only");
+const tourMods = list("--screens");
 const shots = args.includes("--shots") ? resolve(args[args.indexOf("--shots") + 1]) : null;
 const base = (args.find((a) => a.startsWith("http")) || process.env.ENGINE_URL || "http://127.0.0.1:7860").replace(
   /\/$/,
@@ -277,9 +282,10 @@ for (const [name, run] of Object.entries(flows)) {
   }
   await s.ctx.close();
 }
-if (!only) console.log(`First visit to 홈: ${Math.round((await firstVisit()) / 1024)}KB`);
-if (!only || only.includes("screens")) {
+if (!only && !tourMods) console.log(`First visit to 홈: ${Math.round((await firstVisit()) / 1024)}KB`);
+if (tourMods ? tourMods.length : !only) {
   const tour = await screenTour({
+    mods: tourMods,
     browser,
     app: APP,
     ids: { convo: convo.id, group: group.id, rp: rp.id, a: a.id, persona: persona.id },
