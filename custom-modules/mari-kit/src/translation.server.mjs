@@ -49,6 +49,8 @@ export function normalizeRoom(raw) {
     version: 1,
     incomingPresetId: preset(room.incomingPresetId),
     outgoingPresetId: preset(room.outgoingPresetId),
+    incomingPrompt: typeof room.incomingPrompt === "string" && room.incomingPrompt.trim() ? room.incomingPrompt : null,
+    outgoingPrompt: typeof room.outgoingPrompt === "string" && room.outgoingPrompt.trim() ? room.outgoingPrompt : null,
     glossary: normalizeGlossary(room.glossary),
     speech: str(room.speech, 20000),
     world: str(room.world, 20000),
@@ -114,11 +116,16 @@ function assemble(base, { speech, glossary, world, reverse }) {
  * end of the list, then the voice notes are shortened. Returns the text and what was left out.
  */
 export function composePrompt(
-  { presetId, original, speech = "", glossary = [], world = "", reverse = false },
+  { presetId, original, customPrompt = null, speech = "", glossary = [], world = "", reverse = false },
   limit = FIT_LIMIT,
 ) {
   const preset = findPreset(presetId) ?? findPreset(INHERIT_PRESET_ID);
-  const base = preset.replace ? preset.prompt : original?.trim() || preset.prompt;
+  const base =
+    typeof customPrompt === "string" && customPrompt.trim()
+      ? customPrompt
+      : preset.replace
+        ? preset.prompt
+        : original?.trim() || preset.prompt;
   if (base.length > limit)
     throw Object.assign(new Error("The base prompt alone is over the limit"), { statusCode: 400 });
   const parts = { speech, glossary: [...glossary], world, reverse };
@@ -140,27 +147,30 @@ export function composePrompt(
     report.shortenedVoice = true;
     text = assemble(base, parts);
   }
-  return { text, length: text.length, ...report };
+  if (text.length > limit)
+    throw Object.assign(new Error("The combined prompt is over the limit after fitting notes"), { statusCode: 400 });
+  return { text, basePrompt: base, length: text.length, ...report };
 }
 
 /** Responses get every note; the user's drafts get the glossary and world notes but not the voice notes. */
 export function composeRoom(room, originals) {
   return {
-    incoming: composePrompt({
-      presetId: room.incomingPresetId,
-      original: originals?.incoming,
-      speech: room.speech,
-      glossary: room.glossary,
-      world: room.world,
-    }),
-    outgoing: composePrompt({
-      presetId: room.outgoingPresetId,
-      original: originals?.outgoing,
-      glossary: room.glossary,
-      world: room.world,
-      reverse: true,
-    }),
+    incoming: composeDirection(room, originals, "incoming"),
+    outgoing: composeDirection(room, originals, "outgoing"),
   };
+}
+
+function composeDirection(room, originals, side) {
+  const incoming = side === "incoming";
+  return composePrompt({
+    presetId: incoming ? room.incomingPresetId : room.outgoingPresetId,
+    customPrompt: incoming ? room.incomingPrompt : room.outgoingPrompt,
+    original: originals?.[side],
+    speech: incoming ? room.speech : "",
+    glossary: room.glossary,
+    world: room.world,
+    reverse: !incoming,
+  });
 }
 
 // ── Automatic notes ─────────────────────────────
@@ -360,11 +370,39 @@ function chatPrompts(metadata) {
   };
 }
 
+function resolveOriginals(room, current) {
+  const edited = (side) => room.applied && room.written && current[side] !== room.written[side];
+  const stored = (side) =>
+    room.originals && Object.hasOwn(room.originals, side) ? room.originals[side] : current[side];
+  return {
+    incoming: !room.applied || edited("incoming") ? current.incoming : stored("incoming"),
+    outgoing: !room.applied || edited("outgoing") ? current.outgoing : stored("outgoing"),
+  };
+}
+
+function translationTargets(metadata) {
+  const meta = record(metadata);
+  const legacy = String(meta.translationTargetLang ?? "").trim() || "en";
+  return {
+    incoming: languageName(String(meta.translationOutputTargetLang ?? "").trim() || legacy),
+    outgoing: languageName(String(meta.translationInputTargetLang ?? "").trim() || legacy),
+  };
+}
+
 function statusOf(room, metadata) {
   const meta = record(metadata);
   const current = chatPrompts(metadata);
-  const originals = room.originals ?? current;
-  const composed = composeRoom(room, originals);
+  const originals = resolveOriginals(room, current);
+  const targets = translationTargets(metadata);
+  const fit = (side) => {
+    try {
+      const result = composeDirection(room, originals, side);
+      const { text, basePrompt, ...report } = result;
+      return { ...report, targetLanguage: targets[side] };
+    } catch (error) {
+      return { error: error.message, targetLanguage: targets[side] };
+    }
+  };
   return {
     provider: typeof meta.translationProvider === "string" ? meta.translationProvider : "google",
     targetLanguage: meta.translationOutputTargetLang || meta.translationTargetLang || "",
@@ -376,8 +414,8 @@ function statusOf(room, metadata) {
       (current.incoming !== room.written.incoming || current.outgoing !== room.written.outgoing),
     ),
     limit: FIT_LIMIT,
-    incoming: { ...composed.incoming, text: undefined },
-    outgoing: { ...composed.outgoing, text: undefined },
+    incoming: fit("incoming"),
+    outgoing: fit("outgoing"),
   };
 }
 
@@ -422,13 +460,22 @@ export const translationFeature = {
       const current = chatPrompts(chat.metadata);
       let composed = null;
       const room = await writeRoom(runtime, chatId, (previous) => {
-        const edited =
-          previous.applied &&
-          previous.written &&
-          (current.incoming !== previous.written.incoming || current.outgoing !== previous.written.outgoing);
-        // First time, or the user rewrote the chat's prompt since: that prompt becomes the new original.
-        const originals = !previous.applied || edited ? current : (previous.originals ?? current);
-        const next = normalizeRoom({ ...previous, ...body, originals, applied: true });
+        // Capture a changed prompt only on its own side; the other side still contains Mari Kit's composed text.
+        const originals = resolveOriginals(previous, current);
+        const draft = { ...previous, ...body };
+        if (
+          !Object.hasOwn(body, "incomingPrompt") &&
+          body.incomingPresetId !== undefined &&
+          body.incomingPresetId !== previous.incomingPresetId
+        )
+          draft.incomingPrompt = null;
+        if (
+          !Object.hasOwn(body, "outgoingPrompt") &&
+          body.outgoingPresetId !== undefined &&
+          body.outgoingPresetId !== previous.outgoingPresetId
+        )
+          draft.outgoingPrompt = null;
+        const next = normalizeRoom({ ...draft, originals, applied: true });
         composed = composeRoom(next, originals);
         return { ...next, written: { incoming: composed.incoming.text, outgoing: composed.outgoing.text } };
       });
@@ -444,55 +491,94 @@ export const translationFeature = {
     app.post("/translation/:chatId/restore", async (request) => {
       const chatId = chatIdParam(request, httpError);
       await requireChat(runtime, chatId, httpError);
-      let originals = null;
-      const room = await writeRoom(runtime, chatId, (previous) => {
-        originals = previous.originals;
-        return { ...previous, applied: false, originals: null, written: null };
-      });
+      const { room: previous } = await readRoom(runtime, chatId);
+      const originals = previous.originals;
       if (originals) {
         await runtime.persistence.patchChatMetadata(chatId, {
           translationOutputPrompt: originals.incoming,
           translationInputPrompt: originals.outgoing,
         });
       }
+      const room = await writeRoom(runtime, chatId, (current) => ({
+        ...current,
+        applied: false,
+        originals: null,
+        written: null,
+      }));
       const updated = await requireChat(runtime, chatId, httpError);
       return { room: { ...room, originals: undefined, written: undefined }, status: statusOf(room, updated.metadata) };
     });
 
-    // One model call: proposes glossary entries, voice notes or world notes for the user to review. Nothing is saved.
-    app.post("/translation/:chatId/scan", async (request) => {
+    // Compose a draft for the editor without saving it or touching chat metadata.
+    app.post("/translation/:chatId/preview", async (request) => {
       const chatId = chatIdParam(request, httpError);
       const chat = await requireChat(runtime, chatId, httpError);
       const body = parseRoomBody(request.body, httpError);
-      const kind = body.kind;
-      if (!["glossary", "speech", "world"].includes(kind))
-        throw httpError(400, "kind must be glossary, speech or world.");
-      const meta = record(chat.metadata);
-      const target = languageName(meta.translationOutputTargetLang || meta.translationTargetLang);
-      const system = TRANSLATION_SCAN_PROMPTS[kind].replaceAll("{{target}}", target);
-      const material = await collectMaterial(runtime, chat, kind !== "world");
-      if (!material) throw httpError(400, "This chat has no cards or messages to read.");
-      const connectionId = str(meta.translationConnectionId, 200) || chat.connectionId || null;
-      const model = await runtime.languageModels.resolve(connectionId);
-      const debug = body.debugMode === true || runtime.isDebugAgentsEnabled();
-      runtime.logger.debugOverride(
-        debug,
-        "[mari-kit] translation %s scan system=%s material=%s",
-        kind,
-        system,
-        material,
-      );
-      const result = await model.chatComplete(
-        [
-          { role: "system", content: system },
-          { role: "user", content: material },
-        ],
-        { temperature: 0.2, maxTokens: 4000, debugMode: debug },
-      );
-      const raw = typeof result?.content === "string" ? result.content : "";
-      runtime.logger.debugOverride(debug, "[mari-kit] translation %s scan reply=%s", kind, raw);
-      if (!raw.trim()) throw httpError(502, "The model returned nothing.");
-      return { kind, connection: model.name, ...parseScan(kind, raw, runtime) };
+      const side = body.side;
+      if (side !== undefined && side !== "incoming" && side !== "outgoing")
+        throw httpError(400, "side must be incoming or outgoing.");
+      const { room: saved } = await readRoom(runtime, chatId);
+      const room = normalizeRoom({ ...saved, ...body });
+      const originals = resolveOriginals(saved, chatPrompts(chat.metadata));
+      const composed = side ? { [side]: composeDirection(room, originals, side) } : composeRoom(room, originals);
+      const targets = translationTargets(chat.metadata);
+      return {
+        incoming: composed.incoming,
+        outgoing: composed.outgoing,
+        provider:
+          typeof record(chat.metadata).translationProvider === "string"
+            ? record(chat.metadata).translationProvider
+            : "google",
+        targets,
+      };
+    });
+
+    // One model call: proposes glossary entries, voice notes or world notes for the user to review. Nothing is saved.
+    app.post("/translation/:chatId/scan", async (request, reply) => {
+      const controller = new AbortController();
+      const onRequestAborted = () => controller.abort();
+      const onReplyClosed = () => {
+        if (!reply?.raw?.writableEnded) controller.abort();
+      };
+      request?.raw?.on?.("aborted", onRequestAborted);
+      reply?.raw?.on?.("close", onReplyClosed);
+      try {
+        const chatId = chatIdParam(request, httpError);
+        const chat = await requireChat(runtime, chatId, httpError);
+        const body = parseRoomBody(request.body, httpError);
+        const kind = body.kind;
+        if (!["glossary", "speech", "world"].includes(kind))
+          throw httpError(400, "kind must be glossary, speech or world.");
+        const meta = record(chat.metadata);
+        const target = translationTargets(chat.metadata).incoming;
+        const system = TRANSLATION_SCAN_PROMPTS[kind].replaceAll("{{target}}", target);
+        const material = await collectMaterial(runtime, chat, kind !== "world");
+        if (!material) throw httpError(400, "This chat has no cards or messages to read.");
+        const connectionId = str(meta.translationConnectionId, 200) || chat.connectionId || null;
+        const model = await runtime.languageModels.resolve(connectionId);
+        const debug = body.debugMode === true || runtime.isDebugAgentsEnabled();
+        runtime.logger.debugOverride(
+          debug,
+          "[mari-kit] translation %s scan system=%s material=%s",
+          kind,
+          system,
+          material,
+        );
+        const result = await model.chatComplete(
+          [
+            { role: "system", content: system },
+            { role: "user", content: material },
+          ],
+          { temperature: 0.2, maxTokens: 4000, debugMode: debug, signal: controller.signal },
+        );
+        const raw = typeof result?.content === "string" ? result.content : "";
+        runtime.logger.debugOverride(debug, "[mari-kit] translation %s scan reply=%s", kind, raw);
+        if (!raw.trim() && kind !== "world") throw httpError(502, "The model returned nothing.");
+        return { kind, connection: model.name, ...parseScan(kind, raw, runtime) };
+      } finally {
+        request?.raw?.off?.("aborted", onRequestAborted);
+        reply?.raw?.off?.("close", onReplyClosed);
+      }
     });
   },
 };
