@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "generatedAt": "2026-11-14T07:18:59.384Z",
+  "generatedAt": "2026-11-14T12:37:05.191Z",
   "packages": [
     {
       "manifest": {
@@ -4677,7 +4677,7 @@
         },
         "id": "mari-kit",
         "name": "Mari Kit",
-        "version": "0.16.12",
+        "version": "0.17.0",
         "description": "개인 기능 모음(TTS·번역·날씨·기억)을 엔진 소스 수정 없이 붙이는 패키지입니다.",
         "engine": {
           "min": "2.5.2",
@@ -4715,7 +4715,7 @@
         "restartRequired": true,
         "builtAgainst": {
           "engineVersion": "2.5.2",
-          "engineCommit": "e1bf618c353e75a7bd50a57024922c1ed147301f"
+          "engineCommit": "141d47fb1b85ebd25e98c0879e75e15f22e70c2c"
         },
         "files": [
           {
@@ -4800,8 +4800,8 @@
           },
           {
             "path": "shell/lib/actions.js",
-            "sha256": "f69ad4ef06504b346f31d46cbb3b63df77bc3f94f6cde33f688a504d1046563b",
-            "bytes": 7968
+            "sha256": "e152c2fad308cdb01e6eab0807f9709aa8ae4c4174210850ce269f2e8a83705a",
+            "bytes": 9465
           },
           {
             "path": "shell/lib/activity.js",
@@ -4832,6 +4832,11 @@
             "path": "shell/lib/connpick.js",
             "sha256": "b96c1008e6859768c55148e986e3e7f085ab590e4b74303ae2de59a837096da7",
             "bytes": 941
+          },
+          {
+            "path": "shell/lib/convo-bits.js",
+            "sha256": "bc145e321a0247a94457462814ca721cef923907285de0c7ede58e8955ebd077",
+            "bytes": 5473
           },
           {
             "path": "shell/lib/credit.js",
@@ -4975,8 +4980,8 @@
           },
           {
             "path": "shell/screens/convo.js",
-            "sha256": "cb89a29fc8222aa9cde9cbf64b0a71d411b05c3868e16af83a19ed10211f6d90",
-            "bytes": 32687
+            "sha256": "47ad8c9eae780be5da1fd126e56db12970a9fe693cee13f84deb60783b0ae735",
+            "bytes": 38627
           },
           {
             "path": "shell/screens/convos.js",
@@ -5075,16 +5080,16 @@
           },
           {
             "path": "shell/shell.css",
-            "sha256": "f32c1863d3d2794dadbc4f98b302129dad09476fb4db35ba68e614fe5c67bdfc",
-            "bytes": 55409
+            "sha256": "043f89617bedff0c9dcd7642cb3adbb8b7a3f93288040607c4c369aca0791b1a",
+            "bytes": 57856
           }
         ]
       },
       "category": "misc",
       "artifact": {
-        "url": "https://raw.githubusercontent.com/marittini/custom-mari/mari-catalog/artifacts/mari-kit-0.16.12.zip",
-        "sha256": "1620f3576d22b5112bd2f9b62a585df9a928c81d3f251ba8d5b19a23bfe2ea67",
-        "bytes": 344600
+        "url": "https://raw.githubusercontent.com/marittini/custom-mari/mari-catalog/artifacts/mari-kit-0.17.0.zip",
+        "sha256": "4b23f1bc99a70f131c87a5fdf98070e08bf9484f11bd13dbe74ca048f1786e6a",
+        "bytes": 349697
       },
       "documentationUrl": "https://github.com/marittini/custom-mari/tree/main/custom-modules"
     }
