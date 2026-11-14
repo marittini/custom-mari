@@ -333,6 +333,53 @@ const flows = {
     await page.locator(`a[href="#/convo/${encodeURIComponent(scheduled.id)}"] .avp .sdot`).waitFor({ timeout: 10000 });
   },
 
+  // Reactions and replies (the Engine's data): react from the quick row and take it back, see a character's
+  // reaction, reply to a message (sent as replyTo) and see its quote.
+  async "convo-react"({ page }) {
+    let msgs = await api("GET", `/chats/${convo.id}/messages`);
+    if (!msgs.some((m) => m.role === "assistant")) {
+      await api("POST", `/chats/${convo.id}/messages`, { role: "assistant", characterId: a.id, content: "e2e hello" });
+      msgs = await api("GET", `/chats/${convo.id}/messages`);
+    }
+    const target = [...msgs].reverse().find((m) => m.role === "assistant");
+    await api("PATCH", `/chats/${convo.id}/messages/${target.id}/extra`, { reactions: [{ emoji: "😂", by: [a.id] }] });
+    const reactionsNow = async () => {
+      const m = (await api("GET", `/chats/${convo.id}/messages`)).find((x) => x.id === target.id);
+      const extra = typeof m.extra === "string" ? JSON.parse(m.extra) : m.extra;
+      return extra?.reactions || [];
+    };
+    await open(page);
+    await goIn(page, `#/convo/${encodeURIComponent(convo.id)}`);
+    const bubble = page.locator(`[data-mid="${target.id}"]`);
+    await bubble.locator(".rx").filter({ hasText: "😂" }).waitFor();
+    await bubble.locator(".bub").last().click();
+    await page.getByRole("button", { name: "❤️ 반응" }).click();
+    await until(
+      async () => (await reactionsNow()).some((r) => r.emoji === "❤️" && r.by.includes("user")),
+      5000,
+      "reaction saved",
+    );
+    await bubble.locator(".rx.mine").click();
+    await until(async () => !(await reactionsNow()).some((r) => r.emoji === "❤️"), 5000, "reaction taken back");
+    if (!(await reactionsNow()).some((r) => r.emoji === "😂")) throw new Error("the character's reaction was lost");
+    await bubble.locator(".bub").last().click();
+    await page.getByRole("button", { name: "답장" }).first().click();
+    await page.locator(".rbar").waitFor();
+    await page.locator(".cmp textarea").fill("e2e reply");
+    await page.getByRole("button", { name: "보내기" }).click();
+    await until(
+      async () =>
+        (await api("GET", `/chats/${convo.id}/messages`)).some((m) => {
+          const x = typeof m.extra === "string" ? JSON.parse(m.extra) : m.extra;
+          return m.content === "e2e reply" && x?.replyTo?.messageId === target.id;
+        }),
+      10000,
+      "reply sent with replyTo",
+    );
+    await page.locator(".rquote").first().waitFor();
+    if (await page.locator(".rbar").isVisible()) throw new Error("reply bar stayed after sending");
+  },
+
   // Characters write first (the Engine's Convo autonomy): in the open chat, and in another chat with an unread
   // badge and a notice. The Engine's own wait of several minutes is cut short by answering its check once.
   async autonomy({ page }) {

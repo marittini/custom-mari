@@ -13,33 +13,12 @@ _(none)_
 
 ## Ready
 
-### M-4 Convo: 이모지 반응, 답장 — step (plan §4, stage 1)
-
-- Show reactions (`extra.reactions`, incl. the character's `[react]`) small on the bubble corner; per segment for
-  grouped messages.
-- Tap a bubble: 6 reactions + ＋ above the current toolbar; save with `PATCH /chats/:id/messages/:id/extra` in the
-  Engine's format (a lone reaction can make the character answer: `recordUserReaction`).
-- 답장 tool (`TOOL_DEFS`): quote above the composer, sent as `extra.replyTo`, quote shown on the sent bubble.
-
-### M-8 화면을 못 불러올 때 다시 시도 — bug
-
-A screen's module fetch can fail (network drop on the phone, or the Engine's 600-requests-a-minute limit: reproduced
-by `check-engine-api` followed by the flows). The shell then shows "화면을 불러오지 못했어요: Failed to fetch
-dynamically imported module …" with no way out. Retry once, then offer 다시 시도 and say it in plain words.
-
-### M-9 내 일정: 페르소나가 많으면 칩이 화면을 덮음 — bug
-
-`schedule.js` lists every persona as a chip; with many personas the chips fill the screen (seen in the 360px tour).
-Use the persona picker with groups (`pickPerson`, `foldGroup`) and show only the current one.
-
-### M-10 생성 요청 관리 화면 모양 맞추기 — bug
-
-`screens/generations.js` (0.16.x) does not use the accepted page head (small label + 24px title) and uses a bare
-`<select>` and a grey disabled button. Match the other screens.
-
 ## Plan (waiting for the owner)
 
 ### M-6 Convo 2단계 — plan §4, stage 2
+
+Also: edit single schedule blocks in Mari (캐릭터 일정 links to the Engine editor for now); remove a character's
+reaction (the Engine does it by long-press).
 
 Edit schedule blocks in Mari, send photos (WebP made in the browser), @mention in groups, my own status
 (online/idle/dnd/invisible), scene invitations, weather (server already in Mari Kit, no screen yet).
@@ -54,6 +33,8 @@ _(none)_
 
 ## Done
 
+- M-4 Convo 이모지 반응·답장, M-8 화면 못 불러올 때 다시 시도, M-9 내 일정 페르소나 고르기, M-10 생성 중인 요청 화면
+  — Mari Kit 0.19.0 (PR #49).
 - M-3 Convo 캐릭터 일정 보기 (머리줄 상태, 상태 시트, 주간 일정, 목록 상태 점) — Mari Kit 0.18.0 (PR #48).
 - M-7 Engine 원본 수정 4곳: 주인 결정으로 그대로 둠. 어떤 기능 때문에 어떤 파일을 고쳤는지는 `ENGINE-EDITS.md`,
   업스트림 이슈 초안은 `UPSTREAM.md`.

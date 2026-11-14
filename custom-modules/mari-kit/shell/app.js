@@ -18,28 +18,33 @@ const TABS = [
 // Each screen's module is fetched the first time it is opened, so a visit to Home does not download the
 // memory library or the editors.
 const SCREENS = {
-  home: () => import("./screens/home.js").then((m) => m.homeScreen),
-  library: () => import("./screens/library.js").then((m) => m.libraryScreen),
-  convos: () => import("./screens/convos.js").then((m) => m.convosScreen),
-  settings: () => import("./screens/settings.js").then((m) => m.settingsScreen),
-  generations: () => import("./screens/generations.js").then((m) => m.generationsScreen),
-  rp: () => import("./screens/rp.js").then((m) => m.rpScreen),
-  convo: () => import("./screens/convo.js").then((m) => m.convoScreen),
-  character: () => import("./screens/character.js").then((m) => m.characterScreen),
-  reader: () => import("./screens/reader.js").then((m) => m.readerScreen),
-  memory: () => import("./screens/memory.js").then((m) => m.memoryScreen),
-  "chat-settings": () => import("./screens/chat-settings.js").then((m) => m.chatSettingsScreen),
-  translation: () => import("./screens/translation.js").then((m) => m.translationScreen),
-  schedule: () => import("./screens/schedule.js").then((m) => m.scheduleScreen),
-  "char-schedule": () => import("./screens/char-schedule.js").then((m) => m.charScheduleScreen),
-  voice: () => import("./screens/voice.js").then((m) => m.voiceScreen),
-  radio: () => import("./screens/radio.js").then((m) => m.radioScreen),
-  "call-settings": () => import("./screens/call-settings.js").then((m) => m.callSettingsScreen),
-  credit: () => import("./screens/credit.js").then((m) => m.creditScreen),
-  groups: () => import("./screens/groups.js").then((m) => m.groupsScreen),
-  search: () => import("./screens/search.js").then((m) => m.searchScreen),
-  folders: () => import("./screens/folders.js").then((m) => m.foldersScreen),
-  edit: () => import("./screens/edit.js").then((m) => m.editScreen),
+  home: ["home", "homeScreen"],
+  library: ["library", "libraryScreen"],
+  convos: ["convos", "convosScreen"],
+  settings: ["settings", "settingsScreen"],
+  generations: ["generations", "generationsScreen"],
+  rp: ["rp", "rpScreen"],
+  convo: ["convo", "convoScreen"],
+  character: ["character", "characterScreen"],
+  reader: ["reader", "readerScreen"],
+  memory: ["memory", "memoryScreen"],
+  "chat-settings": ["chat-settings", "chatSettingsScreen"],
+  translation: ["translation", "translationScreen"],
+  schedule: ["schedule", "scheduleScreen"],
+  "char-schedule": ["char-schedule", "charScheduleScreen"],
+  voice: ["voice", "voiceScreen"],
+  radio: ["radio", "radioScreen"],
+  "call-settings": ["call-settings", "callSettingsScreen"],
+  credit: ["credit", "creditScreen"],
+  groups: ["groups", "groupsScreen"],
+  search: ["search", "searchScreen"],
+  folders: ["folders", "foldersScreen"],
+  edit: ["edit", "editScreen"],
+};
+// A file that failed to arrive stays failed in the browser's module cache, so the retry asks with a fresh address.
+const loadScreen = (name, retry = false) => {
+  const [file, fn] = SCREENS[name];
+  return import(`./screens/${file}.js${retry ? `?retry=${Date.now()}` : ""}`).then((m) => m[fn]);
 };
 
 export function go(path) {
@@ -136,12 +141,28 @@ async function render() {
   const route = parseRoute();
   let screen;
   try {
-    screen = await SCREENS[route.name]();
+    // A screen's file can fail to arrive (the phone's connection dropped, the Engine was busy): try once more.
+    screen = await loadScreen(route.name).catch(() =>
+      new Promise((r) => setTimeout(r, 800)).then(() => loadScreen(route.name, true)),
+    );
   } catch (error) {
     if (seq !== renderSeq) return;
+    console.error(error);
+    // A reload keeps this screen (the shell's rule), so 다시 시도 reloads; 홈 is the way out.
     setChildren(
       root,
-      h("div", { class: "err", role: "alert" }, `화면을 불러오지 못했어요: ${error?.message || error}`),
+      h(
+        "div",
+        { class: "loadfail", role: "alert" },
+        h("b", null, "화면을 불러오지 못했어요"),
+        h("p", null, "인터넷이 잠깐 끊겼거나 엔진이 바빴을 수 있어요. 다시 시도해 주세요."),
+        h(
+          "div",
+          { class: "loadfail-acts" },
+          h("button", { type: "button", class: "pill main", onClick: () => location.reload() }, "다시 시도"),
+          h("button", { type: "button", class: "pill", onClick: () => go("home") }, "홈으로"),
+        ),
+      ),
     );
     return;
   }

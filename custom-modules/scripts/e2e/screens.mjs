@@ -34,7 +34,7 @@ export function tourScreens(ids) {
     ["읽기 설정", "reader"],
     ["폴더 관리", "folders/convo"],
     ["그룹 관리", "groups/characters"],
-    ["생성 중", "generations"],
+    ["생성 중인 요청", "generations"],
   ];
 }
 
@@ -85,6 +85,7 @@ export const FLOW_SCREENS = {
   cover: ["chat-settings", "convos"],
   autonomy: ["convo", "convos"],
   "convo-presence": ["convo"],
+  "convo-react": ["convo"],
   "convo-schedule": ["convo", "convos", "char-schedule"],
 };
 

@@ -36,6 +36,7 @@ export const TOOL_DEFS = [
     convoOnly: true,
     assistantOnly: true,
   },
+  { id: "reply", label: "답장", icon: ["M9 14L4 9l5-5", "M4 9h10a6 6 0 0 1 6 6v4"], def: "show", convoOnly: true },
   { id: "copy", label: "복사", icon: ["M8 8h12v12H8z", "M16 8V4H4v12h4"], def: "show" },
   {
     id: "translate",

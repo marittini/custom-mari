@@ -29,6 +29,7 @@ import { loadStickers, stickerContent, stickerPicker, stickerLabel, withoutStick
 import { watchGeneration, stopGeneration } from "../lib/generation.js";
 import { attachmentsOf, closeInTime, dayKey, dayLabel, presenceText, timeLabel } from "../lib/convo-bits.js";
 import { presenceOf, presenceLine, STATUS_KO } from "../lib/presence.js";
+import { MORE, QUICK, USER, reactionsOf, reactorNames, replyFor, replyOf, toggleReaction } from "../lib/reactions.js";
 import { activeAutonomy, clearUnread } from "../lib/autonomy.js";
 import { runSlash } from "../lib/slash.js";
 import {
@@ -65,6 +66,7 @@ export function convoScreen({ mount, args, go, back }) {
   let wait = null;
   let offNote = null;
   let queued = null;
+  let replyDraft = null; // { messageId, name, content }: sent as the generate request's replyTo (the Engine's reply)
   let fresh = null; // GET /conversation/status/:chatId statuses (characters' presence), once per open and reply
   let tick = null; // 지금 답하게: { body, ready } runs once the delayed generation has stopped
   let me = null; // the persona's schedule state (Mari Kit 내 일정), when there is one
@@ -220,6 +222,7 @@ export function convoScreen({ mount, args, go, back }) {
     ),
   );
   const quickLayer = h("div");
+  const replyBar = h("div", { class: "rbar", hidden: true });
   const strip = activityStrip();
   const scroll = chatScrolling(scroller);
   mount.append(
@@ -228,6 +231,7 @@ export function convoScreen({ mount, args, go, back }) {
     scroll.anchor,
     quickLayer,
     strip.el,
+    replyBar,
     h(
       "div",
       { class: "cmp", style: { background: "var(--paper)" } },
@@ -632,6 +636,7 @@ export function convoScreen({ mount, args, go, back }) {
         {
           class: [group && !me && !bub.sys ? "who" : "", hiddenFromAI(m) ? "hid" : ""].join(" ").trim() || null,
           "data-message-id": bub.first ? m.id : null,
+          "data-mid": m.id, // every bubble of the message (data-message-id marks only the first, for jumps)
           style: {
             display: "flex",
             flexDirection: "column",
@@ -641,6 +646,7 @@ export function convoScreen({ mount, args, go, back }) {
         },
         speaker && firstOfRun ? avatar(speaker.avatar, speaker.name?.[0] || "·", 28) : null,
         speaker && firstOfRun ? h("span", { class: "who-name" }, speaker.name) : null,
+        bub.first && me ? quoteOf(m) : null,
         bub.media
           ? null
           : h(
@@ -661,6 +667,7 @@ export function convoScreen({ mount, args, go, back }) {
             ),
         bub.sub ? h("span", { class: "bub-tr" }, stickerContent(bub.sub, stickers.map)) : null,
         bub.last && !bub.sys ? mediaOf(m, me) : null,
+        bub.last && !bub.sys ? reactionRow(m, me) : null,
         // The time under the last bubble of a run (one speaker within 5 minutes).
         lastOfRun && bub.last && !bub.sys ? h("span", { class: "btime" }, timeLabel(m.createdAt)) : null,
       );
@@ -676,6 +683,7 @@ export function convoScreen({ mount, args, go, back }) {
             busy,
           }),
         );
+      if (on && bub.last && !bub.sys) wrap.append(reactBar(m, me));
       if (on && bub.last) {
         const { shown, more } = toolsFor(m);
         wrap.append(
@@ -893,6 +901,169 @@ export function convoScreen({ mount, args, go, back }) {
     queued.ready = stopGeneration(chatId).catch(() => {});
   }
 
+  // ── Reactions (the Engine's MessageReaction) and replies (its replyTo) ──
+  const nameOf = (id) => index.get(id)?.name || "";
+  function reactionRow(m, me) {
+    const list = reactionsOf(m);
+    if (!list.length) return null;
+    return h(
+      "div",
+      { class: `rxrow ${me ? "me" : "them"}` },
+      list.map((r) =>
+        h(
+          "button",
+          {
+            type: "button",
+            class: r.by.includes(USER) ? "rx mine" : "rx",
+            "aria-pressed": r.by.includes(USER) ? "true" : "false",
+            "aria-label": `${r.emoji} · ${reactorNames(r, nameOf)}`,
+            title: reactorNames(r, nameOf),
+            onClick: (e) => {
+              e.stopPropagation();
+              react(m, r.emoji, r.imageUrl || null);
+            },
+          },
+          r.imageUrl ? h("img", { src: r.imageUrl, alt: r.emoji, loading: "lazy" }) : h("span", null, r.emoji),
+          r.by.length > 1 ? h("small", null, String(r.by.length)) : null,
+        ),
+      ),
+    );
+  }
+  function reactBar(m, me) {
+    const mine = new Set(
+      reactionsOf(m)
+        .filter((r) => r.by.includes(USER))
+        .map((r) => r.emoji),
+    );
+    return h(
+      "div",
+      { class: `rxbar ${me ? "me" : "them"}`, role: "group", "aria-label": "반응 달기" },
+      QUICK.map((emoji) =>
+        h(
+          "button",
+          {
+            type: "button",
+            class: mine.has(emoji) ? "on" : null,
+            "aria-label": `${emoji} 반응`,
+            "aria-pressed": mine.has(emoji) ? "true" : "false",
+            onClick: (e) => {
+              e.stopPropagation();
+              react(m, emoji);
+            },
+          },
+          emoji,
+        ),
+      ),
+      h(
+        "button",
+        {
+          type: "button",
+          "aria-label": "다른 반응",
+          onClick: (e) => {
+            e.stopPropagation();
+            moreReactions(m);
+          },
+        },
+        "＋",
+      ),
+    );
+  }
+  async function moreReactions(m) {
+    const grid = h("div", { class: "rxgrid" });
+    const pick = (emoji, url = null) => {
+      s.close();
+      react(m, emoji, url);
+    };
+    setChildren(
+      grid,
+      MORE.map((emoji) => h("button", { type: "button", "aria-label": emoji, onClick: () => pick(emoji) }, emoji)),
+    );
+    const custom = h("div", { class: "rxgrid" });
+    const s = sheet(h("div", { class: "rxsheet" }, h("b", null, "반응"), grid, custom), { label: "반응 고르기" });
+    // The Engine's own custom emojis, read only when this sheet opens.
+    try {
+      const list = await api.get("/custom-emojis");
+      if (Array.isArray(list) && list.length && custom.isConnected)
+        setChildren(
+          custom,
+          list
+            .filter((e) => e?.name && e?.url)
+            .map((e) =>
+              h(
+                "button",
+                { type: "button", "aria-label": `:${e.name}:`, onClick: () => pick(`:${e.name}:`, e.url) },
+                h("img", { src: e.url, alt: e.name, loading: "lazy" }),
+              ),
+            ),
+        );
+    } catch {}
+  }
+  async function react(m, emoji, imageUrl = null) {
+    const before = m.extra;
+    const next = toggleReaction(reactionsOf(m), emoji, imageUrl);
+    let extra = m.extra;
+    try {
+      extra = typeof extra === "string" ? JSON.parse(extra) : { ...(extra || {}) };
+    } catch {
+      extra = {};
+    }
+    m.extra = { ...extra, reactions: next };
+    picked = null;
+    draw();
+    try {
+      await api.patch(`/chats/${encodeURIComponent(chatId)}/messages/${encodeURIComponent(m.id)}/extra`, {
+        reactions: next,
+      });
+    } catch (error) {
+      m.extra = before;
+      draw();
+      toast(`반응을 달지 못했어요: ${error.message}`);
+    }
+  }
+  function quoteOf(m) {
+    const r = replyOf(m);
+    if (!r) return null;
+    return h(
+      "button",
+      {
+        type: "button",
+        class: "rquote",
+        "aria-label": `${r.name}에게 답장: ${r.content.slice(0, 60)}`,
+        onClick: (e) => {
+          e.stopPropagation();
+          if (!jumpTo(list, r.messageId)) toast("원래 메시지가 지금 불러온 범위 밖에 있어요");
+        },
+      },
+      h("span", { class: "rquote-n" }, `${r.name}에게 답장`),
+      h("span", { class: "rquote-t" }, r.content),
+    );
+  }
+  function startReply(m) {
+    const name = m.role === "user" ? "나" : nameOf(m.characterId) || chatTitle(chat, index);
+    const text = stripCues(withoutStickerTokens(messageText(m))).trim();
+    const r = replyFor(m, name, text);
+    if (!r) return toast("이 메시지에는 답장할 수 없어요");
+    setReply(r);
+    input.focus();
+  }
+  function setReply(r) {
+    replyDraft = r;
+    replyBar.hidden = !r;
+    setChildren(
+      replyBar,
+      r
+        ? [
+            h("span", { class: "rbar-t" }, h("b", null, `${r.name}에게 답장`), h("span", null, r.content)),
+            h(
+              "button",
+              { type: "button", class: "ib", "aria-label": "답장 취소", onClick: () => setReply(null) },
+              icon(I.close, 18),
+            ),
+          ]
+        : [],
+    );
+  }
+
   function drawQuick() {
     setChildren(
       quickLayer,
@@ -978,6 +1149,7 @@ export function convoScreen({ mount, args, go, back }) {
   function tool(id, m) {
     picked = null;
     draw();
+    if (id === "reply") return startReply(m);
     return runTool(id, { chatId, chat, message: m, reload: load, generate, go, speak: speakMessage });
   }
 
@@ -1088,7 +1260,9 @@ export function convoScreen({ mount, args, go, back }) {
         return text;
       });
     auto?.userSent();
-    generate({ userMessage: text });
+    const replyTo = replyDraft;
+    setReply(null);
+    generate({ userMessage: text, ...(replyTo ? { replyTo } : {}) });
   }
 
   async function slash(text) {
