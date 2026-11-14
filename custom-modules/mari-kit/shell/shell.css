@@ -3338,3 +3338,179 @@ button.toast {
   gap: 8px;
   margin: 20px 0 8px;
 }
+
+/* A screen that could not load: say so plainly, with a way to retry and a way out */
+.loadfail {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin: 24vh auto 0;
+  padding: 0 24px;
+  max-width: 420px;
+  text-align: center;
+}
+.loadfail b {
+  font-size: 17px;
+}
+.loadfail p {
+  margin: 0;
+  color: var(--ink-2);
+  font-size: 14px;
+  line-height: 1.6;
+}
+.loadfail-acts {
+  display: flex;
+  justify-content: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 8px;
+}
+.loadfail-acts .pill {
+  min-height: 44px;
+}
+
+/* Convo reactions (the Engine's MessageReaction) and replies */
+.rxrow {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  max-width: 75%;
+  margin-top: -6px;
+  padding: 0 6px;
+  position: relative;
+  z-index: 1;
+}
+.rxrow.me {
+  justify-content: flex-end;
+}
+.rx {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  min-height: 26px;
+  padding: 0 8px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: var(--surface);
+  color: var(--ink-2);
+  font: inherit;
+  font-size: 13px;
+  cursor: pointer;
+}
+.rx::after {
+  content: "";
+  position: absolute;
+  inset: -9px -2px;
+}
+.rx.mine {
+  border-color: var(--ink);
+}
+.rx small {
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+}
+.rx img {
+  width: 16px;
+  height: 16px;
+  object-fit: contain;
+}
+.rxbar {
+  display: flex;
+  gap: 2px;
+  margin-top: 8px;
+  padding: 2px 4px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: var(--surface);
+}
+.rxbar button {
+  width: 40px;
+  height: 40px;
+  border: 0;
+  border-radius: 50%;
+  background: transparent;
+  font-size: 20px;
+  line-height: 1;
+  cursor: pointer;
+  color: var(--ink-2);
+}
+.rxbar button.on {
+  background: var(--fill);
+}
+.rxsheet {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 4px 16px 24px;
+  overflow-y: auto;
+}
+.rxsheet b {
+  padding: 0 4px;
+  font-size: 15px;
+}
+.rxgrid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(44px, 1fr));
+  gap: 4px;
+}
+.rxgrid button {
+  height: 44px;
+  border: 0;
+  border-radius: 10px;
+  background: transparent;
+  font-size: 24px;
+  cursor: pointer;
+}
+.rxgrid img {
+  width: 28px;
+  height: 28px;
+  object-fit: contain;
+}
+.rquote {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  max-width: 75%;
+  margin-bottom: 4px;
+  padding: 6px 10px;
+  border: 0;
+  border-left: 2px solid var(--line-2);
+  background: transparent;
+  color: var(--ink-3);
+  font: inherit;
+  font-size: 12px;
+  text-align: left;
+  cursor: pointer;
+}
+.rquote-n {
+  font-weight: 600;
+}
+.rquote-t,
+.rbar-t span {
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  overflow-wrap: anywhere;
+  white-space: pre-wrap;
+}
+.rbar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 8px 8px 16px;
+  border-top: 1px solid var(--line);
+  background: var(--paper);
+  font-size: 12px;
+  color: var(--ink-2);
+}
+.rbar-t {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  border-left: 2px solid var(--line-2);
+  padding-left: 8px;
+}

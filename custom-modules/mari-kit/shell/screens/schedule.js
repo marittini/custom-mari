@@ -8,6 +8,8 @@ import { connectionSelect } from "../lib/connpick.js";
 import { h, icon, I, setChildren, dots } from "../lib/h.js";
 import { api } from "../lib/api.js";
 import { data } from "../lib/data.js";
+import { pickPerson } from "../lib/picker.js";
+import { groupsOf } from "../lib/groups.js";
 import { pageHead, toast, errorBox, sheet, popMenu, hbox } from "../lib/ui.js";
 
 const DAYS = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"];
@@ -149,14 +151,34 @@ export function scheduleScreen({ mount, args, go, back }) {
       if (alive && state && view === "now") draw();
     })
     .catch(() => {});
+  // One row with the persona whose week this is; the picker (with persona groups and search) switches it. Many
+  // personas used to fill the screen as chips.
   function personaRow() {
     if (!personas?.length) return null;
     const to = (k) => go(`schedule/${encodeURIComponent(k)}/now${chatId ? `/${encodeURIComponent(chatId)}` : ""}`);
+    const current =
+      key === "default" ? "기본 (페르소나 없는 채팅)" : personas.find((p) => p.id === key)?.name || "이름 없음";
     return h(
       "div",
-      { class: "chips", role: "group", "aria-label": "페르소나", style: { margin: "4px 0 16px" } },
-      [["default", "기본"], ...personas.map((p) => [p.id, p.name || "이름 없음"])].map(([k, label]) =>
-        chip(label, key === k, () => key !== k && to(k)),
+      { class: "list", style: { margin: "4px 0 16px" } },
+      h(
+        "button",
+        {
+          type: "button",
+          class: "r two",
+          onClick: async () =>
+            pickPerson({
+              title: "누구의 일정",
+              key: "pick-personas",
+              items: personas.map((p) => ({ id: p.id, name: p.name || "이름 없음", avatar: p.avatarPath })),
+              groups: await groupsOf("personas"),
+              selected: key === "default" ? null : key,
+              none: "기본 (페르소나 없는 채팅)",
+              onPick: (v) => to(v || "default"),
+            }),
+        },
+        h("span", null, "페르소나"),
+        h("span", { class: "val" }, current, " ›"),
       ),
     );
   }
