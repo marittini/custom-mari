@@ -2,19 +2,23 @@
 // Mari shell flow tests at phone size, against a running Engine with Mari Kit installed whose data can be thrown away
 // (it creates a connection to a local fake model, characters, personas and chats). Each flow is what a user does:
 // open the app, move around and back, send in Convo and RP, group speakers, chat settings views, a chat cover,
-// characters writing first. Also prints the transfer of the first visit. Needs Playwright's Chromium.
+// characters writing first. Also prints the transfer of the first visit, and tours every main screen at 360px
+// (transfer per screen, sideways page scroll, page errors; e2e/screens.mjs). Needs Playwright's Chromium.
 //
-//   node custom-modules/scripts/shell-e2e.mjs [http://127.0.0.1:7860] [--only name,name]
+//   node custom-modules/scripts/shell-e2e.mjs [http://127.0.0.1:7860] [--only name,name] [--shots <dir>]
+//   (--only screens runs just the tour)
 
 import { createRequire } from "node:module";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { tmpdir } from "node:os";
 import { startFakeLlm } from "./e2e/fake-llm.mjs";
+import { screenTour } from "./e2e/screens.mjs";
 
 const here = dirname(fileURLToPath(import.meta.url));
 const args = process.argv.slice(2);
 const only = args.includes("--only") ? args[args.indexOf("--only") + 1].split(",") : null;
+const shots = args.includes("--shots") ? resolve(args[args.indexOf("--shots") + 1]) : null;
 const base = (args.find((a) => a.startsWith("http")) || process.env.ENGINE_URL || "http://127.0.0.1:7860").replace(
   /\/$/,
   "",
@@ -54,7 +58,7 @@ const conn = await api("POST", "/connections", {
 });
 const a = await api("POST", "/characters", { data: { name: "Aoi", description: "e2e" } });
 const b = await api("POST", "/characters", { data: { name: "Ren", description: "e2e" } });
-await api("POST", "/characters/personas", { name: "Mari", description: "e2e" });
+const persona = await api("POST", "/characters/personas", { name: "Mari", description: "e2e" });
 await api("POST", "/characters/personas", { name: "Mari 2", description: "e2e" });
 const newChat = (name, mode, characterIds) =>
   api("POST", "/chats", { name, mode, characterIds, connectionId: conn.id });
@@ -274,6 +278,15 @@ for (const [name, run] of Object.entries(flows)) {
   await s.ctx.close();
 }
 if (!only) console.log(`First visit to 홈: ${Math.round((await firstVisit()) / 1024)}KB`);
+if (!only || only.includes("screens")) {
+  const tour = await screenTour({
+    browser,
+    app: APP,
+    ids: { convo: convo.id, group: group.id, rp: rp.id, a: a.id, persona: persona.id },
+    shots,
+  });
+  failed += tour.failed;
+}
 await browser.close();
 llm.close();
 if (failed) {

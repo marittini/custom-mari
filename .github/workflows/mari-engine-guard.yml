@@ -1,0 +1,44 @@
+name: Mari Engine guard
+
+# The Engine (everything outside custom-modules/) is upstream's and must stay unmodified: the owner's Engine updates
+# straight from Pasta-Devs/Marinara-Engine, so an edit here never reaches the owner. See custom-modules/WORKFLOW.md.
+# A PR that only puts Engine files back to upstream's text can carry the `mari:engine-restore` label to pass.
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, labeled, unlabeled]
+
+permissions:
+  contents: read
+
+jobs:
+  guard:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Only the fork's own files changed
+        env:
+          BASE: ${{ github.event.pull_request.base.sha }}
+          HEAD: ${{ github.event.pull_request.head.sha }}
+          RESTORE: ${{ contains(github.event.pull_request.labels.*.name, 'mari:engine-restore') }}
+        run: |
+          outside=$(git diff --name-only "$BASE...$HEAD" | grep -Ev \
+            '^(custom-modules/|CLAUDE\.md$|AGENTS\.override\.md$|\.github/workflows/(mari-[^/]*|upstream-check)\.yml$)' || true)
+          if [ -z "$outside" ]; then
+            echo "OK: only Mari Kit files changed."
+            exit 0
+          fi
+          echo "Files outside Mari Kit changed:"
+          echo "$outside" | sed 's/^/  /'
+          if [ "$RESTORE" = "true" ]; then
+            echo "Allowed by the mari:engine-restore label (putting Engine files back to upstream)."
+            exit 0
+          fi
+          echo
+          echo "::error::Engine files are upstream's. Do this inside custom-modules/ (see custom-modules/WORKFLOW.md, section 1)."
+          exit 1

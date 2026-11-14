@@ -36,6 +36,10 @@ RP 한 턴을 생성해 세어 본 결과, 추가하지 않은 채팅과 추가�
 
 ## 점검
 
+`node custom-modules/scripts/verify.mjs` — 아래 점검을 한 번에 돌립니다(`--quick`은 서버 없이 형식·빌드·문법만).
+빈 데이터로 엔진을 잠깐 띄워 엔진 경로, 채팅 설정 칸, `custom-modules/tests`, 쉘 흐름, 360px 화면 돌기(화면별 전송량,
+옆으로 밀리는 화면, 오류)를 확인합니다. 작업 순서와 규칙은 `WORKFLOW.md`에 있습니다.
+
 `node custom-modules/scripts/check.mjs` — 모듈을 빌드하고, 지금 엔진의 스키마로 `manifest.json`·`agents.json`을
 검사하고, 서버 쪽 도우미 함수를 확인합니다. 엔진을 업데이트한 뒤에도 실행해 호환되는지 봅니다
 (`pnpm build:shared`를 한 번 해 둬야 합니다).
