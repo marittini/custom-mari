@@ -4,6 +4,7 @@
     "PATCH /agents/type/mari-kit",
     "GET /app-settings/ui",
     "GET /characters/:id",
+    "GET /characters/:id/gallery",
     "PATCH /characters/:id",
     "GET /characters/groups/list",
     "GET /characters/persona-groups/list",
@@ -109,6 +110,7 @@
     "POST /characters/:id/versions/:id/restore",
     "POST /characters/personas",
     "GET /characters/personas/:id",
+    "GET /characters/personas/:id/gallery",
     "POST /characters/personas/:id/avatar",
     "DELETE /characters/personas/:id/avatar",
     "POST /characters/personas/:id/card-field/generate",
@@ -126,6 +128,10 @@
     "GET /capability-packages/updates/pending",
     "POST /capability-packages/:id/install",
     "POST /admin/restart",
-    "GET /health"
+    "GET /health",
+    "GET /custom-stickers",
+    "POST /custom-stickers/upload",
+    "PATCH /custom-stickers/:id",
+    "DELETE /custom-stickers/:id"
   ]
 }

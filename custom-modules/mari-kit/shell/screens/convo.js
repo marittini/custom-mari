@@ -24,7 +24,8 @@ import { pickVoice, stripCues, inline } from "../lib/render.js";
 import * as tts from "../lib/tts.js";
 import { syncVoiceSettings } from "../lib/voice.js";
 import { callsAvailable, callScreen, callPrefs } from "../lib/call.js";
-import { shownText, translate } from "../lib/translate.js";
+import { shownText, translateStickerInput, stickerTokensMatch } from "../lib/translate.js";
+import { loadStickers, stickerContent, stickerPicker, stickerLabel, withoutStickerTokens } from "../lib/stickers.js";
 import { watchGeneration, stopGeneration } from "../lib/generation.js";
 import { activeAutonomy, clearUnread } from "../lib/autonomy.js";
 import { runSlash } from "../lib/slash.js";
@@ -64,6 +65,11 @@ export function convoScreen({ mount, args, go, back }) {
   let ringCheck = null; // looks for a ringing call (calls start from a character's message)
   let auto = null; // Convo autonomy while this chat is open
   let offVisible = () => {};
+  let stickers = { list: [], map: new Map(), globals: [] };
+  let stickerContext = "";
+  let stickerAttempted = false;
+  let stickerLoad = null;
+  let stickerDialog = null;
 
   const who = h("span", {
     style: { display: "flex", flexDirection: "column", alignItems: "center", gap: "4px", minWidth: "0" },
@@ -155,10 +161,14 @@ export function convoScreen({ mount, args, go, back }) {
         if (!text) return;
         trBtn.disabled = true;
         try {
-          input.value = await translate(text, "input", chatMeta(chat), chatId);
+          input.value = await translateStickerInput(text, chatMeta(chat), chatId);
           grow();
         } catch (error) {
-          toast(`번역하지 못했어요: ${error.message}`);
+          toast(
+            error.code === "STICKER_TRANSLATION_CHANGED"
+              ? stickerLabel("translationChanged")
+              : `번역하지 못했어요: ${error.message}`,
+          );
         } finally {
           trBtn.disabled = false;
         }
@@ -170,6 +180,35 @@ export function convoScreen({ mount, args, go, back }) {
     "button",
     { type: "button", class: "cb send", "aria-label": "보내기", onClick: () => (busy ? stopGenerating() : send()) },
     icon(I.send, 16, 2),
+  );
+  const stickerBtn = h(
+    "button",
+    {
+      type: "button",
+      class: "cb",
+      "aria-label": stickerLabel("open"),
+      title: stickerLabel("open"),
+      "aria-haspopup": "dialog",
+      disabled: true,
+      onClick: () => {
+        if (!chat) return;
+        qrOpen = false;
+        drawQuick();
+        stickerDialog?.close();
+        stickerDialog = stickerPicker({
+          load: () => refreshStickers(),
+          onPick: insertSticker,
+          onClose: () => {
+            stickerDialog = null;
+          },
+        });
+      },
+    },
+    icon(
+      ["M20 13c0 4.4-3.6 8-8 8H6a3 3 0 0 1-3-3V6a3 3 0 0 1 3-3h11a3 3 0 0 1 3 3z", "M20 13h-4a3 3 0 0 0-3 3v5"],
+      18,
+      1.6,
+    ),
   );
   const quickLayer = h("div");
   const strip = activityStrip();
@@ -191,6 +230,7 @@ export function convoScreen({ mount, args, go, back }) {
           await loadMe();
         },
       }),
+      stickerBtn,
       input,
       trBtn,
       qrBtn,
@@ -203,11 +243,49 @@ export function convoScreen({ mount, args, go, back }) {
     input.style.height = `${Math.min(input.scrollHeight, 160)}px`;
   }
 
+  function insertSticker(name) {
+    const start = input.selectionStart ?? input.value.length;
+    const end = input.selectionEnd ?? start;
+    const before = input.value.slice(0, start);
+    input.setRangeText(`${before && !before.endsWith("\n") ? "\n" : ""}sticker:${name}:\n`, start, end, "end");
+    grow();
+    input.focus();
+  }
+
+  // No polling or asset reads on each reply. History loads the map only when it contains a sticker;
+  // opening the picker and changing its library explicitly refresh it.
+  function refreshStickers() {
+    const context = stickerContext;
+    if (stickerLoad?.context === context) return stickerLoad.promise;
+    stickerAttempted = true;
+    const request = { context, promise: null };
+    request.promise = loadStickers(chat, index)
+      .then((next) => {
+        if (alive && context === stickerContext) {
+          stickers = next;
+          draw();
+        }
+        return next;
+      })
+      .finally(() => {
+        if (stickerLoad === request) stickerLoad = null;
+      });
+    stickerLoad = request;
+    return request.promise;
+  }
+
   async function load(first, tail = false) {
     try {
       const [c, chars] = await Promise.all([data.chat(chatId), data.characters(), win.reload(tail)]);
       if (!alive) return;
       chat = c;
+      stickerBtn.disabled = false;
+      const context = JSON.stringify([chat.personaId, chat.characterIds || []]);
+      if (context !== stickerContext) {
+        stickerContext = context;
+        stickerAttempted = false;
+        stickers = { list: [], map: new Map(), globals: [] };
+      }
       trBtn.hidden = chatMeta(chat).showInputTranslateButton !== true;
       index = characterIndex(chars);
       group = (chat.characterIds || []).length > 1;
@@ -308,7 +386,9 @@ export function convoScreen({ mount, args, go, back }) {
 
   function toolsFor(m) {
     const usable = TOOL_DEFS.filter(
-      (t) => !(t.assistantOnly && m.role !== "assistant") && !(t.id === "voice" && !ttsConfig),
+      (t) =>
+        !(t.assistantOnly && m.role !== "assistant") &&
+        !(t.id === "voice" && (!ttsConfig || !stripCues(withoutStickerTokens(messageText(m))).trim())),
     );
     return {
       shown: usable.filter((t) => toolPlace(t) === "show"),
@@ -391,6 +471,8 @@ export function convoScreen({ mount, args, go, back }) {
 
   function draw() {
     if (!chat) return;
+    if (!stickerAttempted && messages.some((m) => /sticker:[a-z0-9_]+:/.test(messageText(m))))
+      refreshStickers().catch(() => {}); // A failed read leaves the token visible; the picker offers retry.
     const items = [];
     if (win.more) items.push(olderButton(win, scroller, () => ((messages = shown()), draw())));
     const first = messages[0];
@@ -417,7 +499,12 @@ export function convoScreen({ mount, args, go, back }) {
         continue;
       }
       const original = m.role === "assistant" ? stripCues(messageText(m)) : messageText(m);
-      const { main, sub } = shownText(m, meta, original);
+      let { main, sub } = shownText(m, meta, original);
+      if (!stickerTokensMatch(original, main)) {
+        // A saved translation may drop media tokens. Keep the original image and show the translation below it.
+        sub = main;
+        main = original;
+      }
       const split = (t) =>
         t
           .split(/\n{2,}/)
@@ -500,9 +587,9 @@ export function convoScreen({ mount, args, go, back }) {
               draw();
             },
           },
-          bub.sys ? inline(bub.text) : bub.text,
+          bub.sys ? inline(bub.text) : stickerContent(bub.text, stickers.map),
         ),
-        bub.sub ? h("span", { class: "bub-tr" }, bub.sub) : null,
+        bub.sub ? h("span", { class: "bub-tr" }, stickerContent(bub.sub, stickers.map)) : null,
       );
       // Other replies to this turn: always under the newest reply (› there asks for a new one), else when tapped.
       const newest = m.id === lastReplyId;
@@ -610,7 +697,7 @@ export function convoScreen({ mount, args, go, back }) {
           h(
             "div",
             { style: { display: "flex", marginTop: k === 0 ? "24px" : "10px" } },
-            h("span", { class: "bub them", style: { cursor: "default" } }, text),
+            h("span", { class: "bub them", style: { cursor: "default" } }, stickerContent(text, stickers.map)),
           ),
         ),
       );
@@ -678,11 +765,12 @@ export function convoScreen({ mount, args, go, back }) {
   /** One message as a speak request: tag-capable voices read the cues inline, others get the first as a tone. */
   function messageRequest(m) {
     const raw = messageText(m);
+    const speech = withoutStickerTokens(raw);
     const voice = pickVoice(ttsConfig, m.characterId);
     const speaker = index.get(m.characterId)?.name;
     const tags = voiceSet?.cueResolved === "tags";
-    const lead = /^\s*\[([^\]\n]{1,80})\]\s*/.exec(raw);
-    const text = tags ? raw : stripCues(raw);
+    const lead = /^\s*\[([^\]\n]{1,80})\]\s*/.exec(speech);
+    const text = tags ? speech : stripCues(speech);
     return {
       key: tts.hashKey([m.id, m.activeSwipeIndex ?? 0, raw, voice, ttsConfig?.source, ttsConfig?.model]),
       body: {
@@ -696,6 +784,7 @@ export function convoScreen({ mount, args, go, back }) {
 
   async function speakMessage(m) {
     const req = messageRequest(m);
+    if (!stripCues(req.body.text).trim()) return;
     if (tts.activeLine() === req.key) return tts.stop();
     await tts.speak(req.key, req.body);
   }
@@ -757,7 +846,12 @@ export function convoScreen({ mount, args, go, back }) {
         if (follow) scroller.scrollTop = scroller.scrollHeight;
         // 자동 재생: the character messages this turn added, in order.
         if (ttsConfig && voiceSet?.convo && voiceSet.autoplay !== "off")
-          tts.speakSequence(messages.filter((m) => m.role === "assistant" && !before.has(m.id)).map(messageRequest));
+          tts.speakSequence(
+            messages
+              .filter((m) => m.role === "assistant" && !before.has(m.id))
+              .map(messageRequest)
+              .filter((request) => stripCues(request.body.text).trim()),
+          );
         await recovery.check();
       }
     }
@@ -784,8 +878,12 @@ export function convoScreen({ mount, args, go, back }) {
     if (text.startsWith("/")) return slash(text);
     // The Engine's 내 메시지 번역: the message goes out translated; if that fails, it goes out as written.
     if (chatMeta(chat).translateInput === true)
-      text = await translate(text, "input", chatMeta(chat), chatId).catch(() => {
-        toast("번역하지 못해서 원문으로 보냈어요");
+      text = await translateStickerInput(text, chatMeta(chat), chatId).catch((error) => {
+        toast(
+          error.code === "STICKER_TRANSLATION_CHANGED"
+            ? stickerLabel("translationChanged")
+            : "번역하지 못해서 원문으로 보냈어요",
+        );
         return text;
       });
     auto?.userSent();
@@ -857,6 +955,7 @@ export function convoScreen({ mount, args, go, back }) {
       strip.dispose();
       scroll.dispose();
       alive = false;
+      stickerDialog?.close();
       recovery.dispose();
       recoveredJob?.();
       off();

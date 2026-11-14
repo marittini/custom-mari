@@ -2878,3 +2878,133 @@ button.toast {
   font-size: 12px;
   font-variant-numeric: tabular-nums;
 }
+
+/* Conversation stickers share the shell's existing bottom sheet and surface tokens. */
+.sticker-body {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  max-height: min(78dvh, 760px);
+  padding: 8px 16px max(20px, env(safe-area-inset-bottom));
+  overflow-y: auto;
+}
+.sticker-head,
+.sticker-toolbar,
+.sticker-form-actions {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+.sticker-head b {
+  font-size: 17px;
+}
+.sticker-search {
+  display: block;
+}
+.sticker-search input,
+.sticker-field {
+  width: 100%;
+  min-height: 42px;
+  border: 1px solid var(--line-2);
+  border-radius: 10px;
+  padding: 9px 12px;
+  background: var(--surface);
+}
+.sticker-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(104px, 1fr));
+  gap: 8px;
+}
+.sticker-card {
+  min-width: 0;
+  overflow: hidden;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: var(--surface);
+}
+.sticker-pick {
+  display: flex;
+  width: 100%;
+  min-height: 116px;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  border: 0;
+  background: transparent;
+  cursor: pointer;
+}
+.sticker-pick img {
+  width: 76px;
+  height: 76px;
+  object-fit: contain;
+}
+.sticker-card-name {
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 12px;
+  font-weight: 650;
+}
+.sticker-card small,
+.sticker-constraints {
+  color: var(--ink-3);
+  font-size: 11px;
+}
+.sticker-manage {
+  display: flex;
+  justify-content: center;
+  gap: 4px;
+  padding: 0 4px 6px;
+}
+.sticker-manage .pill {
+  min-height: 32px;
+  padding: 4px 8px;
+  font-size: 11px;
+}
+.sticker-state {
+  display: flex;
+  min-height: 120px;
+  align-items: center;
+  justify-content: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  color: var(--ink-3);
+}
+.sticker-inline-error {
+  color: var(--bad);
+  font-size: 13px;
+}
+.sticker-form {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 12px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: var(--fill);
+}
+.sticker-form label {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  font-size: 12px;
+  font-weight: 600;
+}
+.sticker-form input[type="file"] {
+  padding: 7px;
+}
+.sticker-form-actions {
+  justify-content: flex-end;
+}
+.sticker-image {
+  display: block;
+  width: min(180px, 45vw);
+  max-width: 100%;
+  max-height: 220px;
+  margin: 3px 2px;
+  object-fit: contain;
+  vertical-align: middle;
+}

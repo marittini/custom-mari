@@ -37,7 +37,7 @@ const translated = new Map();
 // Voice cues ([whispers], [laughs softly]): spoken by the TTS, never shown, so never sent to be translated.
 const CUES = /\[[a-z][a-z ,.'-]{0,40}\]\s?/g;
 
-export async function translate(text, direction, meta, chatId) {
+export async function translate(text, direction, meta, chatId, validate) {
   const source = String(text);
   // Keep RP cues with their speaker wrappers: the Engine protects and restores them during translation.
   const body = translationBody(
@@ -59,13 +59,41 @@ export async function translate(text, direction, meta, chatId) {
   // 번역 중…: shown while the translation is being made (not for one already made).
   const done = startJob(direction === "input" ? "보낼 말 번역 중…" : "번역 중…");
   try {
-    return await translated.get(key);
+    const result = await translated.get(key);
+    validate?.(result);
+    return result;
   } catch (error) {
     translated.delete(key);
     throw error;
   } finally {
     done();
   }
+}
+
+const STICKER_TOKEN = /sticker:[a-z0-9_]+:/g;
+
+/** Whether two strings contain the same sticker tokens in the same order, including duplicates. */
+export function stickerTokensMatch(source, translated) {
+  const sourceTokens = String(source).match(STICKER_TOKEN) || [];
+  const translatedTokens = String(translated).match(STICKER_TOKEN) || [];
+  return (
+    sourceTokens.length === translatedTokens.length &&
+    sourceTokens.every((token, index) => token === translatedTokens[index])
+  );
+}
+
+/** Translate Convo input without letting a translator rewrite a rendered sticker token. */
+export async function translateStickerInput(text, meta, chatId) {
+  const source = String(text);
+  const tokens = source.match(STICKER_TOKEN) || [];
+  if (!tokens.length) return translate(source, "input", meta, chatId);
+  if (source.replace(STICKER_TOKEN, "").trim() === "") return source;
+
+  return translate(source, "input", meta, chatId, (result) => {
+    if (!stickerTokensMatch(source, result)) {
+      throw Object.assign(new Error("Translation changed a sticker token."), { code: "STICKER_TRANSLATION_CHANGED" });
+    }
+  });
 }
 
 /** Raw saved translation: retain speaker tags and cues until after speech metadata has been parsed. */
