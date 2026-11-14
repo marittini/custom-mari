@@ -7,7 +7,14 @@ import { readFile } from "node:fs/promises";
 import { join } from "node:path";
 
 const root = new URL("../../../", import.meta.url).pathname;
-const { Linter } = createRequire(join(root, "package.json"))("eslint");
+// ESLint is a dependency of the client package; pnpm does not hoist it to the root, so look there too.
+function linter() {
+  for (const from of ["package.json", "packages/client/package.json"])
+    try {
+      return new (createRequire(join(root, from))("eslint").Linter)();
+    } catch {}
+  throw new Error("ESLint not found (run pnpm install)");
+}
 
 // The browser names the shell can use without importing them; Node's come from globalThis.
 const BROWSER = `window self document navigator location history localStorage sessionStorage indexedDB caches screen
@@ -24,7 +31,6 @@ SpeechRecognition webkitSpeechRecognition customElements trustedTypes origin isS
 opener name status onload onerror addEventListener removeEventListener dispatchEvent`.split(/\s+/);
 const globals = Object.fromEntries([...Object.getOwnPropertyNames(globalThis), ...BROWSER].map((n) => [n, "readonly"]));
 
-const linter = new Linter();
 const config = {
   languageOptions: { ecmaVersion: "latest", sourceType: "module", globals },
   rules: { "no-undef": "error" },
@@ -33,9 +39,10 @@ const config = {
 /** ["file:line  'x' is not defined.", …] for the given files (paths relative to the repository or absolute). */
 export async function undefinedNames(files) {
   const out = [];
+  const lint = linter();
   for (const f of files) {
     const text = await readFile(f.startsWith("/") ? f : join(root, f), "utf8");
-    for (const m of linter.verify(text, config, { filename: f })) out.push(`${f}:${m.line}  ${m.message}`);
+    for (const m of lint.verify(text, config, { filename: f })) out.push(`${f}:${m.line}  ${m.message}`);
   }
   return out;
 }
