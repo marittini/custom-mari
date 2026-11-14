@@ -24,6 +24,7 @@ import { fileURLToPath } from "node:url";
 import { createRequire } from "node:module";
 import { planChecks } from "./e2e/scope.mjs";
 import { FLOW_SCREENS } from "./e2e/screens.mjs";
+import { undefinedNames } from "./e2e/undefined-names.mjs";
 
 const here = dirname(fileURLToPath(import.meta.url));
 const root = resolve(here, "..", "..");
@@ -125,7 +126,7 @@ if (plan.format.length)
   });
 
 if (plan.parse === "all" || plan.parse.length)
-  await step("Files parse", async () => {
+  await step("Files parse, no undefined names", async () => {
     const esbuild = createRequire(join(root, "package.json"))("esbuild");
     let list = plan.parse;
     if (list === "all") {
@@ -147,6 +148,8 @@ if (plan.parse === "all" || plan.parse.length)
         bad.push(`${f}: ${error.errors?.[0]?.text || error.message}`);
       }
     }
+    // A name used but never imported or defined parses fine and breaks only when that code runs.
+    if (!bad.length) bad.push(...(await undefinedNames(list)));
     return { ok: bad.length === 0, detail: bad.join("\n") };
   });
 

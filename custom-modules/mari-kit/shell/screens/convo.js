@@ -19,7 +19,7 @@ import {
   messageWindow,
 } from "../lib/data.js";
 import { TOOL_DEFS, toolPlace } from "../lib/prefs.js";
-import { toast, errorBox, avatar, avatarStack, olderButton, fitMenus, jumpTo, sheet } from "../lib/ui.js";
+import { toast, errorBox, avatar, avatarStack, olderButton, fitMenus, jumpTo, sheet, ask } from "../lib/ui.js";
 import { pickVoice, stripCues, inline } from "../lib/render.js";
 import * as tts from "../lib/tts.js";
 import { syncVoiceSettings } from "../lib/voice.js";
@@ -33,7 +33,17 @@ import { presenceOf, presenceLine, STATUS_KO } from "../lib/presence.js";
 let composeP = null;
 const compose = () => composeP || (composeP = import("../lib/compose.js"));
 import { presenceFields } from "../lib/my-status.js";
-import { MORE, QUICK, USER, reactionsOf, reactorNames, replyFor, replyOf, toggleReaction } from "../lib/reactions.js";
+import {
+  MORE,
+  QUICK,
+  USER,
+  reactionsOf,
+  reactorNames,
+  removeReactor,
+  replyFor,
+  replyOf,
+  toggleReaction,
+} from "../lib/reactions.js";
 import { activeAutonomy, clearUnread } from "../lib/autonomy.js";
 import { runSlash } from "../lib/slash.js";
 import {
@@ -982,25 +992,91 @@ export function convoScreen({ mount, args, go, back }) {
     return h(
       "div",
       { class: `rxrow ${me ? "me" : "them"}` },
-      list.map((r) =>
-        h(
+      list.map((r) => {
+        // Tap: add or take back mine. Long-press (or right-click): who reacted, and remove any of them.
+        let timer = null;
+        let held = false;
+        const hold = () => {
+          if (held) return;
+          held = true;
+          clearTimeout(timer);
+          reactors(m, r);
+        };
+        const cancel = () => clearTimeout(timer);
+        return h(
           "button",
           {
             type: "button",
             class: r.by.includes(USER) ? "rx mine" : "rx",
             "aria-pressed": r.by.includes(USER) ? "true" : "false",
-            "aria-label": `${r.emoji} · ${reactorNames(r, nameOf)}`,
+            "aria-label": `${r.emoji} · ${reactorNames(r, nameOf)} (길게 누르면 지우기)`,
             title: reactorNames(r, nameOf),
+            onPointerdown: () => {
+              held = false;
+              clearTimeout(timer);
+              timer = setTimeout(hold, 500);
+            },
+            onPointerup: cancel,
+            onPointerleave: cancel,
+            onPointercancel: cancel,
+            onContextmenu: (e) => {
+              e.preventDefault();
+              e.stopPropagation();
+              hold();
+            },
             onClick: (e) => {
               e.stopPropagation();
+              if (held) return (held = false);
               react(m, r.emoji, r.imageUrl || null);
             },
           },
           r.imageUrl ? h("img", { src: r.imageUrl, alt: r.emoji, loading: "lazy" }) : h("span", null, r.emoji),
           r.by.length > 1 ? h("small", null, String(r.by.length)) : null,
-        ),
-      ),
+        );
+      }),
     );
+  }
+  // Who reacted with this emoji; each one can be removed (a character's too, like the Engine's reaction details).
+  function reactors(m, r) {
+    const box = h("div", { class: "rxsheet" });
+    const s = sheet(box, { label: `${r.emoji} 반응` });
+    const paint = () => {
+      const cur = reactionsOf(m).find((x) => x.emoji === r.emoji && (x.segment ?? null) === null);
+      if (!cur) return s.close();
+      setChildren(
+        box,
+        h("b", null, `${r.emoji} 반응한 사람`),
+        h(
+          "div",
+          { class: "list" },
+          cur.by.map((id) => {
+            const c = id === USER ? null : index.get(id);
+            const who = id === USER ? "나" : c?.name || "누군가";
+            return h(
+              "div",
+              { class: "r static" },
+              h("span", { class: "ic" }, id === USER ? null : avatar(c?.avatar, who[0] || "·", 28)),
+              h("span", null, who),
+              h(
+                "button",
+                {
+                  type: "button",
+                  class: "pill",
+                  "aria-label": `${who}의 ${r.emoji} 반응 지우기`,
+                  onClick: async () => {
+                    if (id !== USER && !(await ask(`${who}의 ${r.emoji} 반응을 지울까요?`, { ok: "지우기" }))) return;
+                    await saveReactions(m, removeReactor(reactionsOf(m), r.emoji, id), "반응을 지우지 못했어요");
+                    if (box.isConnected) paint();
+                  },
+                },
+                "지우기",
+              ),
+            );
+          }),
+        ),
+      );
+    };
+    paint();
   }
   function reactBar(m, me) {
     const mine = new Set(
@@ -1071,9 +1147,10 @@ export function convoScreen({ mount, args, go, back }) {
         );
     } catch {}
   }
-  async function react(m, emoji, imageUrl = null) {
+  const react = (m, emoji, imageUrl = null) =>
+    saveReactions(m, toggleReaction(reactionsOf(m), emoji, imageUrl), "반응을 달지 못했어요");
+  async function saveReactions(m, next, failed) {
     const before = m.extra;
-    const next = toggleReaction(reactionsOf(m), emoji, imageUrl);
     let extra = m.extra;
     try {
       extra = typeof extra === "string" ? JSON.parse(extra) : { ...(extra || {}) };
@@ -1090,7 +1167,7 @@ export function convoScreen({ mount, args, go, back }) {
     } catch (error) {
       m.extra = before;
       draw();
-      toast(`반응을 달지 못했어요: ${error.message}`);
+      toast(`${failed}: ${error.message}`);
     }
   }
   function quoteOf(m) {

@@ -12,6 +12,7 @@
 
 import { chromium, devices } from "./e2e/playwright.mjs";
 import { dirname, join, resolve } from "node:path";
+import { mkdir } from "node:fs/promises";
 import { fileURLToPath } from "node:url";
 import { tmpdir } from "node:os";
 import { startFakeLlm } from "./e2e/fake-llm.mjs";
@@ -113,6 +114,9 @@ async function phone() {
   return { ctx, page, errors };
 }
 const hash = (page) => page.evaluate(() => location.hash);
+// With --shots, flows keep a screenshot of the states worth a look (an edit form, a sheet) next to the tour's.
+const snap = (page, name) => (shots ? page.screenshot({ path: join(shots, `flow-${name}.png`) }) : null);
+if (shots) await mkdir(shots, { recursive: true });
 const goIn = (page, h) => page.evaluate((x) => (location.hash = x), h); // in-app move, as a tap does
 async function open(page) {
   await page.goto(APP);
@@ -329,6 +333,27 @@ const flows = {
     if ((await page.locator(".wblocks .r").count()) !== 2) throw new Error("week view should list 2 blocks");
     await page.locator(".daytabs button").nth(6).click();
     await page.locator(".wblocks").getByText("e2e shift").waitFor();
+    // 칸 고치기: add a block on Sunday, set it, copy Sunday onto Monday, save on the card.
+    await page.getByRole("button", { name: "칸 고치기" }).click();
+    await page.getByRole("button", { name: "＋ 칸 추가" }).click();
+    const added = page.locator(".eblk").last();
+    await added.getByLabel(/하는 일$/).fill("e2e 산책");
+    await added.getByRole("radio", { name: "바쁨" }).click();
+    await snap(page, "schedule-edit");
+    await page.getByRole("button", { name: "다른 요일에 복사…" }).click();
+    await page.getByRole("button", { name: "월요일", exact: true }).click();
+    await snap(page, "schedule-copy");
+    await page.getByRole("button", { name: "1개 요일에 복사" }).click();
+    await page.getByRole("button", { name: "저장", exact: true }).click();
+    await page.locator(".wblocks").getByText("e2e 산책").waitFor({ timeout: 10000 });
+    const card = await api("GET", `/characters/${rin.id}`);
+    const saved = (typeof card.data === "string" ? JSON.parse(card.data) : card.data).extensions.conversationSchedule;
+    for (const d of ["Sunday", "Monday"]) {
+      const b = saved.days[d].find((x) => x.activity === "e2e 산책");
+      if (!b || b.status !== "dnd" || saved.days[d].length !== 3)
+        throw new Error(`${d} not saved: ${JSON.stringify(saved.days[d])}`);
+    }
+    if (saved.routineSummary !== "e2e routine") throw new Error("saving the blocks lost the routine summary");
     await goIn(page, "#/convos");
     await page.locator(`a[href="#/convo/${encodeURIComponent(scheduled.id)}"] .avp .sdot`).waitFor({ timeout: 10000 });
   },
@@ -362,6 +387,13 @@ const flows = {
     await bubble.locator(".rx.mine").click();
     await until(async () => !(await reactionsNow()).some((r) => r.emoji === "❤️"), 5000, "reaction taken back");
     if (!(await reactionsNow()).some((r) => r.emoji === "😂")) throw new Error("the character's reaction was lost");
+    // A long press shows who reacted; the character's reaction can be removed (asked first).
+    await bubble.locator(".rx").filter({ hasText: "😂" }).click({ delay: 700 });
+    await snap(page, "reactors");
+    await page.getByRole("button", { name: /의 😂 반응 지우기$/ }).click();
+    await page.getByRole("button", { name: "지우기", exact: true }).click();
+    await until(async () => !(await reactionsNow()).some((r) => r.emoji === "😂"), 5000, "character reaction removed");
+    if (await bubble.locator(".rx").count()) throw new Error("the removed reaction is still drawn");
     await bubble.locator(".bub").last().click();
     await page.getByRole("button", { name: "답장" }).first().click();
     await page.locator(".rbar").waitFor();

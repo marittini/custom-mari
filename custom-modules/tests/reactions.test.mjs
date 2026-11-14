@@ -1,6 +1,13 @@
 // Convo reactions and replies in the Engine's data (shell/lib/reactions.js).
 import assert from "node:assert/strict";
-import { reactionsOf, replyFor, replyOf, toggleReaction, reactorNames } from "../mari-kit/shell/lib/reactions.js";
+import {
+  reactionsOf,
+  replyFor,
+  replyOf,
+  toggleReaction,
+  reactorNames,
+  removeReactor,
+} from "../mari-kit/shell/lib/reactions.js";
 
 const m = {
   extra: JSON.stringify({
@@ -38,6 +45,23 @@ assert.equal(
   reactorNames({ by: ["c1", "user"] }, (id) => (id === "c1" ? "하루" : "")),
   "하루, 나",
 );
+
+// Removing one reactor (a character's too); the emoji goes when nobody is left, segment reactions stay.
+const mixed = [
+  { emoji: "❤️", by: ["c1", "user"] },
+  { emoji: "😂", by: ["c2"] },
+  { emoji: "😂", by: ["c2"], segment: 1 },
+];
+assert.deepEqual(removeReactor(mixed, "❤️", "c1"), [
+  { emoji: "❤️", by: ["user"] },
+  { emoji: "😂", by: ["c2"] },
+  { emoji: "😂", by: ["c2"], segment: 1 },
+]);
+assert.deepEqual(removeReactor(mixed, "😂", "c2"), [
+  { emoji: "❤️", by: ["c1", "user"] },
+  { emoji: "😂", by: ["c2"], segment: 1 },
+]);
+assert.deepEqual(mixed[0].by, ["c1", "user"]);
 
 // Replies: the Engine's limits and checks.
 assert.deepEqual(replyFor({ id: "m1" }, "하루", "  안녕  "), { messageId: "m1", name: "하루", content: "안녕" });

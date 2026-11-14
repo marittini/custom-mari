@@ -99,7 +99,7 @@ Each check prints one line; a toured screen prints its transfer; a failure print
 
 | Command                                          | What it checks                                                                                                  | When                                                              |
 | ------------------------------------------------ | --------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------- |
-| `node custom-modules/scripts/verify.mjs --quick` | formatting, parsing, package build — no Engine                                                                  | after each edit                                                   |
+| `node custom-modules/scripts/verify.mjs --quick` | formatting, parsing and undefined names (a missing import), package build — no Engine                           | after each edit                                                   |
 | `node custom-modules/scripts/verify.mjs`         | the scoped run above                                                                                            | before a PR                                                       |
 | `node custom-modules/scripts/verify.mjs --all`   | everything: every flow and screen, every test, first-visit transfer, the old Mari Kit regressions               | before a release-sized merge (several steps, `app.js`, the build) |
 | add `--shots <dir>`                              | keeps a 360px screenshot of each toured screen                                                                  | when a screen changed                                             |

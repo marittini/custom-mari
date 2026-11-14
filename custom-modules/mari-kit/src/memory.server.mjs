@@ -945,7 +945,11 @@ async function completeJson(runtime, model, messages, debug, label) {
   } catch (error) {
     // A bare 500 tells the reader nothing; say which call failed and why. Nothing was saved yet.
     runtime.logger.warn?.(error, "[mari-kit] memory %s call failed", label);
-    throw httpError(502, `The memory model call failed (${label}): ${error?.message ?? error}. Nothing was saved.`);
+    // (httpError is only handed to routes(); this helper runs outside it, so it builds the same error itself.)
+    throw Object.assign(
+      new Error(`The memory model call failed (${label}): ${error?.message ?? error}. Nothing was saved.`),
+      { statusCode: 502 },
+    );
   }
   const raw = typeof result?.content === "string" ? result.content : "";
   runtime.logger.debugOverride(debug, "[mari-kit] memory %s reply=%s", label, raw);
