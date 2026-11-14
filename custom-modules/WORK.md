@@ -11,15 +11,16 @@ needs the owner, a real account or a phone.
 
 ### M-6 Convo 2단계 — claude ccr-b4485093-p6ybfu
 
-Agreed with mockups: https://claude.ai/artifact/NxUBMQxF6BBgG8xbpByJXh. Three releases:
+Agreed with mockups: https://claude.ai/artifact/NxUBMQxF6BBgG8xbpByJXh.
 
-- 0.20.0 (PR #51): send pictures (WebP made in the browser), @mentions (`mentionedCharacterNames`), my own status
-  and activity (synced to the Engine's `userStatusManual` / `userActivity`), status dots in colour (the owner asked;
-  the one exception to monotone).
-- 0.21.0: edit schedule blocks in Mari (add, delete, copy a day), remove a character's reaction (long-press). Also:
-  `verify.mjs` now catches undefined names (a missing import), which found a broken error path in memory.
-- 0.22.0: scene invitations (`extra.sceneRequest`, the Engine's scene plan/create flow, banner, replies-here switch),
-  weather (Mari Kit's weather routes).
+- 0.20.0 (PR #51, merged): send pictures (WebP made in the browser), @mentions (`mentionedCharacterNames`), my own
+  status and activity (synced to the Engine's `userStatusManual` / `userActivity`), status dots in colour (the owner
+  asked; the one exception to monotone).
+- 0.22.0 (one PR with what was planned as 0.21): edit schedule blocks in Mari (add, delete, copy a day), remove a
+  character's reaction (long-press), weather (Mari Kit's weather routes, never shown in the shell before), scene
+  invitations (`extra.sceneRequest`, the Engine's scene plan/create flow, banner, replies-here switch, end / discard /
+  convert, clone from a message). Also: `verify.mjs` now catches undefined names (a missing import), which found a
+  broken error path in memory.
 
 ## Ready
 
