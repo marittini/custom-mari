@@ -28,6 +28,7 @@ import { shownText, translateStickerInput, stickerTokensMatch } from "../lib/tra
 import { loadStickers, stickerContent, stickerPicker, stickerLabel, withoutStickerTokens } from "../lib/stickers.js";
 import { watchGeneration, stopGeneration } from "../lib/generation.js";
 import { attachmentsOf, closeInTime, dayKey, dayLabel, presenceText, timeLabel } from "../lib/convo-bits.js";
+import { presenceOf, presenceLine, STATUS_KO } from "../lib/presence.js";
 import { activeAutonomy, clearUnread } from "../lib/autonomy.js";
 import { runSlash } from "../lib/slash.js";
 import {
@@ -63,7 +64,9 @@ export function convoScreen({ mount, args, go, back }) {
   // generation); offNote = why the last message got no answer (offline, in a Scene), until the next send.
   let wait = null;
   let offNote = null;
-  let queued = null; // 지금 답하게: { body, ready } runs once the delayed generation has stopped
+  let queued = null;
+  let fresh = null; // GET /conversation/status/:chatId statuses (characters' presence), once per open and reply
+  let tick = null; // 지금 답하게: { body, ready } runs once the delayed generation has stopped
   let me = null; // the persona's schedule state (Mari Kit 내 일정), when there is one
   let phoneBtn = null;
   let call = null; // the call screen, when the Calls package is installed
@@ -333,6 +336,9 @@ export function convoScreen({ mount, args, go, back }) {
                 : `character/${encodeURIComponent(lead.id)}`,
             );
         loadMe();
+        loadPresence();
+        // The status line follows the schedule minute by minute, from data already here.
+        tick = setInterval(() => document.visibilityState === "visible" && drawPresence(), 60000);
         setupCalls();
         // The Engine's Convo autonomy (characters writing first, exchanges, busy delays) runs in its client;
         // the shell runs the same while this chat is open (lib/autonomy.js).
@@ -354,7 +360,8 @@ export function convoScreen({ mount, args, go, back }) {
     }
   }
 
-  // "나 · 퇴근길 · 오후 7:00까지" under the name; tapping it opens 내 일정.
+  // The user's own schedule (Mari Kit 내 일정): its status goes with every generation (presence()), and its line is
+  // at the bottom of the status sheet.
   const SCHED_LABEL = { online: "온라인", idle: "자리 비움", dnd: "방해 금지", offline: "오프라인" };
   async function loadMe() {
     try {
@@ -362,23 +369,69 @@ export function convoScreen({ mount, args, go, back }) {
     } catch {
       me = null;
     }
-    if (!alive || !me) return;
+    if (alive) drawPresence();
+  }
+
+  // The characters' presence (the Engine's status and schedules) under the name; tapping it opens the status sheet,
+  // which also holds the user's own schedule line. Computed on screen from the schedule each minute (no request);
+  // read fresh from the Engine when the chat opens and after each reply.
+  async function loadPresence() {
+    try {
+      fresh = (await api.get(`/conversation/status/${encodeURIComponent(chatId)}`))?.statuses || null;
+    } catch {
+      fresh = null;
+    }
+    if (alive) drawPresence();
+  }
+  function drawPresence() {
+    if (!chat) return;
     who.querySelector(".me-line")?.remove();
-    const n = me.now;
-    const line = h(
-      "button",
-      {
-        type: "button",
-        class: "me-line",
-        onClick: (e) => {
-          e.stopPropagation();
-          go(`schedule/${encodeURIComponent(me.key)}/now/${encodeURIComponent(chatId)}`);
+    const meta = chatMeta(chat);
+    const now = new Date();
+    const people = (chat.characterIds || [])
+      .map((id) => ({ id, c: index.get(id), p: presenceOf(meta, id, now, fresh?.[id] || null) }))
+      .filter((x) => x.c);
+    if (!people.length) return;
+    let text;
+    if (people.length === 1) text = presenceLine(people[0].p) || STATUS_KO[people[0].p?.status || "online"];
+    else {
+      const shown = people.slice(0, 2).map((x) => `${x.c.name} ${STATUS_KO[x.p?.status || "online"]}`);
+      text = `${shown.join(" · ")}${people.length > 2 ? ` 외 ${people.length - 2}` : ""}`;
+    }
+    who.append(
+      h(
+        "button",
+        {
+          type: "button",
+          class: "me-line",
+          "aria-label": `상태와 일정: ${text}`,
+          onClick: (e) => {
+            e.stopPropagation();
+            openPresence();
+          },
         },
-      },
-      n ? h("span", { class: `sdot ${n.status}` }) : null,
-      n ? `나 · ${n.activity}` : "내 일정 만들기",
+        people.slice(0, 3).map((x) => h("span", { class: `sdot ${x.p?.status || "online"}` })),
+        h("span", { class: "me-line-t" }, text),
+      ),
     );
-    who.append(line);
+  }
+  // The sheet's code loads only when it is opened (most visits never open it).
+  async function openPresence() {
+    const { presenceSheet } = await import("../lib/presence-sheet.js");
+    if (!alive) return;
+    presenceSheet({
+      chat,
+      index,
+      fresh,
+      me,
+      waiting: busy && wait?.kind === "delayed" ? wait.characterIds || [] : [],
+      replyNow,
+      go,
+      changed: async () => {
+        await load(false);
+        await loadPresence();
+      },
+    });
   }
   /** The Engine's own presence fields, so its autonomy sees the user's planned status too. */
   function presence() {
@@ -983,6 +1036,7 @@ export function convoScreen({ mount, args, go, back }) {
         const before = new Set(messages.map((m) => m.id));
         const follow = scroll.nearBottom();
         await load(false, true);
+        loadPresence();
         ringCheck?.();
         if (follow) scroller.scrollTop = scroller.scrollHeight;
         // 자동 재생: the character messages this turn added, in order.
@@ -1109,6 +1163,7 @@ export function convoScreen({ mount, args, go, back }) {
       tts.stop();
       abort?.abort();
       clearInterval(callPoll);
+      clearInterval(tick);
       auto?.stop();
       offVisible();
       call?.dispose();

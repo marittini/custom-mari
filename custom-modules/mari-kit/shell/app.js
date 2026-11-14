@@ -31,6 +31,7 @@ const SCREENS = {
   "chat-settings": () => import("./screens/chat-settings.js").then((m) => m.chatSettingsScreen),
   translation: () => import("./screens/translation.js").then((m) => m.translationScreen),
   schedule: () => import("./screens/schedule.js").then((m) => m.scheduleScreen),
+  "char-schedule": () => import("./screens/char-schedule.js").then((m) => m.charScheduleScreen),
   voice: () => import("./screens/voice.js").then((m) => m.voiceScreen),
   radio: () => import("./screens/radio.js").then((m) => m.radioScreen),
   "call-settings": () => import("./screens/call-settings.js").then((m) => m.callSettingsScreen),

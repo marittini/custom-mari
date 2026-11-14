@@ -73,6 +73,36 @@ const other = await newChat("e2e other", "conversation", [b.id]);
 // Its own character, because a status override lives on the character card (the Engine's presence).
 const yui = await api("POST", "/characters", { data: { name: "Yui", description: "e2e" } });
 const presence = await newChat("e2e presence", "conversation", [yui.id]);
+// A character with a week schedule (the Engine keeps it on the card): mornings away, the rest busy.
+const rin = await api("POST", "/characters", { data: { name: "Rin", description: "e2e" } });
+{
+  const monday = new Date();
+  monday.setHours(0, 0, 0, 0);
+  monday.setDate(monday.getDate() - ((monday.getDay() + 6) % 7));
+  const day = [
+    { time: "00:00-12:00", activity: "e2e morning", status: "idle" },
+    { time: "12:00-00:00", activity: "e2e shift", status: "dnd" },
+  ];
+  const days = Object.fromEntries(
+    ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"].map((d) => [d, day]),
+  );
+  await api("PATCH", `/characters/${rin.id}`, {
+    data: {
+      extensions: {
+        conversationSchedule: {
+          weekStart: monday.toISOString(),
+          days,
+          inactivityThresholdMinutes: 120,
+          talkativeness: 50,
+          routineSummary: "e2e routine",
+        },
+      },
+    },
+    skipVersionSnapshot: true,
+  });
+}
+const scheduled = await newChat("e2e schedule", "conversation", [rin.id]);
+await api("PATCH", `/chats/${scheduled.id}/metadata`, { conversationSchedulesEnabled: true });
 
 const browser = await chromium.launch();
 async function phone() {
@@ -270,6 +300,37 @@ const flows = {
     await page.getByRole("toolbar", { name: "메시지 도구" }).waitFor();
     if (!(await page.locator(".daysep").filter({ hasText: "오늘" }).count())) throw new Error("no 오늘 separator");
     if (!(await page.locator(".btime").count())) throw new Error("no message times");
+  },
+
+  // A character's schedule (the Engine's presence card): the line under the name, the status sheet (change the
+  // status and back), the week view, and the dot on the chat's picture in the list.
+  async "convo-schedule"({ page }) {
+    const now = new Date().getHours() < 12 ? "e2e morning" : "e2e shift";
+    await open(page);
+    await goIn(page, `#/convo/${encodeURIComponent(scheduled.id)}`);
+    const line = page.locator(".me-line");
+    await until(async () => (await line.innerText()).includes(now), 10000, `status line shows ${now}`);
+    await line.click();
+    await page.locator(".pcard").waitFor();
+    if (!(await page.locator(".pcard-next .blk").count())) throw new Error("no upcoming blocks in the sheet");
+    await page.getByRole("button", { name: "상태 바꾸기" }).click();
+    await page.getByRole("radio", { name: "오프라인" }).click();
+    await until(async () => (await line.innerText()).includes("오프라인"), 10000, "header follows the manual status");
+    await until(
+      () => page.getByRole("button", { name: "일정대로 되돌리기" }).isVisible(),
+      5000,
+      "back-to-schedule button",
+    );
+    await page.getByRole("button", { name: "일정대로 되돌리기" }).click();
+    await until(async () => (await line.innerText()).includes(now), 10000, "back on the schedule");
+    await page.getByRole("button", { name: "주간 일정 ›" }).click();
+    await until(async () => (await hash(page)).startsWith("#/char-schedule/"), 5000, "week view");
+    await until(async () => (await page.locator(".daytabs button").count()) === 7, 5000, "seven day tabs");
+    if ((await page.locator(".wblocks .r").count()) !== 2) throw new Error("week view should list 2 blocks");
+    await page.locator(".daytabs button").nth(6).click();
+    await page.locator(".wblocks").getByText("e2e shift").waitFor();
+    await goIn(page, "#/convos");
+    await page.locator(`a[href="#/convo/${encodeURIComponent(scheduled.id)}"] .avp .sdot`).waitFor({ timeout: 10000 });
   },
 
   // Characters write first (the Engine's Convo autonomy): in the open chat, and in another chat with an unread
