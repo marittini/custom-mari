@@ -7,7 +7,7 @@ import { FLOW_SCREENS } from "./screens.mjs";
 const SHELL = "custom-modules/mari-kit/shell/";
 const SRC = "custom-modules/mari-kit/src/";
 const CORE = new Set([`${SHELL}app.js`, `${SHELL}shell.css`, `${SRC}server.mjs`]);
-const HARNESS = /^custom-modules\/scripts\/(shell-e2e\.mjs|e2e\/(screens|fake-llm)\.mjs)$/;
+const HARNESS = /^custom-modules\/scripts\/(shell-e2e\.mjs|e2e\/(screens|fake-llm|playwright)\.mjs)$/;
 
 /** Relative imports of a shell file (static and dynamic), resolved against its folder. */
 export function importsOf(path, text) {

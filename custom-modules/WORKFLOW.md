@@ -67,6 +67,10 @@ Title: `Mari Kit <version>: <what changed in plain words>`. Body sections:
 
 Leave checkboxes unchecked. Do not claim pending CI as passed.
 
+The Engine's own PR workflows also run here. Their **Branch policy check** always fails ("Contributions must target
+staging"): it is upstream's rule for upstream's repository and does not apply. A shard job that shows `cancelled`
+after a new push is not a failure. The checks that matter are **Mari Engine guard** and **Mari verify**.
+
 ## 6. Release and catalog
 
 - `manifest.template.json`'s version goes up with every Mari Kit change (patch for fixes, minor for features).

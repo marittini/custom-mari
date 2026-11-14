@@ -10,7 +10,7 @@
 //   --only: just these flows (none: "--only -"). --screens: tour only the screens drawn by these screen modules
 //   (shell/screens/<mod>.js; "-" for none). Without either, everything runs, with the first-visit transfer.
 
-import { createRequire } from "node:module";
+import { chromium, devices } from "./e2e/playwright.mjs";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { tmpdir } from "node:os";
@@ -29,7 +29,6 @@ const base = (args.find((a) => a.startsWith("http")) || process.env.ENGINE_URL |
   "",
 );
 const APP = `${base}/api/mari-kit/app`;
-const { chromium, devices } = createRequire(resolve(here, "..", "..", "package.json"))("playwright");
 
 const H = { "content-type": "application/json", "x-marinara-csrf": "1" };
 async function api(method, path, body) {
