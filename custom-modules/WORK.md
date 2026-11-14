@@ -9,7 +9,12 @@ needs the owner, a real account or a phone.
 
 ## Doing
 
-_(none)_
+### M-12 번역 찾기·지침 직접 편집·입출력 구분 — doing (codex mari/translation-direction-fix)
+
+Fix discarded glossary scan results; expose independent incoming/outgoing custom prompts and their effective
+preview, with explicit AI-provider limits and safe fitting feedback. Keep existing glossary and original-prompt
+restore behavior. Mari Kit only; do not modify paused PR #49 or its feature files. Shared release-version metadata
+will need its later 0.19.0 merge resolution. Target a separate 0.18.1 patch.
 
 ## Ready
 
