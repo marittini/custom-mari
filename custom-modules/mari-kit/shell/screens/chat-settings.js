@@ -1422,11 +1422,14 @@ export function chatSettingsScreen({ mount, args, go, back }) {
               regenerate,
             )
           : null,
-        schedOn
-          ? linkRow(I.person, "캐릭터별 일정 고치기", "엔진", () =>
-              openEngine(null, { character: (chat.characterIds || [])[0], tab: "convo" }),
+        // Each character's week (보기, 다시 만들기; 칸별 고치기 from there opens the Engine's editor).
+        ...(schedOn
+          ? (chat.characterIds || []).map((id) =>
+              linkRow(I.person, `${state.index.get(id)?.name || "캐릭터"} 일정`, schedules[id] ? "보기" : "없음", () =>
+                go(`char-schedule/${encodeURIComponent(chatId)}/${encodeURIComponent(id)}`),
+              ),
             )
-          : null,
+          : []),
       ),
       h("div", { class: "gsec", style: { margin: "24px 20px 8px" } }, h("span", null, "통화")),
       h(

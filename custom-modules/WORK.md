@@ -13,21 +13,6 @@ _(none)_
 
 ## Ready
 
-### M-3 Convo: 캐릭터 일정 보기 — step (plan §3)
-
-Plan with mockups: https://claude.ai/artifact/375D4DH6fcBQHXme3Tmnv5
-
-- Header line under the name: status dot, activity, until when (groups: shortened, tap for each). The current
-  "나 · …" line moves to the bottom of the status sheet.
-- Status sheet: everything the Engine's `ConversationPresenceCard` shows (status, activity, rest of today, last
-  contact, schedule vs override, change status with activity and duration, reply now).
-- Week view: day tabs, blocks with the current one marked, routine summary, regenerate day/week
-  (`POST /conversation/schedule/draft`, `/schedule/generate`). Editing single blocks is M-6; until then link to the
-  Engine's schedule editor.
-- Status dot on avatars in the convo list; 채팅 설정 › 대화 기능 › 캐릭터 일정 gets 일정 보기 per character.
-- Data: `GET /conversation/status/:chatId` on open and after a reply (3–5KB with schedules); the minute-by-minute
-  status is computed on screen from the schedule. Add new Engine calls to `engine-api.json`.
-
 ### M-4 Convo: 이모지 반응, 답장 — step (plan §4, stage 1)
 
 - Show reactions (`extra.reactions`, incl. the character's `[react]`) small on the bubble corner; per segment for
@@ -69,6 +54,7 @@ _(none)_
 
 ## Done
 
+- M-3 Convo 캐릭터 일정 보기 (머리줄 상태, 상태 시트, 주간 일정, 목록 상태 점) — Mari Kit 0.18.0 (PR #48).
 - M-7 Engine 원본 수정 4곳: 주인 결정으로 그대로 둠. 어떤 기능 때문에 어떤 파일을 고쳤는지는 `ENGINE-EDITS.md`,
   업스트림 이슈 초안은 `UPSTREAM.md`.
 - M-1 Convo 바쁨·오프라인·입력 중 알림, M-2 셀카·영상·사진, M-5 시각·날짜 구분선 — Mari Kit 0.17.0 (PR #47).

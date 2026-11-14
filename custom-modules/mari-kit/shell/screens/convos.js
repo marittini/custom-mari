@@ -1,6 +1,16 @@
 import { h, icon, I, setChildren } from "../lib/h.js";
 import { openNewChat } from "../lib/newchat.js";
-import { data, characterIndex, chatTitle, firstLetter, shortTime, coverOf, byBranchGroup } from "../lib/data.js";
+import {
+  data,
+  characterIndex,
+  chatTitle,
+  chatMeta,
+  firstLetter,
+  shortTime,
+  coverOf,
+  byBranchGroup,
+} from "../lib/data.js";
+import { presenceOf, STATUS_KO } from "../lib/presence.js";
 import { pageHead, avatar, avatarStack, errorBox, timeAndUnread } from "../lib/ui.js";
 import { groupsOf, splitByGroup, foldGroup } from "../lib/groups.js";
 
@@ -62,6 +72,20 @@ export function convosScreen({ mount, go }) {
     body,
   );
 
+  // A one-character chat shows that character's presence on its picture, from the chat's own schedule copy (no
+  // request), like the Engine's chat list.
+  function withPresence(c, cast, pic) {
+    if (cast.length !== 1) return pic;
+    const p = presenceOf(chatMeta(c), cast[0].id);
+    if (!p) return pic;
+    return h(
+      "span",
+      { class: "avp", title: STATUS_KO[p.status] },
+      pic,
+      h("span", { class: `sdot ${p.status}`, "aria-label": STATUS_KO[p.status] }),
+    );
+  }
+
   function row(c, size = 40, nested = false) {
     const { index, lasts } = model;
     const cast = (c.characterIds || []).map((id) => index.get(id)).filter(Boolean);
@@ -72,11 +96,15 @@ export function convosScreen({ mount, go }) {
         class: nested ? "row nested" : "row",
         href: `#/convo/${encodeURIComponent(c.id)}`,
       },
-      coverOf(c)
-        ? avatar(coverOf(c), firstLetter(title), size)
-        : cast.length > 1
-          ? avatarStack(cast, size)
-          : avatar(cast[0]?.avatar, firstLetter(title), size),
+      withPresence(
+        c,
+        cast,
+        coverOf(c)
+          ? avatar(coverOf(c), firstLetter(title), size)
+          : cast.length > 1
+            ? avatarStack(cast, size)
+            : avatar(cast[0]?.avatar, firstLetter(title), size),
+      ),
       h(
         "span",
         { style: { display: "flex", flexDirection: "column", gap: "3px", minWidth: "0" } },

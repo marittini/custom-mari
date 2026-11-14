@@ -1,0 +1,261 @@
+// The Convo status sheet: what the Engine's Conversation Presence card shows, for each character in the chat —
+// status and activity, following the schedule or set by hand, last contact, change the status (saved on the
+// character card like the Engine), back to the schedule, reply now while a reply waits, the next blocks and the
+// week view. At the bottom, the user's own schedule line (Mari Kit 내 일정).
+
+import { h, setChildren } from "./h.js";
+import { api } from "./api.js";
+import { sheet, toast, avatar } from "./ui.js";
+import { startJob } from "./activity.js";
+import {
+  STATUSES,
+  STATUS_KO,
+  DAY_KO,
+  agoLabel,
+  presenceLine,
+  presenceOf,
+  rangeLabel,
+  timeZoneOf,
+  upcomingBlocks,
+  wallClock,
+} from "./presence.js";
+
+const dot = (status) => h("span", { class: `sdot ${status}` });
+
+/** Saves a manual status on the character card (the Engine's saveOverride; null goes back to the schedule). */
+export function saveOverride(characterId, override) {
+  return api.patch(`/characters/${encodeURIComponent(characterId)}`, {
+    data: { extensions: { conversationStatusOverride: override } },
+    skipVersionSnapshot: true,
+  });
+}
+
+/**
+ * chat, index (id → { name, avatar }), fresh: GET /conversation/status/:chatId's statuses (or null), me: Mari Kit's
+ * schedule state for the user, waiting: character ids whose reply waits (지금 답하게), replyNow(id), go, changed().
+ */
+export function presenceSheet({ chat, index, fresh, me, waiting = [], replyNow, go, changed }) {
+  const chatId = chat.id;
+  const box = h("div", { class: "psheet" });
+  const s = sheet(box, { label: "상태와 일정" });
+  let statuses = fresh;
+  let editing = null; // character id whose status chips are open
+
+  async function refresh() {
+    try {
+      statuses = (await api.get(`/conversation/status/${encodeURIComponent(chatId)}`)).statuses || {};
+    } catch {}
+    await changed?.();
+    if (box.isConnected) draw();
+  }
+
+  async function setStatus(id, status, activity) {
+    try {
+      await saveOverride(id, {
+        status,
+        activity: activity?.trim() ? activity.trim() : null,
+        createdAt: new Date().toISOString(),
+        expiresAt: null,
+      });
+      editing = null;
+      toast(`${index.get(id)?.name || "캐릭터"} · ${STATUS_KO[status]}(으)로 바꿨어요`);
+      await refresh();
+    } catch (error) {
+      toast(`바꾸지 못했어요: ${error.message}`);
+    }
+  }
+  async function backToSchedule(id) {
+    try {
+      await saveOverride(id, null);
+      toast("일정대로 돌아갔어요");
+      await refresh();
+    } catch (error) {
+      toast(`되돌리지 못했어요: ${error.message}`);
+    }
+  }
+  async function makeSchedule(id) {
+    const done = startJob(`${index.get(id)?.name || "캐릭터"} 일정 만드는 중…`);
+    try {
+      const res = await api.post("/conversation/schedule/generate", {
+        chatId,
+        characterIds: [id],
+        forceRefresh: true,
+        timeZone: timeZoneOf(meta()) || Intl.DateTimeFormat().resolvedOptions().timeZone || undefined,
+      });
+      const r = res?.results?.[id]?.status || "";
+      if (r.startsWith("error")) toast(`만들지 못했어요: ${r.slice(6).trim()}`);
+      else toast("일정을 만들었어요");
+      await refresh();
+    } catch (error) {
+      toast(`만들지 못했어요: ${error.message}`);
+    } finally {
+      done();
+    }
+  }
+  const meta = () => {
+    try {
+      return typeof chat.metadata === "string" ? JSON.parse(chat.metadata) : chat.metadata || {};
+    } catch {
+      return {};
+    }
+  };
+
+  function person(id) {
+    const c = index.get(id);
+    const name = c?.name || "캐릭터";
+    const now = new Date();
+    const f = statuses?.[id] || null;
+    const p = presenceOf(meta(), id, now, f) || { status: "online", activity: "", until: "", override: null };
+    const schedule = f ? f.schedule : p.schedule;
+    const wall = wallClock(now, timeZoneOf(meta()));
+    const next = schedule ? upcomingBlocks(schedule, wall, 4) : [];
+    const activity = h("input", {
+      class: "inp",
+      value: p.override ? p.override.activity || "" : "",
+      placeholder: p.activity || "지금 하는 일 (비워도 돼요)",
+      maxlength: 120,
+      "aria-label": `${name}이(가) 지금 하는 일`,
+    });
+    return h(
+      "section",
+      { class: "pcard" },
+      h(
+        "div",
+        { class: "pcard-hd" },
+        avatar(c?.avatar, name[0] || "·", 40),
+        h(
+          "div",
+          { class: "pcard-name" },
+          h("b", null, name),
+          h("span", { class: "hint" }, p.override ? "직접 바꾼 상태" : schedule ? "일정대로" : "일정 없음"),
+        ),
+        f?.lastContact ? h("span", { class: "hint pcard-ago" }, `마지막 연락 ${agoLabel(f.lastContact, now)}`) : null,
+      ),
+      h("div", { class: "pcard-now" }, dot(p.status), h("span", null, presenceLine(p))),
+      waiting.includes(id) && replyNow
+        ? h("button", { type: "button", class: "pill main", onClick: () => (s.close(), replyNow(id)) }, "지금 답하게")
+        : null,
+      // 상태 바꾸기: the Engine's manual status menu and activity box.
+      editing === id
+        ? h(
+            "div",
+            { class: "pcard-edit" },
+            h(
+              "div",
+              { class: "chips", role: "radiogroup", "aria-label": `${name} 상태` },
+              STATUSES.map((st) =>
+                h(
+                  "button",
+                  {
+                    type: "button",
+                    class: st === p.status ? "chip on" : "chip",
+                    role: "radio",
+                    "aria-checked": st === p.status ? "true" : "false",
+                    onClick: () => setStatus(id, st, activity.value),
+                  },
+                  dot(st),
+                  STATUS_KO[st],
+                ),
+              ),
+            ),
+            activity,
+            h(
+              "p",
+              { class: "hint", style: { margin: "0" } },
+              "상태를 누르면 저장돼요. 이 캐릭터의 다른 채팅에도 같이 적용돼요.",
+            ),
+          )
+        : null,
+      h(
+        "div",
+        { class: "pcard-acts" },
+        h(
+          "button",
+          { type: "button", class: "pill", onClick: () => ((editing = editing === id ? null : id), draw()) },
+          editing === id ? "접기" : "상태 바꾸기",
+        ),
+        p.override
+          ? h("button", { type: "button", class: "pill", onClick: () => backToSchedule(id) }, "일정대로 되돌리기")
+          : null,
+        schedule
+          ? h(
+              "button",
+              {
+                type: "button",
+                class: "pill",
+                onClick: () => (s.close(), go(`char-schedule/${encodeURIComponent(chatId)}/${encodeURIComponent(id)}`)),
+              },
+              "주간 일정 ›",
+            )
+          : h("button", { type: "button", class: "pill", onClick: () => makeSchedule(id) }, "일정 만들기"),
+      ),
+      next.length
+        ? h(
+            "div",
+            { class: "pcard-next" },
+            h("span", { class: "label" }, "다음 일정"),
+            next.map((b) =>
+              h(
+                "div",
+                { class: "blk" },
+                h(
+                  "span",
+                  { class: "blk-t" },
+                  `${b.offset === 0 ? "오늘" : b.offset === 1 ? "내일" : `${DAY_KO[b.day]}요일`} ${rangeLabel(b.block.time)}`,
+                ),
+                dot(b.block.status),
+                h("span", { class: "blk-a" }, b.block.activity || STATUS_KO[b.block.status]),
+              ),
+            ),
+          )
+        : schedule
+          ? h("p", { class: "hint", style: { margin: "0" } }, "다가오는 일정이 없어요")
+          : null,
+    );
+  }
+
+  function draw() {
+    const ids = chat.characterIds || [];
+    const n = me?.now;
+    setChildren(
+      box,
+      h("b", { class: "psheet-title" }, ids.length > 1 ? "모두의 상태와 일정" : "상태와 일정"),
+      ids.map(person),
+      h(
+        "div",
+        { class: "list", style: { marginTop: "4px" } },
+        me
+          ? h(
+              "button",
+              {
+                type: "button",
+                class: "r",
+                onClick: () => (
+                  s.close(),
+                  go(`schedule/${encodeURIComponent(me.key)}/now/${encodeURIComponent(chatId)}`)
+                ),
+              },
+              h("span", { class: "ic" }, n ? dot(n.status) : null),
+              h("span", null, n ? `나 · ${n.activity}` : "내 일정 만들기"),
+              h("span", { class: "val" }, "›"),
+            )
+          : null,
+        h(
+          "button",
+          {
+            type: "button",
+            class: "r",
+            onClick: () => (s.close(), go(`chat-settings/${encodeURIComponent(chatId)}/convo`)),
+          },
+          h("span", { class: "ic" }),
+          h("span", null, "먼저 말 걸기 · 일정 설정"),
+          h("span", { class: "val" }, "›"),
+        ),
+      ),
+    );
+  }
+
+  draw();
+  if (!statuses) refresh();
+  return s;
+}

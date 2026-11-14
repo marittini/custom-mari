@@ -134,6 +134,8 @@
     "PATCH /custom-stickers/:id",
     "DELETE /custom-stickers/:id",
     "GET /gallery/file/:id/:id",
-    "GET /gallery/scene-videos/file/:id/:id"
+    "GET /gallery/scene-videos/file/:id/:id",
+    "GET /conversation/status/:id",
+    "POST /conversation/schedule/draft"
   ]
 }

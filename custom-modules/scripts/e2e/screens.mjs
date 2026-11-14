@@ -25,6 +25,7 @@ export function tourScreens(ids) {
     ["캐릭터 편집", `edit/character/${e(ids.a)}`],
     ["페르소나 편집", `edit/persona/${e(ids.persona)}`],
     ["내 일정", `schedule/default/now/${e(ids.convo)}`],
+    ["캐릭터 일정", `char-schedule/${e(ids.convo)}/${e(ids.a)}`],
     ["기억 서재", `memory/${e(ids.rp)}`],
     ["메시지 검색", `search/${e(ids.rp)}`],
     ["음성", "voice"],
@@ -84,6 +85,7 @@ export const FLOW_SCREENS = {
   cover: ["chat-settings", "convos"],
   autonomy: ["convo", "convos"],
   "convo-presence": ["convo"],
+  "convo-schedule": ["convo", "convos", "char-schedule"],
 };
 
 /** Runs the tour (only screens drawn by `mods`, if given). Returns { rows, failed }. app: the shell URL. */
