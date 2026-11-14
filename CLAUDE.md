@@ -8,6 +8,10 @@ logging rules apply, its workflow rules (target `staging`, assign SpicyMarinara,
 Read `custom-modules/README.md` for how Mari Kit is built, installed, published (the `mari-catalog` branch) and
 checked against upstream.
 
+Follow `custom-modules/WORKFLOW.md`: the process every AI uses here (boundaries, stages from intake to report,
+branches, issues and labels, PR format, release, the `verify.mjs` checks). Other AIs read it through
+`AGENTS.override.md`.
+
 ## Working with the owner
 
 Lessons from earlier sessions. They are the owner's standing expectations.

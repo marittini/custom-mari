@@ -1,0 +1,64 @@
+name: Mari verify
+
+# Every Mari Kit check on a pull request (custom-modules/scripts/verify.mjs): formatting, package build and schema,
+# then a throwaway Engine with a fake model for Engine routes, chat-settings sections, Mari Kit tests, shell flows and
+# the 360px screen tour. See custom-modules/WORKFLOW.md, section 7.
+
+on:
+  pull_request:
+    paths:
+      - "custom-modules/**"
+      - "CLAUDE.md"
+      - "AGENTS.override.md"
+      - ".github/workflows/mari-*.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: mari-verify-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    env:
+      ONNXRUNTIME_NODE_INSTALL: skip
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Set up pnpm
+        uses: pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413 # v6.1.0
+        with:
+          run_install: false
+
+      - name: Set up Node.js
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 24
+          cache: pnpm
+
+      - name: Install and build the Engine
+        run: |
+          pnpm install --frozen-lockfile
+          pnpm build:shared
+          pnpm build:server
+          # check-engine-sections opens the Engine's own chat settings, so the client is needed too.
+          pnpm build:client
+          pnpm exec playwright install --with-deps chromium > /dev/null
+
+      - name: Verify Mari Kit
+        run: node custom-modules/scripts/verify.mjs --all --shots mari-screens
+
+      - name: Keep the 360px screenshots
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: mari-screens
+          path: mari-screens
+          if-no-files-found: ignore
+          retention-days: 7

@@ -7,7 +7,7 @@
 //
 //   node custom-modules/scripts/check-engine-sections.mjs [http://127.0.0.1:7860]
 
-import { createRequire } from "node:module";
+import { chromium } from "./e2e/playwright.mjs";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 
@@ -16,7 +16,6 @@ const base = (process.argv[2] || process.env.ENGINE_URL || "http://127.0.0.1:786
 const { ENGINE_SECTIONS } = await import(
   pathToFileURL(join(here, "..", "mari-kit", "shell", "lib", "engine-sections.js")).href
 );
-const { chromium } = createRequire(resolve(here, "..", "..", "package.json"))("playwright");
 
 const H = { "content-type": "application/json", "x-marinara-csrf": "1" };
 const post = async (path, body) => {

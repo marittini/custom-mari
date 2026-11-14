@@ -1,11 +1,13 @@
 // A fake OpenAI-compatible model for the Mari shell flow tests: streams a fixed roleplay reply with quoted lines,
 // so tests run without a real model or account. `startFakeLlm()` listens on a free local port.
+// A flow that needs a particular reply (a reaction, a selfie command, …) passes `scenario(request, n)`: it returns
+// the reply text for that request (the parsed OpenAI body; n counts calls from 1), or nothing for the fixed reply.
 import { createServer } from "node:http";
 
 export const REPLY =
   '비가 처마 끝에서 떨어졌다. 그는 우산을 받아 들었다.\n\n"네가 젖으면 내가 곤란해. 그러니까 이쪽으로 붙어."\n\n"…늦었지. 미안."';
 
-export function startFakeLlm() {
+export function startFakeLlm({ scenario = null } = {}) {
   let calls = 0;
   const server = createServer((req, res) => {
     let body = "";
@@ -21,7 +23,7 @@ export function startFakeLlm() {
       }
       calls += 1;
       const parsed = JSON.parse(body || "{}");
-      const text = `${REPLY} (#${calls})`;
+      const text = scenario?.(parsed, calls) || `${REPLY} (#${calls})`;
       if (!parsed.stream) {
         res.writeHead(200, { "content-type": "application/json" });
         return res.end(
