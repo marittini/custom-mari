@@ -57,7 +57,8 @@ Lessons from earlier sessions. They are the owner's standing expectations.
 ### Design
 
 - Monotone only (no cream or ink tints, no browser accent colors such as the default focus ring); fonts only
-  through the shell's tokens.
+  through the shell's tokens. One exception the owner asked for: presence status dots (online/away/busy/offline)
+  are coloured (`--st-*` tokens in `shell.css`).
 - Do not cram one screen, and do not strip it either: frequent things one tap away, occasional things one level in,
   long information folded.
 - Slim visuals with roomy spacing; touch areas about 44px even when the control looks smaller.

@@ -86,6 +86,7 @@ export const FLOW_SCREENS = {
   autonomy: ["convo", "convos"],
   "convo-presence": ["convo"],
   "convo-react": ["convo"],
+  "convo-compose": ["convo"],
   "convo-schedule": ["convo", "convos", "char-schedule"],
 };
 

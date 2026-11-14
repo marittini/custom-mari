@@ -7,6 +7,7 @@ import { h, setChildren } from "./h.js";
 import { api } from "./api.js";
 import { sheet, toast, avatar } from "./ui.js";
 import { startJob } from "./activity.js";
+import { ACTIVITY_MAX, MY_STATUSES, myStatus, setMyStatus } from "./my-status.js";
 import {
   STATUSES,
   STATUS_KO,
@@ -214,6 +215,69 @@ export function presenceSheet({ chat, index, fresh, me, waiting = [], replyNow, 
     );
   }
 
+  // 나: the user's own status (the Engine's userStatusManual) and what they are doing; 일정대로 lets 내 일정 decide.
+  function mine() {
+    const cur = myStatus();
+    const scheduled = me?.profile?.config?.enabled && me?.now;
+    const save = async (next) => {
+      await setMyStatus(next);
+      toast(next.follow ? "내 일정대로 해요" : "내 상태를 바꿨어요");
+      draw();
+    };
+    const activity = h("input", {
+      class: "inp",
+      value: cur.follow ? "" : cur.activity,
+      maxlength: ACTIVITY_MAX,
+      placeholder: "지금 하는 일 (예: 시험 공부 중)",
+      "aria-label": "내가 지금 하는 일",
+      disabled: cur.follow || cur.status === "invisible",
+      onChange: (e) => save({ follow: false, status: cur.status, activity: e.target.value }),
+    });
+    const hint = cur.follow
+      ? scheduled
+        ? `내 일정대로: ${me.now.activity}`
+        : "고르기 전에는 온라인으로 보여요"
+      : MY_STATUSES.find((x) => x.id === cur.status)?.hint || "";
+    return h(
+      "section",
+      { class: "pcard" },
+      h("div", { class: "pcard-name" }, h("b", null, "나"), h("span", { class: "hint" }, hint)),
+      h(
+        "div",
+        { class: "chips", role: "radiogroup", "aria-label": "내 상태" },
+        scheduled
+          ? h(
+              "button",
+              {
+                type: "button",
+                class: cur.follow ? "chip on" : "chip",
+                role: "radio",
+                "aria-checked": cur.follow ? "true" : "false",
+                onClick: () => save({ follow: true }),
+              },
+              "일정대로",
+            )
+          : null,
+        MY_STATUSES.map((st) => {
+          const on = !cur.follow && cur.status === st.id;
+          return h(
+            "button",
+            {
+              type: "button",
+              class: on ? "chip on" : "chip",
+              role: "radio",
+              "aria-checked": on ? "true" : "false",
+              onClick: () => save({ follow: false, status: st.id, activity: cur.follow ? "" : cur.activity }),
+            },
+            dot(st.dot),
+            st.label,
+          );
+        }),
+      ),
+      activity,
+    );
+  }
+
   function draw() {
     const ids = chat.characterIds || [];
     const n = me?.now;
@@ -221,6 +285,7 @@ export function presenceSheet({ chat, index, fresh, me, waiting = [], replyNow, 
       box,
       h("b", { class: "psheet-title" }, ids.length > 1 ? "모두의 상태와 일정" : "상태와 일정"),
       ids.map(person),
+      mine(),
       h(
         "div",
         { class: "list", style: { marginTop: "4px" } },
@@ -236,7 +301,7 @@ export function presenceSheet({ chat, index, fresh, me, waiting = [], replyNow, 
                 ),
               },
               h("span", { class: "ic" }, n ? dot(n.status) : null),
-              h("span", null, n ? `나 · ${n.activity}` : "내 일정 만들기"),
+              h("span", null, n ? `내 일정 · ${n.activity}` : "내 일정 만들기"),
               h("span", { class: "val" }, "›"),
             )
           : null,

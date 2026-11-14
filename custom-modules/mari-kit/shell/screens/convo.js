@@ -29,6 +29,10 @@ import { loadStickers, stickerContent, stickerPicker, stickerLabel, withoutStick
 import { watchGeneration, stopGeneration } from "../lib/generation.js";
 import { attachmentsOf, closeInTime, dayKey, dayLabel, presenceText, timeLabel } from "../lib/convo-bits.js";
 import { presenceOf, presenceLine, STATUS_KO } from "../lib/presence.js";
+// lib/compose.js (pictures, @mentions) loads the first time it is needed, not with the screen.
+let composeP = null;
+const compose = () => composeP || (composeP = import("../lib/compose.js"));
+import { presenceFields } from "../lib/my-status.js";
 import { MORE, QUICK, USER, reactionsOf, reactorNames, replyFor, replyOf, toggleReaction } from "../lib/reactions.js";
 import { activeAutonomy, clearUnread } from "../lib/autonomy.js";
 import { runSlash } from "../lib/slash.js";
@@ -66,6 +70,7 @@ export function convoScreen({ mount, args, go, back }) {
   let wait = null;
   let offNote = null;
   let queued = null;
+  let pictures = []; // pictures waiting to be sent: the Engine's attachments, made small on the phone
   let replyDraft = null; // { messageId, name, content }: sent as the generate request's replyTo (the Engine's reply)
   let fresh = null; // GET /conversation/status/:chatId statuses (characters' presence), once per open and reply
   let tick = null; // 지금 답하게: { body, ready } runs once the delayed generation has stopped
@@ -136,7 +141,10 @@ export function convoScreen({ mount, args, go, back }) {
     rows: 1,
     placeholder: "메시지",
     "aria-label": "메시지",
-    onInput: grow,
+    onInput: () => {
+      grow();
+      if (input.value.includes("@") || !mentionBox.hidden) mentionCheck();
+    },
     onKeydown: (e) => {
       if (e.key === "Enter" && !e.shiftKey && !e.isComposing && matchMedia("(pointer: fine)").matches) {
         e.preventDefault();
@@ -223,6 +231,64 @@ export function convoScreen({ mount, args, go, back }) {
   );
   const quickLayer = h("div");
   const replyBar = h("div", { class: "rbar", hidden: true });
+  // Pictures to send (＋): picked, made small on the phone (lib/compose.js), shown above the composer until sent.
+  const picBar = h("div", { class: "picbar", hidden: true });
+  const filePick = h("input", {
+    type: "file",
+    accept: "image/*",
+    multiple: true,
+    hidden: true,
+    onChange: async (e) => {
+      const files = [...(e.target.files || [])].slice(0, 6 - pictures.length);
+      e.target.value = "";
+      if (!files.length) return;
+      const done = startJob(`사진 ${files.length}장 줄이는 중…`);
+      try {
+        for (const f of files) {
+          try {
+            pictures.push(await (await compose()).shrinkPicture(f));
+          } catch (error) {
+            toast(`${f.name || "사진"}: ${error.message}`);
+          }
+        }
+      } finally {
+        done();
+        drawPictures();
+      }
+    },
+  });
+  const picBtn = h(
+    "button",
+    {
+      type: "button",
+      class: "cb",
+      "aria-label": "사진 첨부",
+      title: "사진 첨부",
+      onClick: () => (pictures.length >= 6 ? toast("한 번에 6장까지 보낼 수 있어요") : filePick.click()),
+    },
+    icon(I.plus, 18, 1.7),
+  );
+  // @이름: the room's characters while typing "@…" (the Engine's mention autocomplete).
+  const mentionBox = h("div", { class: "mbox", role: "listbox", "aria-label": "부를 캐릭터", hidden: true });
+  // While typing, the left buttons fold into one › so the text box stays wide on a phone (like a messenger).
+  let toolsBox = null;
+  let toolsOpen = false;
+  const toolsMore = h(
+    "button",
+    {
+      type: "button",
+      class: "cb",
+      "aria-label": "도구 펼치기",
+      hidden: true,
+      onClick: () => ((toolsOpen = true), syncTools()),
+    },
+    icon("M9 6l6 6-6 6", 18, 1.8),
+  );
+  function syncTools() {
+    const folded = !!input.value.trim() && !toolsOpen;
+    if (toolsBox) toolsBox.hidden = folded;
+    toolsMore.hidden = !folded;
+  }
   const strip = activityStrip();
   const scroll = chatScrolling(scroller);
   mount.append(
@@ -232,18 +298,27 @@ export function convoScreen({ mount, args, go, back }) {
     quickLayer,
     strip.el,
     replyBar,
+    picBar,
+    mentionBox,
     h(
       "div",
       { class: "cmp", style: { background: "var(--paper)" } },
-      quickButton({
-        getChat: () => chat,
-        go,
-        changed: async () => {
-          await load(false);
-          await loadMe();
-        },
-      }),
-      stickerBtn,
+      (toolsBox = h(
+        "span",
+        { class: "cmp-tools" },
+        quickButton({
+          getChat: () => chat,
+          go,
+          changed: async () => {
+            await load(false);
+            await loadMe();
+          },
+        }),
+        stickerBtn,
+        picBtn,
+      )),
+      toolsMore,
+      filePick,
       input,
       trBtn,
       qrBtn,
@@ -254,6 +329,8 @@ export function convoScreen({ mount, args, go, back }) {
   function grow() {
     input.style.height = "auto";
     input.style.height = `${Math.min(input.scrollHeight, 160)}px`;
+    if (!input.value.trim()) toolsOpen = false;
+    syncTools();
   }
 
   function insertSticker(name) {
@@ -438,13 +515,9 @@ export function convoScreen({ mount, args, go, back }) {
     });
   }
   /** The Engine's own presence fields, so its autonomy sees the user's planned status too. */
+  // The status the user chose (상태 시트 › 나), or, following the schedule, what 내 일정 says now.
   function presence() {
-    const n = me?.profile?.config?.enabled ? me.now : null;
-    if (!n) return {};
-    return {
-      userStatus: n.status === "online" ? "active" : n.status === "dnd" ? "dnd" : "idle",
-      userActivity: `${SCHED_LABEL[n.status]}; 설정상 현재 일정: ${n.activity}`.slice(0, 120),
-    };
+    return presenceFields(me?.profile?.config?.enabled ? me.now : null, SCHED_LABEL);
   }
 
   function toolsFor(m) {
@@ -1046,6 +1119,80 @@ export function convoScreen({ mount, args, go, back }) {
     setReply(r);
     input.focus();
   }
+  function drawPictures() {
+    picBar.hidden = !pictures.length;
+    const kb = Math.round(pictures.reduce((n, p) => n + p.bytes, 0) / 1024);
+    setChildren(
+      picBar,
+      pictures.length
+        ? [
+            ...pictures.map((p, i) =>
+              h(
+                "span",
+                { class: "pic" },
+                h("img", { src: p.data, alt: p.name }),
+                h(
+                  "button",
+                  {
+                    type: "button",
+                    "aria-label": `${p.name} 빼기`,
+                    onClick: () => (pictures.splice(i, 1), drawPictures()),
+                  },
+                  icon(I.close, 12, 2),
+                ),
+              ),
+            ),
+            h("span", { class: "picbar-t" }, `사진 ${pictures.length}장 · ${kb}KB로 줄여서 보내요`),
+          ]
+        : [],
+    );
+  }
+  function hideMentions() {
+    mentionBox.hidden = true;
+    setChildren(mentionBox);
+  }
+  async function mentionCheck() {
+    const { mentionAt, mentionChoices, insertMention } = await compose();
+    const at = mentionAt(input.value, input.selectionStart ?? input.value.length);
+    const cast = (chat?.characterIds || []).map((id) => index.get(id)).filter(Boolean);
+    const choices = at
+      ? mentionChoices(
+          cast.map((c) => c.name),
+          at.query,
+        )
+      : [];
+    if (!choices.length) return hideMentions();
+    mentionBox.hidden = false;
+    setChildren(
+      mentionBox,
+      choices.map((name) => {
+        const c = cast.find((x) => x.name === name);
+        const p = presenceOf(chatMeta(chat), c.id, new Date(), fresh?.[c.id] || null);
+        return h(
+          "button",
+          {
+            type: "button",
+            role: "option",
+            onPointerdown: (e) => e.preventDefault(), // keep the keyboard open
+            onClick: () => {
+              const caret = input.selectionStart ?? input.value.length;
+              const next = insertMention(input.value, caret, at.start, name);
+              input.value = next.text;
+              input.setSelectionRange(next.caret, next.caret);
+              input.focus();
+              grow();
+              hideMentions();
+            },
+          },
+          avatar(c.avatar, name[0] || "·", 28),
+          h("span", null, name),
+          p && p.status !== "online"
+            ? h("span", { class: "hint" }, `${STATUS_KO[p.status]} · 부르면 더 빨리 답해요`)
+            : null,
+        );
+      }),
+    );
+  }
   function setReply(r) {
     replyDraft = r;
     replyBar.hidden = !r;
@@ -1244,11 +1391,15 @@ export function convoScreen({ mount, args, go, back }) {
   async function send() {
     let text = input.value.trim();
     if (busy) return;
-    // Nothing typed: like the Engine, the character goes on (a reply without a new message of mine).
-    if (!text) return generate({});
+    const sending = pictures;
+    // Nothing typed and no picture: like the Engine, the character goes on (a reply without a new message of mine).
+    if (!text && !sending.length) return generate({});
     input.value = "";
     grow();
-    if (text.startsWith("/")) return slash(text);
+    hideMentions();
+    if (text.startsWith("/") && !sending.length) return slash(text);
+    pictures = [];
+    drawPictures();
     // The Engine's 내 메시지 번역: the message goes out translated; if that fails, it goes out as written.
     if (chatMeta(chat).translateInput === true)
       text = await translateStickerInput(text, chatMeta(chat), chatId).catch((error) => {
@@ -1262,7 +1413,16 @@ export function convoScreen({ mount, args, go, back }) {
     auto?.userSent();
     const replyTo = replyDraft;
     setReply(null);
-    generate({ userMessage: text, ...(replyTo ? { replyTo } : {}) });
+    const names = (chat?.characterIds || []).map((id) => index.get(id)?.name).filter(Boolean);
+    const mentioned = text.includes("@") ? (await compose()).mentionedNames(text, names) : [];
+    generate({
+      userMessage: text || null,
+      ...(replyTo ? { replyTo } : {}),
+      ...(sending.length
+        ? { attachments: sending.map(({ type, data, filename, name }) => ({ type, data, filename, name })) }
+        : {}),
+      ...(mentioned.length ? { mentionedCharacterNames: mentioned } : {}),
+    });
   }
 
   async function slash(text) {

@@ -9,19 +9,20 @@ needs the owner, a real account or a phone.
 
 ## Doing
 
-_(none)_
+### M-6 Convo 2단계 — claude ccr-b4485093-p6ybfu
+
+Agreed with mockups: https://claude.ai/artifact/NxUBMQxF6BBgG8xbpByJXh. Three releases:
+
+- 0.20.0 (PR #51): send pictures (WebP made in the browser), @mentions (`mentionedCharacterNames`), my own status
+  and activity (synced to the Engine's `userStatusManual` / `userActivity`), status dots in colour (the owner asked;
+  the one exception to monotone).
+- 0.21.0: edit schedule blocks in Mari (add, delete, copy a day), remove a character's reaction (long-press).
+- 0.22.0: scene invitations (`extra.sceneRequest`, the Engine's scene plan/create flow, banner, replies-here switch),
+  weather (Mari Kit's weather routes).
 
 ## Ready
 
 ## Plan (waiting for the owner)
-
-### M-6 Convo 2단계 — plan §4, stage 2
-
-Also: edit single schedule blocks in Mari (캐릭터 일정 links to the Engine editor for now); remove a character's
-reaction (the Engine does it by long-press).
-
-Edit schedule blocks in Mari, send photos (WebP made in the browser), @mention in groups, my own status
-(online/idle/dnd/invisible), scene invitations, weather (server already in Mari Kit, no screen yet).
 
 ### M-11 Convo 3단계 — plan §4, stage 3
 

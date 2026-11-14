@@ -137,6 +137,7 @@
     "GET /gallery/scene-videos/file/:id/:id",
     "GET /conversation/status/:id",
     "POST /conversation/schedule/draft",
-    "GET /custom-emojis"
+    "GET /custom-emojis",
+    "PUT /app-settings/ui"
   ]
 }

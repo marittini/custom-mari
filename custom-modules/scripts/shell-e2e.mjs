@@ -311,7 +311,7 @@ const flows = {
     const line = page.locator(".me-line");
     await until(async () => (await line.innerText()).includes(now), 10000, `status line shows ${now}`);
     await line.click();
-    await page.locator(".pcard").waitFor();
+    await page.locator(".pcard").first().waitFor();
     if (!(await page.locator(".pcard-next .blk").count())) throw new Error("no upcoming blocks in the sheet");
     await page.getByRole("button", { name: "상태 바꾸기" }).click();
     await page.getByRole("radio", { name: "오프라인" }).click();
@@ -378,6 +378,85 @@ const flows = {
     );
     await page.locator(".rquote").first().waitFor();
     if (await page.locator(".rbar").isVisible()) throw new Error("reply bar stayed after sending");
+  },
+
+  // The composer (the Engine's ConversationInput): @mention a character in a group, send a picture made small on
+  // the phone, and the user's own status (상태 시트 › 나) going out with the next message and into the Engine's
+  // settings.
+  async "convo-compose"({ page }) {
+    const bodies = [];
+    page.on("request", (r) => {
+      if (r.url().endsWith("/api/generate") && r.method() === "POST") bodies.push(JSON.parse(r.postData() || "{}"));
+    });
+    await open(page);
+    await goIn(page, `#/convo/${encodeURIComponent(group.id)}`);
+    const box = page.locator(".cmp textarea");
+    await box.waitFor();
+    await box.click();
+    await box.pressSequentially("@R");
+    await page.locator(".mbox").getByRole("option", { name: /Ren/ }).click();
+    if ((await box.inputValue()) !== "@Ren ")
+      throw new Error(`mention inserted as ${JSON.stringify(await box.inputValue())}`);
+    await box.pressSequentially("사진 봐");
+    // A 900×600 PNG, made in the page, picked through the hidden file input.
+    const png = await page.evaluate(async () => {
+      const c = document.createElement("canvas");
+      c.width = 900;
+      c.height = 600;
+      const g = c.getContext("2d");
+      g.fillStyle = "#88a";
+      g.fillRect(0, 0, 900, 600);
+      return c.toDataURL("image/png").split(",")[1];
+    });
+    await page
+      .locator('.cmp input[type="file"]')
+      .setInputFiles({ name: "e2e.png", mimeType: "image/png", buffer: Buffer.from(png, "base64") });
+    await page.locator(".picbar .pic").waitFor();
+    await page.getByRole("button", { name: "보내기" }).click();
+    await until(async () => bodies.length > 0, 10000, "generate request");
+    const sent = bodies[0];
+    if (!sent.mentionedCharacterNames?.includes("Ren")) throw new Error("mentionedCharacterNames missing Ren");
+    const att = sent.attachments?.[0];
+    if (!att || !/^image\/(webp|jpeg)$/.test(att.type) || !att.data.startsWith(`data:${att.type};base64,`))
+      throw new Error(`picture not sent as a small image: ${att?.type}`);
+    await until(
+      async () =>
+        (await api("GET", `/chats/${group.id}/messages`)).some((m) => {
+          const x = typeof m.extra === "string" ? JSON.parse(m.extra) : m.extra;
+          return m.role === "user" && x?.attachments?.length;
+        }),
+      10000,
+      "picture saved on the message",
+    );
+    if (await page.locator(".picbar").isVisible()) throw new Error("picture bar stayed after sending");
+    // My status: 방해 금지 from the status sheet, saved for the Engine too, sent with the next message.
+    await page.locator(".me-line").click();
+    await page.getByRole("radio", { name: "방해 금지" }).click();
+    await until(
+      async () => {
+        const ui = await api("GET", "/app-settings/ui");
+        return JSON.parse(ui.value || "{}").userStatusManual === "dnd";
+      },
+      5000,
+      "Engine settings got the status",
+    );
+    await page.keyboard.press("Escape");
+    await page.goto(APP);
+    await goIn(page, `#/convo/${encodeURIComponent(group.id)}`);
+    await box.waitFor();
+    await box.fill("e2e status");
+    await page.getByRole("button", { name: "보내기" }).click();
+    await until(async () => bodies.some((b) => b.userMessage === "e2e status"), 10000, "second message");
+    if (bodies.find((b) => b.userMessage === "e2e status").userStatus !== "dnd") throw new Error("userStatus not dnd");
+    // Put the Engine's setting back for the other flows.
+    const ui = await api("GET", "/app-settings/ui");
+    const value = {
+      ...JSON.parse(ui.value || "{}"),
+      userStatusManual: "active",
+      userActivity: "",
+      __updatedAt: Date.now(),
+    };
+    await api("PUT", "/app-settings/ui", { value: JSON.stringify(value) });
   },
 
   // Characters write first (the Engine's Convo autonomy): in the open chat, and in another chat with an unread
