@@ -59,3 +59,4 @@ _(none)_
   업스트림 이슈 초안은 `UPSTREAM.md`.
 - M-1 Convo 바쁨·오프라인·입력 중 알림, M-2 셀카·영상·사진, M-5 시각·날짜 구분선 — Mari Kit 0.17.0 (PR #47).
 - Workflow: `WORKFLOW.md`, `AGENTS.override.md`, Engine guard, `verify.mjs` with the 360px screen tour, this list.
+- M-12 번역 단어장 찾기, 입출력별 지침 직접 편집·미리보기, 독립된 원본 복원 — Mari Kit 0.18.1 (PR #50).
