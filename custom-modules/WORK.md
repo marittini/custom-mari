@@ -13,7 +13,7 @@ needs the owner, a real account or a phone.
 
 Agreed with mockups: https://claude.ai/artifact/NxUBMQxF6BBgG8xbpByJXh. Three releases:
 
-- 0.20.0 (doing): send pictures (WebP made in the browser), @mentions (`mentionedCharacterNames`), my own status
+- 0.20.0 (PR #51): send pictures (WebP made in the browser), @mentions (`mentionedCharacterNames`), my own status
   and activity (synced to the Engine's `userStatusManual` / `userActivity`), status dots in colour (the owner asked;
   the one exception to monotone).
 - 0.21.0: edit schedule blocks in Mari (add, delete, copy a day), remove a character's reaction (long-press).
