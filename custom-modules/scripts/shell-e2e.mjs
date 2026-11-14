@@ -54,7 +54,27 @@ async function until(fn, ms, what) {
 }
 
 // ── Seed ──
-const llm = await startFakeLlm();
+// The Engine's scene planner asks for a JSON plan; the fake answers with one that casts the offered characters.
+const scenePlan = (req) => {
+  const system = String(req.messages?.find((m) => m.role === "system")?.content || "");
+  if (!system.includes("creative scene planner")) return null;
+  const ids = [...(/<available_character_ids>\n([^<]*)/.exec(system)?.[1] || "").matchAll(/"([^"]+)"/g)].map(
+    (m) => m[1],
+  );
+  return JSON.stringify({
+    name: "Scene: e2e 비 오는 밤",
+    description: "비가 그치지 않는 밤, 둘은 처마 밑에 섰다.",
+    scenario: "e2e hidden plot",
+    firstMessage: '*빗소리가 가까워졌다.* "왔어?"',
+    background: null,
+    characterIds: ids,
+    systemPrompt: "Write in first person, past tense.",
+    rating: "sfw",
+    relationshipHistory: "e2e",
+    participationGuide: "마음대로 해 보세요.",
+  });
+};
+const llm = await startFakeLlm({ scenario: scenePlan });
 const conn = await api("POST", "/connections", {
   name: "e2e fake",
   provider: "custom",
@@ -387,6 +407,57 @@ const flows = {
     await api("PUT", `/mari-kit/weather/${convo.id}`, { enabled: false, characterLocation: null });
     await api("PUT", "/mari-kit/weather/user", { location: null });
     await api("PATCH", "/mari-kit/settings", { features: { weather: false } });
+  },
+
+  // Scenes (the Engine's flow): a character's invitation, the setup sheet (POV and tense remembered in the Engine's
+  // settings), plan and create, the scene chat's bar; back in the Convo the banner and its replies-here switch; end
+  // the scene and its summary arrives in the Convo.
+  async "convo-scene"({ page }) {
+    const msg = await api("POST", `/chats/${convo.id}/messages`, {
+      role: "assistant",
+      characterId: a.id,
+      content: "비 오는데, 잠깐 나올래?",
+    });
+    await api("PATCH", `/chats/${convo.id}/messages/${msg.id}/extra`, {
+      sceneRequest: { prompt: "e2e 비 오는 밤 산책", initiatorCharId: a.id, initiatorCharName: a.name || "Aoi" },
+    });
+    await open(page);
+    await goIn(page, `#/convo/${encodeURIComponent(convo.id)}`);
+    await page.locator(".scncard").getByRole("button", { name: "장면 준비하기" }).click();
+    await page.getByRole("radio", { name: "1인칭" }).click();
+    await page.getByRole("radio", { name: "과거" }).click();
+    await snap(page, "scene-setup");
+    await page.getByRole("button", { name: "장면 짜기" }).click();
+    await until(async () => (await hash(page)).startsWith("#/rp/"), 20000, "into the scene");
+    const sceneId = decodeURIComponent((await hash(page)).split("/")[2]);
+    const sm = await meta(sceneId);
+    if (sm.sceneStatus !== "active" || sm.sceneOriginChatId !== convo.id) throw new Error("not a scene chat");
+    const ui = await api("GET", "/app-settings/ui");
+    const saved = JSON.parse(ui.value || "{}").scenePromptPreferences;
+    if (saved?.pov !== "first_person" || saved?.tense !== "past") throw new Error("scene choices not remembered");
+    await page.locator(".scnend").getByRole("button", { name: "장면 끝내기" }).waitFor();
+    await snap(page, "scene-bar");
+    await page.getByRole("button", { name: "‹ 대화로" }).click();
+    await until(async () => (await hash(page)).startsWith("#/convo/"), 5000, "back to the Convo");
+    await page.locator(".scnbar").waitFor();
+    await page.getByRole("switch", { name: /여기서도 답하게/ }).click();
+    await until(async () => (await meta(sceneId)).sceneOriginRepliesAllowed === true, 5000, "replies here");
+    await page.locator(".scncard").getByRole("button", { name: "진행 중인 장면으로" }).waitFor();
+    await page.locator(".scnbar").getByRole("button", { name: "장면으로 가기" }).click();
+    await until(async () => (await hash(page)).startsWith("#/rp/"), 5000, "to the scene");
+    await page.getByRole("button", { name: "장면 끝내기" }).click();
+    await page.getByRole("button", { name: "끝내기", exact: true }).click();
+    await until(async () => (await hash(page)).startsWith("#/convo/"), 20000, "back after the end");
+    await until(
+      async () =>
+        (await api("GET", `/chats/${convo.id}/messages`)).some(
+          (m) => m.role === "narrator" && /returned from their scene/.test(m.content),
+        ),
+      10000,
+      "summary in the Convo",
+    );
+    if ((await meta(convo.id)).activeSceneChatId) throw new Error("the Convo still points at the scene");
+    await until(async () => !(await page.locator(".scnbar").count()), 5000, "banner gone");
   },
 
   // Reactions and replies (the Engine's data): react from the quick row and take it back, see a character's

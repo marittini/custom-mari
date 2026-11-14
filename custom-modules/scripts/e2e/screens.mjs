@@ -90,6 +90,7 @@ export const FLOW_SCREENS = {
   "convo-compose": ["convo"],
   "convo-schedule": ["convo", "convos", "char-schedule"],
   "convo-weather": ["chat-settings", "weather", "convo"],
+  "convo-scene": ["convo", "rp"],
 };
 
 /** Runs the tour (only screens drawn by `mods`, if given). Returns { rows, failed }. app: the shell URL. */

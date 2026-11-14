@@ -138,6 +138,11 @@
     "GET /conversation/status/:id",
     "POST /conversation/schedule/draft",
     "GET /custom-emojis",
-    "PUT /app-settings/ui"
+    "PUT /app-settings/ui",
+    "POST /scene/plan",
+    "POST /scene/create",
+    "POST /scene/conclude",
+    "POST /scene/abandon",
+    "POST /scene/fork"
   ]
 }

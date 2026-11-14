@@ -374,11 +374,99 @@ export function convoScreen({ mount, args, go, back }) {
     return request.promise;
   }
 
+  // A scene running from this Convo (the Engine's SceneBanner): { id, name, repliesHere }, read when the chat says so.
+  let scene = null;
+  const sceneLib = () => import("../lib/scene.js");
+  async function loadScene() {
+    const id = chatMeta(chat).activeSceneChatId;
+    if (!id) return (scene = null);
+    try {
+      const sc = await data.chat(id);
+      const m = chatMeta(sc);
+      scene =
+        m.sceneStatus === "active"
+          ? { id, name: sc.name || "장면", repliesHere: m.sceneOriginRepliesAllowed === true }
+          : null;
+    } catch {
+      scene = null;
+    }
+  }
+  const extraOf = (m) => {
+    if (typeof m.extra !== "string") return m.extra || {};
+    try {
+      return JSON.parse(m.extra) || {};
+    } catch {
+      return {};
+    }
+  };
+  async function beginScene(request) {
+    const { startScene } = await sceneLib();
+    await startScene({ chat, index, request, go });
+    await loadScene();
+    if (alive) draw();
+  }
+  // The invitation under a character's message (extra.sceneRequest): set it up, or go to the scene already running.
+  function sceneCard(m) {
+    const r = extraOf(m).sceneRequest;
+    if (!r || typeof r !== "object") return null;
+    const name = r.initiatorCharName || index.get(r.initiatorCharId)?.name || "캐릭터";
+    return h(
+      "div",
+      { class: "scncard" },
+      h("span", null, `${name}이(가) 장면에 초대했어요.`),
+      scene
+        ? h(
+            "button",
+            { type: "button", class: "pill", onClick: () => go(`rp/${encodeURIComponent(scene.id)}`) },
+            "진행 중인 장면으로",
+          )
+        : h("button", { type: "button", class: "pill main", onClick: () => beginScene(r) }, "장면 준비하기"),
+    );
+  }
+  function sceneBanner() {
+    if (!scene) return null;
+    return h(
+      "div",
+      { class: "scnbar", role: "status" },
+      h("div", { class: "scnbar-t" }, h("b", null, "장면 진행 중"), h("span", null, scene.name)),
+      h(
+        "button",
+        {
+          type: "button",
+          class: "r",
+          role: "switch",
+          "aria-checked": scene.repliesHere ? "true" : "false",
+          onClick: async () => {
+            const next = !scene.repliesHere;
+            scene.repliesHere = next;
+            draw();
+            try {
+              await (await sceneLib()).setRepliesHere(scene.id, next);
+            } catch (error) {
+              scene.repliesHere = !next;
+              draw();
+              toast(`바꾸지 못했어요: ${error.message}`);
+            }
+          },
+        },
+        h("span", null, "여기서도 답하게", h("small", null, "장면 중에도 이 대화에서 답해요 · 먼저 말 걸지는 않아요")),
+        h("span", { class: scene.repliesHere ? "sw on" : "sw" }, h("span")),
+      ),
+      h(
+        "button",
+        { type: "button", class: "pill main", onClick: () => go(`rp/${encodeURIComponent(scene.id)}`) },
+        "장면으로 가기",
+      ),
+    );
+  }
+
   async function load(first, tail = false) {
     try {
       const [c, chars] = await Promise.all([data.chat(chatId), data.characters(), win.reload(tail)]);
       if (!alive) return;
       chat = c;
+      await loadScene();
+      if (!alive) return;
       stickerBtn.disabled = false;
       const context = JSON.stringify([chat.personaId, chat.characterIds || []]);
       if (context !== stickerContext) {
@@ -751,6 +839,7 @@ export function convoScreen({ mount, args, go, back }) {
         bub.sub ? h("span", { class: "bub-tr" }, stickerContent(bub.sub, stickers.map)) : null,
         bub.last && !bub.sys ? mediaOf(m, me) : null,
         bub.last && !bub.sys ? reactionRow(m, me) : null,
+        bub.last && !me && !bub.sys ? sceneCard(m) : null,
         // The time under the last bubble of a run (one speaker within 5 minutes).
         lastOfRun && bub.last && !bub.sys ? h("span", { class: "btime" }, timeLabel(m.createdAt)) : null,
       );
@@ -860,6 +949,7 @@ export function convoScreen({ mount, args, go, back }) {
       );
     }
     if (offNote && !busy) items.push(h("div", { class: "pnote", role: "status" }, presenceText(offNote)));
+    items.push(sceneBanner());
     if (!messages.length && !busy) items.push(h("div", { class: "empty" }, "첫 메시지를 보내 보세요."));
     setChildren(list, items);
     setChildren(sendBtn, icon(busy ? I.stop : I.send, busy ? 14 : 16, 2));
@@ -1503,6 +1593,14 @@ export function convoScreen({ mount, args, go, back }) {
   }
 
   async function slash(text) {
+    // /scene (or /rp) [what kind of scene]: the Engine's scene start from this Convo; empty asks the planner to
+    // build it from the conversation.
+    const sc = /^\/(scene|rp)(?:\s+([\s\S]*))?$/i.exec(text.trim());
+    if (sc) {
+      if (!sc[2]?.trim() && !messages.length)
+        return toast("장면의 바탕이 될 대화가 없어요. /scene 뒤에 어떤 장면인지 적어 주세요");
+      return beginScene({ prompt: sc[2]?.trim() || "", initiatorCharId: null, connectionId: null });
+    }
     try {
       const note = await runSlash(text, {
         chatId,

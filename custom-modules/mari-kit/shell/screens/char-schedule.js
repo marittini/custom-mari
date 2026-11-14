@@ -133,7 +133,7 @@ export function charScheduleScreen({ mount, args, go, back }) {
   }
   function copyTo() {
     const picked = new Set();
-    const box = h("div", { class: "psheet" });
+    const box = h("div", { class: "psheet pad" });
     const s = sheet(box, { label: "다른 요일에 복사" });
     const paint = () =>
       setChildren(

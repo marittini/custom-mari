@@ -70,7 +70,7 @@ export function pickPlace(title) {
     const s = sheet(
       h(
         "div",
-        { class: "psheet" },
+        { class: "psheet pad" },
         h("b", { class: "psheet-title" }, title),
         h(
           "div",
