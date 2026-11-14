@@ -47,6 +47,8 @@ jobs:
           pnpm install --frozen-lockfile
           pnpm build:shared
           pnpm build:server
+          # check-engine-sections opens the Engine's own chat settings, so the client is needed too.
+          pnpm build:client
           pnpm exec playwright install --with-deps chromium > /dev/null
 
       - name: Verify Mari Kit

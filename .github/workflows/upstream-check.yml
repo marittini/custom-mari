@@ -60,6 +60,7 @@ jobs:
           pnpm install --frozen-lockfile
           pnpm build:shared
           pnpm build:server
+          pnpm build:client
           kit=fail; api=fail
           node custom-modules/scripts/check.mjs > kit.log 2>&1 && kit=pass
           data=$(mktemp -d)
