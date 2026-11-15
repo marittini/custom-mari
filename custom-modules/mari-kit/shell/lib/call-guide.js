@@ -34,16 +34,19 @@ async function find() {
   if (book) setPrefs({ callGuideId: book.id });
   return book;
 }
+// What the switch shows, kept on this device (read again at each call and on each change): 설정 draws without
+// asking the Engine for its lorebooks.
+const remember = (book) => book && setPrefs({ callGuideOn: book.enabled !== false });
 
-/** true / false, or null when it has not been made yet (it is made at the first call, on). */
-export async function guideOn() {
-  const book = await find();
-  return book ? book.enabled !== false : null;
+/** The switch: on unless turned off (it is made at the first call, on). No request. */
+export function guideOn() {
+  return prefs().callGuideOn !== false;
 }
 
 /** Made once, at the first call; a guide the owner turned off stays off. */
 export async function ensureGuide() {
-  if (await find()) return;
+  const found = await find();
+  if (found) return remember(found);
   const book = await api.post("/lorebooks", {
     name: GUIDE_NAME,
     description: "통화에서 캐릭터가 언제 전화를 끊을지 정하는 지침이에요. Mari Kit이 만들었고, 통화에만 들어가요.",
@@ -59,11 +62,16 @@ export async function ensureGuide() {
     keys: [NEVER_KEY],
     order: -1000,
   });
-  setPrefs({ callGuideId: book.id });
+  setPrefs({ callGuideId: book.id, callGuideOn: true });
 }
 
 export async function setGuide(on) {
   const book = await find();
-  if (!book) return on ? ensureGuide() : undefined;
+  if (!book) {
+    if (on) await ensureGuide();
+    else setPrefs({ callGuideOn: false });
+    return;
+  }
   await api.patch(`/lorebooks/${encodeURIComponent(book.id)}`, { enabled: on });
+  setPrefs({ callGuideOn: on });
 }

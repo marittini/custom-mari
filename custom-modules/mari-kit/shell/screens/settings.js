@@ -80,7 +80,7 @@ export function settingsScreen({ mount, args, go, back }) {
     const [settings, tts, guide] = await Promise.all([
       api.get("/mari-kit/settings").catch(() => null),
       api.get("/tts/config").catch(() => null),
-      import("../lib/call-guide.js").then((g) => g.guideOn()).catch(() => null),
+      import("../lib/call-guide.js").then((g) => g.guideOn()).catch(() => true),
     ]);
     shared = { features: settings?.features || {}, tts, guide: guide !== false };
     if (!page || page === "shared") draw();
