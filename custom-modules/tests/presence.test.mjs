@@ -58,16 +58,4 @@ assert.deepEqual(
   ],
 );
 
-// Someone who left a call is offline for that call only (lib/call.js): the Convo shows what they had before.
-{
-  const later = new Date(Date.now() + 3600_000).toISOString();
-  const left = (prev) => ({
-    conversationStatusOverrides: {
-      c: { status: "offline", expiresAt: later, mariCallLeft: { callId: "x", prev } },
-    },
-  });
-  assert.equal(presenceOf(left(null), "c"), null);
-  assert.equal(presenceOf(left({ status: "dnd", activity: "work", expiresAt: later }), "c").status, "dnd");
-}
-
 console.log("presence: schedule blocks, overrides and lines follow the Engine");

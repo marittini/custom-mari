@@ -10,7 +10,7 @@
 
 import { h, icon, I, setChildren, dots } from "./h.js";
 import { api } from "./api.js";
-import { chatMeta } from "./data.js";
+import { chatMeta, data } from "./data.js";
 import { translate } from "./translate.js";
 import { pickVoice } from "./render.js";
 import { prefs, setPrefs } from "./prefs.js";
@@ -60,38 +60,48 @@ export function callScreen(ctx) {
         "통화";
 
   // A group call: who is on it. The package does not remember who left ([leave_call] is only a note), so a
-  // character who left is set "offline" for the rest of this call — the Engine's own status, which the package
-  // reads on every turn to choose who may speak — and set back when the call ends (or on the next open, if the
-  // app closed first; the status also expires by itself after 3 hours). The Convo keeps showing their real status.
-  const overrides = () => ({ ...(chatMeta(ctx.chat).conversationStatusOverrides || {}) });
-  const leftHere = (id) => overrides()[id]?.mariCallLeft?.callId === session?.id && !!session;
+  // character who leaves is set "offline" for the rest of the call — the Engine's own status, which the package
+  // reads on every turn to choose who may speak. The status lives on the character card, so they show offline in
+  // every room until the call ends; then their earlier status is put back (on the next open, if the app closed
+  // first; it also expires by itself after 3 hours). This device remembers what it changed (prefs().callLeft).
+  const leftList = () => ({ ...(prefs().callLeft || {}) }); // character id → { callId, chatId, prev }
+  const leftHere = (id) => !!session && leftList()[id]?.callId === session.id;
   const away = (c) => !leftHere(c.id) && presenceOf(chatMeta(ctx.chat), c.id)?.status === "offline";
   const inCall = () => cast().filter((c) => !leftHere(c.id) && !away(c));
-  async function writeOverrides(next) {
-    await api.patch(`/chats/${encodeURIComponent(ctx.chatId)}/metadata`, { conversationStatusOverrides: next });
-    ctx.chat.metadata = { ...chatMeta(ctx.chat), conversationStatusOverrides: next };
-  }
+  const saveOverride = (characterId, override) =>
+    api.patch(`/characters/${encodeURIComponent(characterId)}`, {
+      data: { extensions: { conversationStatusOverride: override } },
+      skipVersionSnapshot: true,
+    });
+  // The package reads the chat's copy of the statuses, which the Engine refreshes from the cards here.
+  const syncStatuses = () => api.get(`/conversation/status/${encodeURIComponent(ctx.chatId)}`).catch(() => null);
   async function leave(characterId) {
-    const next = overrides();
-    const cur = next[characterId];
-    next[characterId] = {
-      status: "offline",
-      activity: "left the call",
-      expiresAt: new Date(Date.now() + 3 * 3600_000).toISOString(),
-      mariCallLeft: { callId: session.id, prev: cur?.mariCallLeft ? cur.mariCallLeft.prev : cur || null },
-    };
+    if (leftHere(characterId)) return;
     try {
-      await writeOverrides(next);
+      const st = await syncStatuses();
+      const prev = st?.statuses?.[characterId]?.override || null;
+      setPrefs({ callLeft: { ...leftList(), [characterId]: { callId: session.id, chatId: ctx.chatId, prev } } });
+      await saveOverride(characterId, {
+        status: "offline",
+        activity: "left the call",
+        createdAt: new Date().toISOString(),
+        expiresAt: new Date(Date.now() + 3 * 3600_000).toISOString(),
+      });
+      await syncStatuses();
     } catch {}
   }
-  async function rejoin(characterId) {
-    const next = overrides();
-    const mark = next[characterId]?.mariCallLeft;
+  async function putBack(characterId) {
+    const mark = leftList()[characterId];
     if (!mark) return;
-    if (mark.prev) next[characterId] = mark.prev;
-    else delete next[characterId];
+    await saveOverride(characterId, mark.prev || null);
+    const rest = leftList();
+    delete rest[characterId];
+    setPrefs({ callLeft: rest });
+  }
+  async function rejoin(characterId) {
     try {
-      await writeOverrides(next);
+      await putBack(characterId);
+      await syncStatuses();
       notice = `${subject(ctx.index.get(characterId)?.name || "상대")} 다시 들어왔어요`;
       const shownNotice = notice;
       setTimeout(() => notice === shownNotice && ((notice = ""), draw()), 4000);
@@ -100,17 +110,14 @@ export function callScreen(ctx) {
     }
     draw(true);
   }
-  /** Sets back everyone this shell set offline for a call (all calls but `keep`). */
+  /** Puts back everyone this device set offline for a call (all calls but `keep`). */
   async function restoreLeft(keep = null) {
-    const next = overrides();
-    let changed = false;
-    for (const [id, o] of Object.entries(next)) {
-      if (!o?.mariCallLeft || o.mariCallLeft.callId === keep) continue;
-      if (o.mariCallLeft.prev) next[id] = o.mariCallLeft.prev;
-      else delete next[id];
-      changed = true;
-    }
-    if (changed) await writeOverrides(next).catch(() => {});
+    const ids = Object.entries(leftList())
+      .filter(([, m]) => m.callId !== keep)
+      .map(([id]) => id);
+    if (!ids.length) return;
+    for (const id of ids) await putBack(id).catch(() => {});
+    await syncStatuses();
   }
   function peopleRow() {
     const list = cast();
@@ -151,7 +158,20 @@ export function callScreen(ctx) {
       ),
     );
   }
-  const speakerName = (m) => (m.participantKind === "user" ? "나" : ctx.index.get(m.characterId)?.name || "상대");
+  // My lines carry the chat's persona name (and voice), read once when a call or its record opens.
+  let persona = null; // { id, name }
+  const loadPersona = () =>
+    persona ||
+    data
+      .personas()
+      .then((list) => {
+        const p = (list || []).find((x) => x.id === ctx.chat.personaId);
+        persona = p ? { id: p.id, name: p.name } : { id: null, name: "" };
+        return persona;
+      })
+      .catch(() => ({ id: null, name: "" }));
+  const speakerName = (m) =>
+    m.participantKind === "user" ? persona?.name || "나" : ctx.index.get(m.characterId)?.name || "상대";
   const layer = h("div", { class: "callx", hidden: true });
   const pill = h("button", {
     type: "button",
@@ -203,6 +223,7 @@ export function callScreen(ctx) {
     }
     session = s;
     restoreLeft(s.id);
+    loadPersona();
     // 캐릭터가 알아서 전화 끊기 (on unless turned off in 설정): made once, at the first call.
     if (!guideChecked) {
       guideChecked = true;
@@ -278,13 +299,16 @@ export function callScreen(ctx) {
   }
 
   // force: even while muted (a tap on 다시 듣기). fresh: make the clip again (다시 만들기) instead of the kept one.
+  // A character's spoken line, or any line of mine (in the persona's voice, from the call record).
+  const voiced = (m) => (m.participantKind === "character" ? m.kind === "speech" : m.participantKind === "user");
   async function speakTurns(list, force = false, fresh = false) {
     const items = list
-      .filter((m) => m.participantKind === "character" && m.kind === "speech" && m.content)
+      .filter((m) => voiced(m) && m.content)
       .map((m) => {
-        const voice = pickVoice(ctx.ttsConfig, m.characterId);
+        const mine = m.participantKind === "user";
+        const voice = pickVoice(ctx.ttsConfig, mine ? persona?.id : m.characterId);
         const tone = m.extra?.turn?.tone || undefined;
-        const speaker = ctx.index.get(m.characterId)?.name;
+        const speaker = mine ? persona?.name : ctx.index.get(m.characterId)?.name;
         return {
           key: tts.hashKey(["call", m.id, m.content, voice]),
           body: {
@@ -487,7 +511,10 @@ export function callScreen(ctx) {
     if (!id) return;
     let rows = [];
     try {
-      rows = (await api.get(`${BASE}/${encodeURIComponent(id)}/messages`)).filter(visible);
+      [rows] = await Promise.all([
+        api.get(`${BASE}/${encodeURIComponent(id)}/messages`).then((r) => r.filter(visible)),
+        loadPersona(),
+      ]);
     } catch (error) {
       return toast(error.message);
     }
@@ -548,7 +575,7 @@ export function callScreen(ctx) {
                   h("span", { style: { fontFamily: "var(--font-read)", fontSize: "15px", lineHeight: "1.55" } }, top),
                   bottom ? h("span", { style: { fontSize: "12px", color: "var(--ink-3)" } }, bottom) : null,
                 ),
-                m.participantKind === "character" && m.kind === "speech" && ctx.ttsConfig
+                voiced(m) && ctx.ttsConfig
                   ? h(
                       "span",
                       { style: { display: "flex", flexShrink: "0" } },
@@ -908,7 +935,7 @@ export function callScreen(ctx) {
               ? h(
                   "div",
                   { class: `cx-line me${one ? " now" : ""}` },
-                  h("small", { class: "cx-who2" }, "나"),
+                  h("small", { class: "cx-who2" }, speakerName({ participantKind: "user" })),
                   h("span", { class: "cx-t" }, pendingText),
                 )
               : null,

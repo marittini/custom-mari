@@ -830,13 +830,16 @@ export function convoScreen({ mount, args, go, back }) {
     const lines = callLines.get(ev.callId);
     if (!lines) {
       callLines.set(ev.callId, "loading");
-      api
-        .get(`/conversation-calls/${encodeURIComponent(ev.callId)}/messages`)
-        .then((rows) => {
+      Promise.all([
+        api.get(`/conversation-calls/${encodeURIComponent(ev.callId)}/messages`),
+        data.personas().catch(() => []),
+      ])
+        .then(([rows, personas]) => {
+          const myName = (personas || []).find((p) => p.id === chat?.personaId)?.name || "나";
           const said = (Array.isArray(rows) ? rows : []).filter(
             (r) => r.extra?.hiddenFromUser !== true && !["command", "system"].includes(r.kind) && r.content,
           );
-          const who = (r) => (r.participantKind === "user" ? "나" : index.get(r.characterId)?.name || "상대");
+          const who = (r) => (r.participantKind === "user" ? myName : index.get(r.characterId)?.name || "상대");
           callLines.set(ev.callId, {
             count: said.length,
             first: said.slice(0, 2).map((r) => `${who(r)}: ${r.content}`),

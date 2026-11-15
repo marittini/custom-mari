@@ -1088,7 +1088,13 @@ const flows = {
       }),
     );
     await api("PATCH", `/chats/${group.id}/metadata`, { conversationCallsEnabled: true });
-    const leftMark = async () => (await meta(group.id)).conversationStatusOverrides?.[b.id]?.mariCallLeft;
+    // The status is the Engine's own, on the character card (it reaches every room until the call ends).
+    const leftMark = async () => {
+      const row = await api("GET", `/characters/${b.id}`);
+      const card = typeof row.data === "string" ? JSON.parse(row.data) : row.data;
+      const o = card?.extensions?.conversationStatusOverride;
+      return o?.status === "offline" ? o : null;
+    };
     await open(page);
     await goIn(page, `#/convo/${encodeURIComponent(group.id)}`);
     await page.getByRole("button", { name: "전화 걸기" }).first().click();
@@ -1101,7 +1107,9 @@ const flows = {
       await page.locator(".cx-in").blur();
     };
     await send();
-    await until(async () => (await leftMark())?.callId === sid, 8000, "the one who left is offline for this call");
+    await until(async () => !!(await leftMark()), 8000, "the one who left is offline for this call");
+    const cached = (await meta(group.id)).conversationStatusOverrides?.[b.id];
+    if (cached?.status !== "offline") throw new Error("the chat's copy (which the package reads) is not refreshed");
     if ((await page.locator(".cx-name").innerText()).includes(b.name)) throw new Error("the name line keeps who left");
     await snap(page, "call-group-left");
     await page.locator(".cx-p.off").filter({ hasText: "나감" }).click();
@@ -1124,6 +1132,7 @@ const flows = {
   async "call-translation-kept"({ page }) {
     const sid = "e2e-call-tr";
     const lines = [
+      { id: "t0", callId: sid, participantKind: "user", kind: "text", content: "Hi", extra: {} },
       {
         id: "t1",
         callId: sid,
@@ -1166,6 +1175,15 @@ const flows = {
       conversationCallEvent: { callId: sid, status: "ended", durationMs: 60000, summary: null },
     });
     await api("PATCH", `/chats/${convo.id}/metadata`, { autoTranslate: true });
+    // My lines carry the persona's name and can be voiced too.
+    await api("PATCH", `/chats/${convo.id}`, { personaId: persona.id });
+    await page.route("**/api/tts/config", (route) =>
+      route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({ enabled: true, callAudioEnabled: true, voice: "e2e" }),
+      }),
+    );
     const openLog = async () => {
       await goIn(page, `#/convo/${encodeURIComponent(convo.id)}`);
       await page.locator(".callcard").last().click();
@@ -1176,13 +1194,18 @@ const flows = {
     await openLog();
     const first = translated;
     if (first < 2) throw new Error(`the first open translates each line, got ${first}`);
+    const mine = page.locator(".tlog .tline2").first();
+    if (!(await mine.innerText()).includes("Mari")) throw new Error("my call lines should carry the persona name");
+    await mine.getByRole("button", { name: "다시 듣기" }).waitFor({ timeout: 3000 });
     await page.waitForTimeout(1200); // (saved after a short pause)
     await page.reload();
     await openLog();
     if (translated !== first) throw new Error(`reopened call log asked for ${translated - first} translations`);
     await api("PATCH", `/chats/${convo.id}/metadata`, { autoTranslate: false });
+    await api("PATCH", `/chats/${convo.id}`, { personaId: null });
     await page.unroute("**/api/conversation-calls/**");
     await page.unroute("**/api/translate");
+    await page.unroute("**/api/tts/config");
   },
 
   // Reactions and replies (the Engine's data): react from the quick row and take it back, see a character's
