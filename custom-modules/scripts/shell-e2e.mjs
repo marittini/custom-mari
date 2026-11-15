@@ -705,16 +705,24 @@ const flows = {
     await page.getByRole("button", { name: "전화 걸기" }).first().click();
     await page.locator(".sheet").getByRole("button", { name: "전화 걸기" }).click();
     await page.locator(".cx-subs .cx-line").filter({ hasText: "오늘 어땠어" }).waitFor({ timeout: 10000 });
-    if ((await page.locator(".cx-subs .cx-line").count()) < 3) throw new Error("subtitles should show every line");
+    // Default: the line being said, large, with only the one before it.
+    if ((await page.locator(".cx-subs.one .cx-line").count()) > 2)
+      throw new Error("default caption should be one line");
+    await page.locator(".cx-subs.one .cx-line.now").filter({ hasText: "오늘 어땠어" }).waitFor({ timeout: 3000 });
+    const capPx = await page.locator(".cx-line.now .cx-t").evaluate((e) => parseFloat(getComputedStyle(e).fontSize));
+    if (capPx < 21) throw new Error(`caption should be large, got ${capPx}px`);
+    await snap(page, "call-caption");
     await page.locator(".cx-in").fill("좋았어");
     await page.locator(".cx-send").click();
     await page.locator(".cx-line.wait").filter({ hasText: "답하는 중" }).waitFor({ timeout: 3000 });
     await page.locator(".cx-subs .cx-line").filter({ hasText: "좋네!" }).waitFor({ timeout: 10000 });
     await page.locator(".cx-in").blur();
     await page.getByRole("button", { name: "자막" }).click();
-    await page.getByRole("radio", { name: "자막 크게" }).click();
+    await page.getByRole("radio", { name: "지난 대사까지" }).click();
     await page.getByRole("radio", { name: "크게", exact: true }).click();
     if (!(await page.locator(".callx.subs-first[data-size='l']").count())) throw new Error("자막 choices not applied");
+    if ((await page.locator(".cx-subs:not(.one) .cx-line").count()) < 3)
+      throw new Error("지난 대사까지 should show every line");
     await page.keyboard.press("Escape");
     await page
       .locator(".scrim")

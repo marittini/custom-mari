@@ -361,7 +361,7 @@ export function callScreen(ctx) {
     paint();
   }
 
-  /** 자막: face-first or subtitles-first, and the subtitle size (kept in this browser). */
+  /** 자막: the line being said, large (the default), or every line so far; and the text size (this browser). */
   function subtitleSheet() {
     const box = h("div", { class: "psheet pad" });
     const s = sheet(box, { label: "자막" });
@@ -396,8 +396,8 @@ export function callScreen(ctx) {
         chips(
           "보기",
           [
-            ["face", "얼굴 크게"],
-            ["subs", "자막 크게"],
+            ["face", "지금 대사 크게"],
+            ["subs", "지난 대사까지"],
           ],
           p.subMode,
           (v) => setCallPrefs({ subMode: v }),
@@ -643,11 +643,19 @@ export function callScreen(ctx) {
           : null;
     const key = `${messages.map((m) => m.id + m.content.length).join("|")}|${showOriginal}|${waiting?.text || ""}|${pendingText}`;
     if (!force && subsEl.dataset.key === key) return;
-    const rows = await Promise.all(messages.map(async (m) => ({ m, ...(await shown(m)) })));
+    // 지금 대사 크게 (the default): only the line being said, large in the middle, with the one before it small
+    // above, as a phone caption; 지난 대사까지: every line, scrolling.
+    const one = p.subMode !== "subs";
+    const list = one ? messages.slice(pendingText ? -1 : -2) : messages;
+    const rows = await Promise.all(list.map(async (m) => ({ m, ...(await shown(m)) })));
     if (seq !== drawSeq || !session) return;
     subsEl.dataset.key = key;
+    subsEl.classList.toggle("one", one);
     const group = cast().length > 1;
-    const lastChar = [...rows].reverse().find((r) => r.m.participantKind === "character");
+    const lastChar = one ? null : [...rows].reverse().find((r) => r.m.participantKind === "character");
+    const showPending =
+      pendingText && !rows.some((r) => r.m.participantKind === "user" && originals.get(r.m.id) === pendingText);
+    const nowRow = one && !showPending ? rows[rows.length - 1] : null;
     const line = ({ m, top, bottom }) => {
       const me = m.participantKind === "user";
       const replay = !me && m.kind === "speech" && ctx.ttsConfig;
@@ -657,7 +665,7 @@ export function callScreen(ctx) {
           ...(replay
             ? { type: "button", onClick: () => speakTurns([m], true), "aria-label": `다시 듣기: ${top}` }
             : {}),
-          class: `cx-line${me ? " me" : ""}${m === lastChar?.m ? " now" : ""}`,
+          class: `cx-line${me ? " me" : ""}${m === lastChar?.m || m === nowRow?.m ? " now" : one ? " prev" : ""}`,
         },
         me || group ? h("small", { class: "cx-who2" }, `${speakerName(m)}${replay ? " ▶" : ""}`) : null,
         h("span", { class: "cx-t" }, top),
@@ -669,10 +677,10 @@ export function callScreen(ctx) {
       rows.length || waiting || pendingText
         ? [
             rows.map(line),
-            pendingText && !rows.some((r) => r.m.participantKind === "user" && originals.get(r.m.id) === pendingText)
+            showPending
               ? h(
                   "div",
-                  { class: "cx-line me" },
+                  { class: `cx-line me${one ? " now" : ""}` },
                   h("small", { class: "cx-who2" }, "나"),
                   h("span", { class: "cx-t" }, pendingText),
                 )

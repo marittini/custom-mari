@@ -4055,7 +4055,7 @@ button.toast {
 }
 
 /* The call's subtitle window (lib/call.js): every line so far, newest at the bottom; the current character line
-   larger; my lines to the right; waiting lines in italics. 자막 크게 (subs-first) shrinks the face to a row; the
+   larger; my lines to the right; waiting lines in italics. 지난 대사까지 (subs-first) shrinks the face to a row; the
    text size follows data-size (s · m · l). */
 .cx-subs {
   flex: 1;
@@ -4122,9 +4122,11 @@ button.cx-line {
 }
 .callx[data-size="s"] {
   --cx-sub: 14px;
+  --cx-cap: 18px;
 }
 .callx[data-size="l"] {
   --cx-sub: 21px;
+  --cx-cap: 27px;
 }
 .cx-whotext {
   display: flex;
@@ -4132,7 +4134,7 @@ button.cx-line {
   align-items: center;
   gap: 6px;
 }
-/* 자막 크게: the face becomes a small row on top, the subtitles get the room */
+/* 지난 대사까지: the face becomes a small row on top, the subtitles get the room */
 .callx.subs-first .cx-who {
   flex-direction: row;
   justify-content: center;
@@ -4152,12 +4154,43 @@ button.cx-line {
   margin-top: 0;
   font-size: 18px;
 }
-.callx:not(.subs-first) .cx-subs {
-  max-height: 34vh;
-}
-.callx:not(.subs-first) .cx-who {
-  flex: 1;
+/* 지금 대사 크게 (the default): the face on top, the line being said large in the middle of the screen, the one
+   before it small above, centred; a long line scrolls inside. */
+.cx-subs.one {
   justify-content: center;
+  align-items: center;
+  gap: 14px;
+  padding: 0 28px;
+  -webkit-mask-image: none;
+  mask-image: none;
+}
+.cx-subs.one > :first-child {
+  margin-top: 0;
+}
+.cx-subs.one .cx-line {
+  align-items: center;
+  text-align: center;
+}
+.cx-subs.one .cx-line.now {
+  gap: 8px;
+}
+.cx-subs.one .cx-line.now .cx-t {
+  font-size: var(--cx-cap, 22px);
+  font-weight: 400;
+}
+.cx-subs.one .cx-line.now .cx-tr {
+  font-size: 13px;
+}
+.cx-subs.one .cx-line.prev .cx-t {
+  font-size: 13px;
+  color: var(--cx-ink-2);
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+.cx-subs.one .cx-line.prev .cx-tr {
+  display: none;
 }
 .cx-emo {
   flex: none;
