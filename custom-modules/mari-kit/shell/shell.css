@@ -871,6 +871,11 @@ a {
 .qr button:disabled {
   opacity: 0.4;
 }
+/* The composer's ＋ menu: the same menu, above ＋ on the left */
+.qr.qr-left {
+  left: 12px;
+  right: auto;
+}
 
 /* Convo */
 .cv {
@@ -905,6 +910,10 @@ a {
   padding: 0.05em 0.15em;
   -webkit-box-decoration-break: clone;
   box-decoration-break: clone;
+}
+/* 형광펜에 프로필 대사 색 쓰기: the line's speaker sets --hl-c (their 대사 색); a faint wash of it, else grey. */
+.hl-color [style*="--hl-c"] .dlg {
+  background: color-mix(in srgb, var(--hl-c) 26%, transparent);
 }
 .bub.them {
   background: var(--fill);
@@ -3040,6 +3049,14 @@ button.toast {
   height: 1px;
   background: var(--line);
 }
+/* A call's note in the conversation (전화가 왔어요, 통화 시작, 통화 종료): the day line's look, with a phone */
+.callsep span {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
 .btime {
   margin: 4px 6px 0;
   font-size: 10.5px;
@@ -3493,26 +3510,23 @@ button.toast {
 }
 .rxbar {
   display: flex;
-  gap: 2px;
-  margin-top: 8px;
-  padding: 2px 4px;
+  gap: 0;
+  margin-top: 6px;
+  padding: 0 2px;
   border: 1px solid var(--line);
   border-radius: 999px;
   background: var(--surface);
 }
 .rxbar button {
-  width: 40px;
-  height: 40px;
+  width: 34px;
+  height: 36px;
   border: 0;
   border-radius: 50%;
   background: transparent;
-  font-size: 20px;
+  font-size: 17px;
   line-height: 1;
   cursor: pointer;
   color: var(--ink-2);
-}
-.rxbar button.on {
-  background: var(--fill);
 }
 .rxsheet {
   display: flex;
@@ -3525,23 +3539,8 @@ button.toast {
   padding: 0 4px;
   font-size: 15px;
 }
-.rxgrid {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(44px, 1fr));
-  gap: 4px;
-}
-.rxgrid button {
-  height: 44px;
-  border: 0;
-  border-radius: 10px;
-  background: transparent;
-  font-size: 24px;
-  cursor: pointer;
-}
-.rxgrid img {
-  width: 28px;
-  height: 28px;
-  object-fit: contain;
+.rxbar button.on {
+  background: var(--fill);
 }
 .rquote {
   display: flex;
@@ -3669,14 +3668,6 @@ button.toast {
 }
 .mbox button .hint {
   font-size: 12px;
-}
-.cmp-tools {
-  display: flex;
-  gap: 8px;
-  flex-shrink: 0;
-}
-.cmp-tools[hidden] {
-  display: none;
 }
 .pcard > .pcard-name {
   flex: none;

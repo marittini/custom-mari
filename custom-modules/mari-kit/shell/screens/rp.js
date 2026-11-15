@@ -313,6 +313,11 @@ export function rpScreen({ mount, args, go, back }) {
         (await api.get(`/mari-kit/tts/participants/${encodeURIComponent(chatId)}`).catch(() => null))?.participants ||
         [];
     }
+    // The persona's 대사 색, read only when 보기 설정 asks for colours (the persona list is otherwise not needed).
+    if (prefs().hlColor === true && chat.personaId) {
+      const p = (await data.personas().catch(() => [])).find((x) => x.id === chat.personaId);
+      personaColor = /^#[0-9a-f]{3,8}$/i.test(p?.dialogueColor || "") ? p.dialogueColor : "";
+    }
     quick = quickReplies(ui, I.guide, "roleplay");
     qrBtn.hidden = quick.length === 0;
     if (settings?.features?.memory && usesKit) {
@@ -489,6 +494,14 @@ export function rpScreen({ mount, args, go, back }) {
     else if (left > 0) pop.style.transform = `translateX(${left}px)`;
   }
 
+  // 형광펜에 프로필 대사 색 쓰기: a spoken line takes its speaker's 대사 색 (the persona's for persona lines).
+  let personaColor = "";
+  function speakerColor(line) {
+    if (!line) return "";
+    if (line.speakerKind === "persona") return personaColor;
+    return index.get(line.speakerId)?.color || "";
+  }
+
   function assistantBlock(m, isLast) {
     const parsed = parseMessage(messageText(m), m.characterId);
     const original = parseMessage(m.content, m.characterId);
@@ -510,6 +523,7 @@ export function rpScreen({ mount, args, go, back }) {
               "span",
               {
                 class: on ? "line on" : "line",
+                style: { "--hl-c": speakerColor(line) },
                 role: "button",
                 tabindex: 0,
                 "aria-expanded": on ? "true" : "false",
@@ -536,7 +550,11 @@ export function rpScreen({ mount, args, go, back }) {
     const only = translation && chatMeta(chat).translationDisplayOnly === true;
     return h(
       "div",
-      { class: hiddenFromAI(m) ? "read hid" : "read", "data-message-id": m.id },
+      {
+        class: hiddenFromAI(m) ? "read hid" : "read",
+        "data-message-id": m.id,
+        style: { "--hl-c": index.get(m.characterId)?.color },
+      },
       only ? draw_(translated, (seg) => translationSpeech[seg.index], "t") : paragraphs,
       translation && !only
         ? h(

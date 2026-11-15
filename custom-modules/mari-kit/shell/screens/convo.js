@@ -38,14 +38,13 @@ import { callsAvailable, callScreen, callPrefs } from "../lib/call.js";
 import { shownText, translateStickerInput, stickerTokensMatch } from "../lib/translate.js";
 import { loadStickers, stickerContent, stickerPicker, stickerLabel, withoutStickerTokens } from "../lib/stickers.js";
 import { watchGeneration, stopGeneration } from "../lib/generation.js";
-import { attachmentsOf, closeInTime, dayKey, dayLabel, presenceText, timeLabel } from "../lib/convo-bits.js";
+import { attachmentsOf, closeInTime, dayKey, dayLabel, presenceText, subject, timeLabel } from "../lib/convo-bits.js";
 import { presenceOf, presenceLine, STATUS_KO } from "../lib/presence.js";
 // lib/compose.js (pictures, @mentions) loads the first time it is needed, not with the screen.
 let composeP = null;
 const compose = () => composeP || (composeP = import("../lib/compose.js"));
 import { presenceFields } from "../lib/my-status.js";
 import {
-  MORE,
   QUICK,
   USER,
   reactionsOf,
@@ -57,6 +56,7 @@ import {
 } from "../lib/reactions.js";
 import { activeAutonomy, clearUnread } from "../lib/autonomy.js";
 import { runSlash } from "../lib/slash.js";
+import { readRecents, rememberRecent } from "../lib/media.js";
 import {
   GUIDE,
   quickReplies,
@@ -224,9 +224,16 @@ export function convoScreen({ mount, args, go, back }) {
     { type: "button", class: "cb send", "aria-label": "보내기", onClick: () => (busy ? stopGenerating() : send()) },
     icon(I.send, 16, 2),
   );
+  const mediaIcon = [
+    "M12 3a9 9 0 1 0 0 18 9 9 0 0 0 0-18z",
+    "M8.5 14.5c.9 1.2 2.1 1.8 3.5 1.8s2.6-.6 3.5-1.8",
+    "M9 9.5h.01M15 9.5h.01",
+  ];
+  const PHOTO = ["M4 6h16v12H4z", "M9 10.5a1.5 1.5 0 1 0 0-.01", "M20 15l-5-5-8 8"];
   // ☺: the Engine's media panel (emoji, kaomoji, stickers) where the keyboard was; loaded the first time.
   let panel = null;
   const panelHost = h("div", { class: "mp-host" });
+  const reactHost = h("div", { class: "mp-host" }); // the reaction ＋'s emoji panel (moreReactions)
   const mediaBtn = h(
     "button",
     {
@@ -238,18 +245,11 @@ export function convoScreen({ mount, args, go, back }) {
       disabled: true,
       onClick: () => (panel?.open ? closePanel(true) : openPanel()),
     },
-    icon(
-      [
-        "M12 3a9 9 0 1 0 0 18 9 9 0 0 0 0-18z",
-        "M8.5 14.5c.9 1.2 2.1 1.8 3.5 1.8s2.6-.6 3.5-1.8",
-        "M9 9.5h.01M15 9.5h.01",
-      ],
-      18,
-      1.6,
-    ),
+    icon(mediaIcon, 18, 1.6),
   );
   async function openPanel() {
     if (!chat) return;
+    reactPanel?.hide();
     qrOpen = false;
     drawQuick();
     hideMentions();
@@ -264,7 +264,11 @@ export function convoScreen({ mount, args, go, back }) {
         },
         onInsert: (text) => insertText(text),
         onSticker: (name, how) => {
-          if (how === "send") {
+          if (how === "send" && busy) {
+            // A reply is being written (보내기 is 멈추기 now): the sticker waits in the text box, and says so.
+            insertSticker(name, false);
+            toast("답장을 쓰는 중이라 입력칸에 넣었어요");
+          } else if (how === "send") {
             closePanel(false);
             generate({ userMessage: `sticker:${name}:` });
           } else insertSticker(name, false);
@@ -350,25 +354,42 @@ export function convoScreen({ mount, args, go, back }) {
   );
   // @이름: the room's characters while typing "@…" (the Engine's mention autocomplete).
   const mentionBox = h("div", { class: "mbox", role: "listbox", "aria-label": "부를 캐릭터", hidden: true });
-  // While typing, the left buttons fold into one › so the text box stays wide on a phone (like a messenger).
-  let toolsBox = null;
-  let toolsOpen = false;
-  const toolsMore = h(
+  // ＋: everything besides typing and sending, tucked into one menu that looks like the quick-reply menu (the
+  // composer keeps only ＋ · the text box · 보내기). The buttons below stay the actions; the menu presses them.
+  const quickSettingsBtn = quickButton({
+    getChat: () => chat,
+    go,
+    changed: async () => {
+      await load(false);
+      await loadMe();
+    },
+  });
+  let toolsMenuOpen = false;
+  const toolsBtn = h(
     "button",
     {
       type: "button",
       class: "cb",
-      "aria-label": "도구 펼치기",
-      hidden: true,
-      onClick: () => ((toolsOpen = true), syncTools()),
+      "aria-label": "도구",
+      title: "도구",
+      "aria-haspopup": "menu",
+      "aria-expanded": "false",
+      onClick: () => {
+        toolsMenuOpen = !toolsMenuOpen;
+        qrOpen = false;
+        drawQuick();
+      },
     },
-    icon("M9 6l6 6-6 6", 18, 1.8),
+    icon(I.plus, 19, 1.7),
   );
-  function syncTools() {
-    const folded = !!input.value.trim() && !toolsOpen;
-    if (toolsBox) toolsBox.hidden = folded;
-    toolsMore.hidden = !folded;
-  }
+  const toolItems = () =>
+    [
+      [mediaBtn, mediaIcon, "이모지·스티커"],
+      [picBtn, PHOTO, "사진"],
+      [qrBtn, null, "빠른 답장"],
+      [quickSettingsBtn, I.sliders, "빠른 설정"],
+      [trBtn, I.translate, "입력 번역"],
+    ].filter(([btn]) => !btn.hidden);
   const strip = activityStrip();
   const scroll = chatScrolling(scroller);
   mount.append(
@@ -380,38 +401,14 @@ export function convoScreen({ mount, args, go, back }) {
     replyBar,
     picBar,
     mentionBox,
-    h(
-      "div",
-      { class: "cmp", style: { background: "var(--paper)" } },
-      (toolsBox = h(
-        "span",
-        { class: "cmp-tools" },
-        quickButton({
-          getChat: () => chat,
-          go,
-          changed: async () => {
-            await load(false);
-            await loadMe();
-          },
-        }),
-        mediaBtn,
-        picBtn,
-      )),
-      toolsMore,
-      filePick,
-      input,
-      trBtn,
-      qrBtn,
-      sendBtn,
-    ),
+    h("div", { class: "cmp", style: { background: "var(--paper)" } }, toolsBtn, filePick, input, sendBtn),
     panelHost,
+    reactHost,
   );
 
   function grow() {
     input.style.height = "auto";
     input.style.height = `${Math.min(input.scrollHeight, 160)}px`;
-    if (!input.value.trim()) toolsOpen = false;
-    syncTools();
   }
 
   function insertSticker(name, focus = true) {
@@ -763,7 +760,9 @@ export function convoScreen({ mount, args, go, back }) {
     };
   }
 
-  // An ended call stays in the conversation as one line (통화 설정 › 대화에 통화 대사 남기기).
+  // The call package's notes in the conversation (ringing, started, declined, ended), shown as thin lines in the
+  // shell's words instead of its English ("Incoming call"); an ended call also gets its card when calls are kept
+  // (통화 설정 › 대화에 통화 대사 남기기), and its 통화 종료 line always.
   function callEvent(m) {
     if (m.role !== "system") return null;
     let extra = m.extra;
@@ -771,7 +770,52 @@ export function convoScreen({ mount, args, go, back }) {
       if (typeof extra === "string") extra = JSON.parse(extra);
     } catch {}
     const ev = extra?.conversationCallEvent;
-    return ev?.callId && ev.status === "ended" ? ev : null;
+    return ev?.callId ? { ...ev, endedBy: extra.mariEndedBy || null } : null;
+  }
+  // Who hung up, learnt when the call screen closes; written onto the ended note so it survives a reload.
+  const endedBy = new Map(); // callId → "user" | character id
+  async function markEndedBy() {
+    for (const m of win.list) {
+      const ev = callEvent(m);
+      const by = ev && ev.status === "ended" && !ev.endedBy ? endedBy.get(ev.callId) : null;
+      if (!by) continue;
+      endedBy.delete(ev.callId);
+      try {
+        await api.patch(`/chats/${encodeURIComponent(chatId)}/messages/${encodeURIComponent(m.id)}/extra`, {
+          mariEndedBy: by,
+        });
+        const extra = typeof m.extra === "string" ? JSON.parse(m.extra || "{}") : m.extra || {};
+        m.extra = { ...extra, mariEndedBy: by };
+      } catch {}
+    }
+  }
+  const hiddenFromUser = (m) => {
+    try {
+      return (typeof m.extra === "string" ? JSON.parse(m.extra || "{}") : m.extra || {}).hiddenFromUser === true;
+    } catch {
+      return false;
+    }
+  };
+  function callLine(ev, m) {
+    const at = shortTime(m.createdAt);
+    const cast = (chat?.characterIds || []).map((id) => index.get(id)).filter(Boolean);
+    const text =
+      ev.status === "ended"
+        ? ev.endedBy === "user"
+          ? "통화 종료 · 내가 끊음"
+          : ev.endedBy && index.get(ev.endedBy)
+            ? `통화 종료 · ${subject(index.get(ev.endedBy).name)} 끊음`
+            : "통화 종료"
+        : ev.status === "ringing"
+          ? `${cast.length === 1 ? `${cast[0].name}에게서 ` : ""}전화가 왔어요 · ${at}`
+          : ev.status === "declined"
+            ? `받지 않은 전화 · ${at}`
+            : `통화 시작 · ${at}`;
+    return h(
+      "div",
+      { class: "daysep callsep", role: "note", title: messageText(m) },
+      h("span", null, icon(I.phone, 12, 1.8), text),
+    );
   }
   // An ended call as a card: how long, the Engine's call summary when it has made one, the first two lines (read
   // once per call, kept), and the whole record on a tap.
@@ -814,9 +858,11 @@ export function convoScreen({ mount, args, go, back }) {
   }
 
   function shown() {
-    const keepCalls = callPrefs().log;
-    // System lines (dice, notices, other call states) show like the Engine's; an ended call only when kept.
-    return win.list.filter((m) => m.role !== "system" || (callEvent(m) ? keepCalls : !!messageText(m).trim()));
+    // System lines (dice, notices) show like the Engine's; call notes as lines; never what is hidden from the user
+    // (the package's call summary for the model).
+    return win.list.filter(
+      (m) => !hiddenFromUser(m) && (m.role !== "system" || callEvent(m) || !!messageText(m).trim()),
+    );
   }
 
   async function setupCalls() {
@@ -829,8 +875,11 @@ export function convoScreen({ mount, args, go, back }) {
       ttsConfig,
       mount,
       go,
-      onEnded: async () => {
+      onEnded: async (info) => {
+        if (info?.by) endedBy.set(info.callId, info.by);
         await load();
+        await markEndedBy();
+        draw();
         scroller.scrollTop = scroller.scrollHeight;
       },
     });
@@ -957,7 +1006,8 @@ export function convoScreen({ mount, args, go, back }) {
         items.push(h("div", { class: "daysep", role: "separator" }, h("span", null, dayLabel(m.createdAt))));
       }
       if (bub.ev) {
-        items.push(callCard(bub.ev, m));
+        if (bub.ev.status === "ended" && callPrefs().log) items.push(callCard(bub.ev, m));
+        items.push(callLine(bub.ev, m));
         return;
       }
       const prev = bubbles[i - 1];
@@ -1341,10 +1391,15 @@ export function convoScreen({ mount, args, go, back }) {
         .filter((r) => r.by.includes(USER))
         .map((r) => r.emoji),
     );
+    // My recent emojis first (shared with the Engine's picker), then the usual six; six in all.
+    const recent = readRecents()
+      .emoji.map((x) => x.value)
+      .filter((v) => v && !v.startsWith(":"));
+    const shown = [...new Set([...recent, ...QUICK])].slice(0, 6);
     return h(
       "div",
       { class: `rxbar ${me ? "me" : "them"}`, role: "group", "aria-label": "반응 달기" },
-      QUICK.map((emoji) =>
+      shown.map((emoji) =>
         h(
           "button",
           {
@@ -1374,38 +1429,43 @@ export function convoScreen({ mount, args, go, back }) {
       ),
     );
   }
+  // ＋ on the reaction bar: any emoji, like the Engine (its picker with search, recents and ★ custom emojis) — the
+  // media panel with only its emoji tab, where the keyboard would be. A pick reacts and closes it.
+  let reactPanel = null;
+  let reactTo = null;
   async function moreReactions(m) {
-    const grid = h("div", { class: "rxgrid" });
-    const pick = (emoji, url = null) => {
-      s.close();
-      react(m, emoji, url);
-    };
-    setChildren(
-      grid,
-      MORE.map((emoji) => h("button", { type: "button", "aria-label": emoji, onClick: () => pick(emoji) }, emoji)),
-    );
-    const custom = h("div", { class: "rxgrid" });
-    const s = sheet(h("div", { class: "rxsheet" }, h("b", null, "반응"), grid, custom), { label: "반응 고르기" });
-    // The Engine's own custom emojis, read only when this sheet opens.
-    try {
-      const list = await api.get("/custom-emojis");
-      if (Array.isArray(list) && list.length && custom.isConnected)
-        setChildren(
-          custom,
-          list
-            .filter((e) => e?.name && e?.url)
-            .map((e) =>
-              h(
-                "button",
-                { type: "button", "aria-label": `:${e.name}:`, onClick: () => pick(`:${e.name}:`, e.url) },
-                h("img", { src: e.url, alt: e.name, loading: "lazy" }),
-              ),
-            ),
-        );
-    } catch {}
+    reactTo = m;
+    closePanel(false);
+    if (!reactPanel) {
+      const { mediaPanel } = await import("../lib/media-panel.js");
+      reactPanel = mediaPanel({
+        tabs: ["emoji"],
+        media: async ({ refresh }) => {
+          if (refresh) stickerLoad = null;
+          const st = await refreshStickers();
+          return { stickers: st, emojis: st.emojis };
+        },
+        onInsert: (text) => {
+          const target = reactTo;
+          reactPanel.hide();
+          if (!target) return;
+          const custom = /^:([\w-]+):$/.exec(text);
+          const c = custom ? emojiView().map.get(custom[1]) : null;
+          react(target, text, c?.url || c?.imageUrl || null);
+        },
+        onSticker: () => {},
+        manage: () => {},
+      });
+      setChildren(reactHost, reactPanel.el);
+    }
+    picked = null;
+    draw();
+    reactPanel.show();
   }
-  const react = (m, emoji, imageUrl = null) =>
-    saveReactions(m, toggleReaction(reactionsOf(m), emoji, imageUrl), "반응을 달지 못했어요");
+  const react = (m, emoji, imageUrl = null) => {
+    rememberRecent("emoji", imageUrl ? { value: emoji, previewUrl: imageUrl } : { value: emoji });
+    return saveReactions(m, toggleReaction(reactionsOf(m), emoji, imageUrl), "반응을 달지 못했어요");
+  };
   async function saveReactions(m, next, failed) {
     const before = m.extra;
     let extra = m.extra;
@@ -1586,6 +1646,8 @@ export function convoScreen({ mount, args, go, back }) {
   }
 
   function drawQuick() {
+    toolsBtn.setAttribute("aria-expanded", toolsMenuOpen ? "true" : "false");
+    if (toolsMenuOpen) return drawTools();
     setChildren(
       quickLayer,
       qrOpen
@@ -1635,6 +1697,54 @@ export function convoScreen({ mount, args, go, back }) {
             ),
           ]
         : [],
+    );
+  }
+
+  // The ＋ menu: the quick-reply menu's look (same panel, same rows), opened above ＋ on the left.
+  function drawTools() {
+    const close = () => {
+      toolsMenuOpen = false;
+      drawQuick();
+    };
+    setChildren(
+      quickLayer,
+      h("button", {
+        type: "button",
+        class: "scrim",
+        style: { background: "transparent" },
+        "aria-label": "닫기",
+        onClick: close,
+      }),
+      h(
+        "div",
+        { class: "qr qr-left", role: "menu", "aria-label": "도구", style: { zIndex: "22" } },
+        toolItems().map(([btn, path, label]) =>
+          h(
+            "button",
+            {
+              type: "button",
+              role: "menuitem",
+              disabled: btn.disabled,
+              onClick: () => {
+                toolsMenuOpen = false;
+                // 빠른 답장 opens its own menu in the same place; the others close this one and act.
+                if (btn === qrBtn) {
+                  qrOpen = true;
+                  return drawQuick();
+                }
+                drawQuick();
+                btn.click();
+              },
+            },
+            h(
+              "span",
+              { style: { display: "flex", justifyContent: "center", color: "var(--ink-2)" } },
+              path ? icon(path, 17, 1.6) : dots(17),
+            ),
+            h("span", null, label),
+          ),
+        ),
+      ),
     );
   }
 

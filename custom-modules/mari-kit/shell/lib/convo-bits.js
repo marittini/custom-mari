@@ -53,7 +53,8 @@ function hasFinal(name) {
   return c >= 0xac00 && c <= 0xd7a3 && (c - 0xac00) % 28 !== 0;
 }
 const topic = (name) => `${name}${hasFinal(name) ? "은" : "는"}`;
-const subject = (name) => `${name}${hasFinal(name) ? "이" : "가"}`;
+/** "하루가", "서진이" (the subject particle by the name's last letter). */
+export const subject = (name) => `${name}${hasFinal(name) ? "이" : "가"}`;
 
 /** Names as one phrase: "하루", "하루, 서진", "하루 외 2명". */
 export function namesPhrase(names) {

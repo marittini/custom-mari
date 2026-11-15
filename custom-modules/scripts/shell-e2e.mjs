@@ -182,23 +182,35 @@ async function phone() {
       const route = routeOf(r.url());
       if (route) recording.routes.add(route);
     });
+    // A reload or a move to another page drops what ran before it from the coverage: such a record is partial.
+    page.on("load", () => (recording.navigations += 1)); // a document load (a hash move is not one)
     recording.pages.push(page);
   }
   return { ctx, page, errors, faults };
 }
 // What the running flow used (with --coverage): its pages' coverage and the Engine routes they called.
-let recording = { pages: [], routes: new Set() };
+let recording = { pages: [], routes: new Set(), navigations: 0 };
 const coverage = {};
 async function keepCoverage(name) {
   const files = {};
   for (const p of recording.pages) summarize(await p.coverage.stopJSCoverage().catch(() => []), files);
-  coverage[name] = { files, routes: [...recording.routes].sort() };
+  coverage[name] = {
+    files,
+    routes: [...recording.routes].sort(),
+    // More than the first load of each page: the record misses what ran before the reload or the move.
+    partial: recording.navigations > recording.pages.length,
+  };
 }
 const hash = (page) => page.evaluate(() => location.hash);
 // With --shots, flows keep a screenshot of the states worth a look (an edit form, a sheet) next to the tour's.
 const snap = (page, name) => (shots ? page.screenshot({ path: join(shots, `flow-${name}.png`) }) : null);
 if (shots) await mkdir(shots, { recursive: true });
 const goIn = (page, h) => page.evaluate((x) => (location.hash = x), h); // in-app move, as a tap does
+// The Convo composer's ＋ menu (도구): open it and pick one item.
+async function tool(page, name) {
+  await page.getByRole("button", { name: "도구", exact: true }).click();
+  await page.getByRole("menuitem", { name }).click();
+}
 async function open(page) {
   await page.goto(APP);
   await page.waitForSelector(".dock");
@@ -275,6 +287,28 @@ const flows = {
     await page.locator("textarea").fill("문을 연다.");
     await page.getByRole("button", { name: "보내기" }).click();
     await until(() => page.locator(".read").filter({ hasText: "곤란해" }).first().isVisible(), 20000, "RP reply shown");
+    // 보기 설정 › 형광펜에 프로필 대사 색 쓰기: the speaker's 대사 색 (dialogueColor) marks their spoken lines.
+    const row = await api("GET", `/characters/${a.id}`);
+    const card = typeof row.data === "string" ? JSON.parse(row.data) : row.data;
+    await api("PATCH", `/characters/${a.id}`, {
+      data: { extensions: { ...(card.extensions || {}), dialogueColor: "#3366cc" } },
+      skipVersionSnapshot: true,
+    });
+    await page.evaluate(() => {
+      const p = JSON.parse(localStorage.getItem("mari-shell") || "{}");
+      localStorage.setItem("mari-shell", JSON.stringify({ ...p, highlight: true, hlColor: true }));
+    });
+    await page.reload();
+    const dlg = page.locator(".read .dlg").first();
+    await dlg.waitFor({ timeout: 15000 });
+    const bg = await dlg.evaluate((e) => getComputedStyle(e).backgroundColor);
+    // A faint blue wash, not the grey: blue clearly above red.
+    const [r, , b] = (bg.match(/[\d.]+/g) || []).map(Number);
+    if (!(b > r)) throw new Error(`대사 형광펜 is not the speaker's colour: ${bg}`);
+    await page.evaluate(() => {
+      const p = JSON.parse(localStorage.getItem("mari-shell") || "{}");
+      localStorage.setItem("mari-shell", JSON.stringify({ ...p, highlight: false, hlColor: false }));
+    });
   },
 
   // Several characters: each reply is labeled with its speaker.
@@ -536,7 +570,9 @@ const flows = {
     const box = page.locator(".cin");
     await box.waitFor();
     const before = (await box.boundingBox()).width;
-    await page.getByRole("button", { name: "이모지·스티커" }).click();
+    await page.getByRole("button", { name: "도구", exact: true }).click();
+    await snap(page, "tools-menu");
+    await page.getByRole("menuitem", { name: "이모지·스티커" }).click();
     await page.locator(".mpanel").waitFor();
     const during = (await box.boundingBox()).width;
     if (Math.abs(during - before) > 1) throw new Error(`text box changed width with the panel: ${before} → ${during}`);
@@ -574,8 +610,9 @@ const flows = {
       .click();
     if (!(await box.inputValue()).includes("😄")) throw new Error(`shortcode not completed: ${await box.inputValue()}`);
     await box.fill("");
-    // A sticker sent at once.
-    await page.getByRole("button", { name: "이모지·스티커" }).click();
+    // A sticker sent at once (after the reply to the emoji message is written: until then 보내기 is 멈추기).
+    await page.getByRole("button", { name: "보내기" }).waitFor({ timeout: 20000 });
+    await tool(page, "이모지·스티커");
     await page.getByRole("tab", { name: "스티커" }).click();
     await page.getByRole("button", { name: "e2e_wave" }).first().click();
     await page.getByRole("button", { name: "바로 보내기" }).click();
@@ -585,7 +622,7 @@ const flows = {
       "sticker sent",
     );
     // How characters are offered emojis, from the panel.
-    await page.getByRole("button", { name: "이모지·스티커" }).click();
+    await tool(page, "이모지·스티커");
     await page.getByRole("tab", { name: "스티커" }).click();
     await page.getByRole("button", { name: "캐릭터 고르는 방식" }).click();
     await page.getByRole("radio", { name: "무작위" }).click();
@@ -825,11 +862,109 @@ const flows = {
     });
     await page.locator(".cx-endrow").getByRole("button").click();
     await page.locator(".callcard").filter({ hasText: "대사" }).first().waitFor({ timeout: 10000 });
+    await page.locator(".callsep").filter({ hasText: "통화 종료 · 내가 끊음" }).first().waitFor({ timeout: 8000 });
     await page.locator(".callcard").first().click();
     await page.locator(".tlog").getByText("통화 기록").first().waitFor();
     await page.locator(".tlog").getByRole("button", { name: "전체 복사" }).waitFor();
     const offLog = await page.evaluate(offscreenText);
     if (offLog.length) throw new Error(`call record runs off the screen: ${offLog.join(" | ")}`);
+    await api("PATCH", `/chats/${convo.id}/metadata`, { conversationCallsEnabled: false });
+    await page.unroute("**/api/conversation-calls/**");
+    await page.unroute("**/api/tts/config");
+  },
+
+  // A character hangs up by itself ([end_call] after its last words, the package's call command): the screen says
+  // so, ends the call, and the Convo keeps "통화 종료 · <name>가 끊음" under the call card. The first call also makes
+  // the hang-up guide (a global lorebook whose one entry reaches calls only).
+  async "call-hangup"({ page }) {
+    const sid = "e2e-hangup";
+    const session = { id: sid, chatId: convo.id, status: "active", startedAt: new Date().toISOString() };
+    const lines = [
+      { id: "h1", participantKind: "character", characterId: a.id, kind: "speech", content: "응?", extra: {} },
+    ];
+    let ended = 0;
+    await page.route("**/api/conversation-calls/**", async (route) => {
+      const url = route.request().url();
+      const method = route.request().method();
+      const json = (body) =>
+        route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify(body) });
+      if (url.includes("/status")) return json({ activeCall: null, ringingCall: null });
+      if (url.endsWith("/start")) return json(session);
+      if (url.endsWith(`/${sid}/messages`) && method === "GET") return json(lines);
+      if (url.endsWith(`/${sid}/messages`) && method === "POST") {
+        lines.push({ id: "h2", participantKind: "user", kind: "speech", content: "나 이제 자야겠다", extra: {} });
+        lines.push({
+          id: "h3",
+          participantKind: "character",
+          characterId: a.id,
+          kind: "speech",
+          content: "그래, 잘 자.",
+          extra: {},
+        });
+        return json({
+          userMessage: { id: "h2" },
+          assistantMessages: [],
+          turns: [
+            { speakerName: "Aoi", mode: "voice", content: "그래, 잘 자.", characterId: a.id },
+            { speakerName: "Aoi", mode: "command", content: "[end_call]", command: "[end_call]", characterId: a.id },
+          ],
+          session,
+        });
+      }
+      if (url.endsWith(`/${sid}/end`)) {
+        ended += 1;
+        // The package writes its ended note into the Convo, as the real /end does.
+        const ev = await api("POST", `/chats/${convo.id}/messages`, {
+          role: "system",
+          content: "Call ended after 1m 2s",
+        });
+        await api("PATCH", `/chats/${convo.id}/messages/${ev.id}/extra`, {
+          conversationCallEvent: { callId: sid, status: "ended", durationMs: 62000, summary: null },
+        });
+        return json({ ...session, status: "ended" });
+      }
+      return json({});
+    });
+    await page.route("**/api/tts/config", (route) =>
+      route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({ enabled: false, callAudioEnabled: true }),
+      }),
+    );
+    await api("PATCH", `/chats/${convo.id}/metadata`, { conversationCallsEnabled: true });
+    await open(page);
+    await goIn(page, `#/convo/${encodeURIComponent(convo.id)}`);
+    await page.getByRole("button", { name: "전화 걸기" }).first().click();
+    await page.locator(".sheet").getByRole("button", { name: "전화 걸기" }).click();
+    await page.locator(".cx-subs .cx-line").filter({ hasText: "응?" }).waitFor({ timeout: 10000 });
+    await page.locator(".cx-in").fill("나 이제 자야겠다");
+    await page.locator(".cx-send").click();
+    await page.locator(".cx-time").filter({ hasText: "전화를 끊었어요" }).waitFor({ timeout: 10000 });
+    await snap(page, "call-hung-up");
+    await until(async () => ended === 1, 8000, "the screen ended the call after the character hung up");
+    await page.locator(".callsep").filter({ hasText: "통화 종료 · " }).last().waitFor({ timeout: 10000 });
+    await until(
+      async () => (await page.locator(".callsep").last().innerText()).includes("끊음"),
+      8000,
+      "통화 종료 says who hung up",
+    );
+    // Under the call card, not above it.
+    const order = await page.evaluate(() => {
+      const card = [...document.querySelectorAll(".callcard")].pop();
+      const line = [...document.querySelectorAll(".callsep")].pop();
+      return card && line ? card.compareDocumentPosition(line) & Node.DOCUMENT_POSITION_FOLLOWING : -1;
+    });
+    if (!order) throw new Error("통화 종료 should sit under the call card");
+    await snap(page, "call-ended-line");
+    // The guide exists once, global, reaching calls only (its key never appears in a chat).
+    const page1 = await api("GET", "/lorebooks?limit=20&offset=0&search=" + encodeURIComponent("Mari Kit · 통화"));
+    const book = (page1.items || page1).find((b) => (b.tags || []).includes("mari-kit-call"));
+    if (!book || book.isGlobal !== true || book.enabled === false) throw new Error("hang-up guide lorebook missing");
+    const entries = await api("GET", `/lorebooks/${book.id}/entries`);
+    const entry = (entries.items || entries)[0];
+    if (!entry || !entry.content.includes("[end_call]") || entry.constant === true || entry.order > -100)
+      throw new Error("hang-up guide entry is not the call-only first entry");
     await api("PATCH", `/chats/${convo.id}/metadata`, { conversationCallsEnabled: false });
     await page.unroute("**/api/conversation-calls/**");
     await page.unroute("**/api/tts/config");
@@ -855,6 +990,25 @@ const flows = {
     const bubble = page.locator(`[data-mid="${target.id}"]`);
     await bubble.locator(".rx").filter({ hasText: "😂" }).waitFor();
     await bubble.locator(".bub").last().click();
+    // The bar is slim: six reactions, then ＋ for any emoji (the media panel's emoji tab), which then comes first.
+    await snap(page, "react-bar");
+    await page.getByRole("button", { name: "다른 반응" }).click();
+    const any = page.locator(".mpanel .mp-e").nth(3);
+    await any.waitFor();
+    await snap(page, "react-panel");
+    const pickedEmoji = (await any.innerText()).trim();
+    await any.click();
+    await until(
+      async () => (await reactionsNow()).some((r) => r.emoji === pickedEmoji && r.by.includes("user")),
+      5000,
+      "reaction from the emoji panel saved",
+    );
+    if (await page.locator(".mpanel").isVisible()) throw new Error("the emoji panel stayed open after a reaction");
+    await bubble.locator(".rx.mine").click();
+    await until(async () => !(await reactionsNow()).some((r) => r.emoji === pickedEmoji), 5000, "panel reaction back");
+    await bubble.locator(".bub").last().click();
+    const first = (await page.locator(".rxbar button").first().innerText()).trim();
+    if (first !== pickedEmoji) throw new Error(`the recent reaction is not first on the bar: ${first}`);
     await page.getByRole("button", { name: "❤️ 반응" }).click();
     await until(
       async () => (await reactionsNow()).some((r) => r.emoji === "❤️" && r.by.includes("user")),
@@ -1022,7 +1176,7 @@ async function firstVisit() {
 let failed = 0;
 for (const [name, run] of Object.entries(flows)) {
   if (only && !only.includes(name)) continue;
-  recording = { pages: [], routes: new Set() };
+  recording = { pages: [], routes: new Set(), navigations: 0 };
   const s = await phone();
   const t = Date.now();
   try {

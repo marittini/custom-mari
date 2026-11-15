@@ -76,6 +76,7 @@ const DEFAULTS = {
   fontRp: "", // "" → same as font
   fontConvo: "",
   highlight: false, // 대사 형광펜
+  hlColor: false, // 형광펜에 프로필 대사 색 쓰기 (the speaker's dialogueColor, faint; grey for those without one)
   lineVoice: false, // RP: ▶ after every spoken line; off → tap a line for its popup (Mari only)
   fontCss: "",
   families: [],
@@ -183,6 +184,7 @@ export function applyPrefs() {
   style.setProperty("--font-rp", family(p.fontRp));
   style.setProperty("--font-convo", family(p.fontConvo));
   root.classList.toggle("hl-dlg", p.highlight === true);
+  root.classList.toggle("hl-color", p.highlight === true && p.hlColor === true);
   style.setProperty("--read-size", `${p.size}px`);
   style.setProperty("--read-leading", String(p.leading));
   style.setProperty("--read-tracking", `${p.tracking}px`);

@@ -96,6 +96,7 @@ export const FLOW_SCREENS = {
   menus: ["chat-settings", "settings", "call-settings"],
   "call-subtitles": ["convo"],
   "memory-jobs": ["memory", "convo"],
+  "call-hangup": ["convo"],
 };
 
 /** Runs the tour (only screens drawn by `mods`, if given). Returns { rows, failed }. app: the shell URL. */

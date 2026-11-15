@@ -9,8 +9,14 @@ export function h(tag, attrs, ...children) {
   for (const [key, value] of Object.entries(attrs ?? {})) {
     if (value === false || value === null || value === undefined) continue;
     if (key.startsWith("on") && typeof value === "function") el.addEventListener(key.slice(2).toLowerCase(), value);
-    else if (key === "style" && typeof value === "object") Object.assign(el.style, value);
-    else if (key === "html") el.innerHTML = value;
+    else if (key === "style" && typeof value === "object") {
+      // Custom properties ("--x") need setProperty; plain assignment drops them.
+      for (const [k, v] of Object.entries(value)) {
+        if (k.startsWith("--")) {
+          if (v) el.style.setProperty(k, v);
+        } else el.style[k] = v;
+      }
+    } else if (key === "html") el.innerHTML = value;
     else if (key === "value" && "value" in el) el.value = value;
     else el.setAttribute(key === "className" ? "class" : key, value === true ? "" : String(value));
   }

@@ -16,6 +16,7 @@ import { pickVoice } from "./render.js";
 import { prefs, setPrefs } from "./prefs.js";
 import { toast, sheet, popMenu, avatar, thumb } from "./ui.js";
 import * as tts from "./tts.js";
+import { subject } from "./convo-bits.js";
 
 const BASE = "/conversation-calls";
 
@@ -80,6 +81,7 @@ export function callScreen(ctx) {
     draw();
   }
 
+  let guideChecked = false;
   // Quiet for a while → the package's silence check-in (the character may ask whether the user is still there).
   const QUIET_MS = 150_000;
   let lastActivity = Date.now();
@@ -91,7 +93,7 @@ export function callScreen(ctx) {
       const res = await api.post(`${BASE}/${encodeURIComponent(session.id)}/idle`, { quietMs: QUIET_MS });
       if (res?.session) session = res.session;
       await refresh();
-      await speakTurns(res?.assistantMessages || []);
+      await afterTurns(res);
     } catch {
       // A failed check-in just waits for the next quiet stretch.
     } finally {
@@ -102,6 +104,11 @@ export function callScreen(ctx) {
 
   function open(s) {
     session = s;
+    // 캐릭터가 알아서 전화 끊기 (on unless turned off in 설정): made once, at the first call.
+    if (!guideChecked) {
+      guideChecked = true;
+      import("./call-guide.js").then((g) => g.ensureGuide()).catch(() => {});
+    }
     minimized = false;
     lastActivity = Date.now();
     clearInterval(timer);
@@ -155,6 +162,33 @@ export function callScreen(ctx) {
     await tts.speakSequence(items);
   }
 
+  // What the characters did besides talking (the package's call commands): [end_call] hangs up for everyone once
+  // their last words have played; [leave_call] means only that character left. The package saves the command and
+  // leaves ending the call to the screen, like its own call surface does.
+  const END_CALL = /\[(end_call|end|hang_?up)\b/i;
+  const LEAVE_CALL = /\[leave_call\b/i;
+  let notice = "";
+  async function afterTurns(res) {
+    await speakTurns(res?.assistantMessages || []);
+    const commands = (res?.turns || []).filter((t) => t?.mode === "command");
+    for (const t of commands.filter((c) => LEAVE_CALL.test(c.content || c.command || ""))) {
+      const left =
+        (notice = `${subject(ctx.index.get(t.characterId)?.name || t.speakerName || "상대")} 통화에서 나갔어요`);
+      draw();
+      setTimeout(() => notice === left && ((notice = ""), draw()), 4000);
+    }
+    const ender = commands.find((c) => END_CALL.test(c.content || c.command || ""));
+    if (!ender || !session) return;
+    // Nobody is answering any more: the waiting line goes, the last words stay as the caption.
+    phase = null;
+    pendingText = "";
+    notice = `${subject(ctx.index.get(ender.characterId)?.name || ender.speakerName || "상대")} 전화를 끊었어요`;
+    draw();
+    // Long enough to read who hung up (and the last caption) before the screen closes.
+    await new Promise((r) => setTimeout(r, 1800));
+    if (session) await end(true, ender.characterId || "character");
+  }
+
   async function sendText(text, inputMode = "typed") {
     if (!session || busy || !text.trim()) return;
     busy = true;
@@ -170,9 +204,9 @@ export function callScreen(ctx) {
       if (res?.userMessage) originals.set(res.userMessage.id, text.trim());
       if (res?.session) session = res.session;
       await refresh();
-      await speakTurns(res?.assistantMessages || []);
+      await afterTurns(res);
       lastActivity = Date.now();
-      if (session?.status !== "active") end(false);
+      if (session && session.status !== "active") end(false);
     } catch (error) {
       toast(`보내지 못했어요: ${error.message}`);
     } finally {
@@ -228,7 +262,7 @@ export function callScreen(ctx) {
         if (!res.ok) throw new Error(body.error || res.status);
         if (body?.session) session = body.session;
         await refresh();
-        await speakTurns(body?.assistantMessages || []);
+        await afterTurns(body);
       } catch (error) {
         toast(`알아듣지 못했어요: ${error.message}`);
       } finally {
@@ -258,18 +292,20 @@ export function callScreen(ctx) {
     close();
     ctx.onEnded?.();
   }
-  async function end(ask = true) {
+  // by: who hung up — "user" (the hang-up button), a character id ([end_call]), or null (ended elsewhere).
+  async function end(ask = true, by = ask ? "user" : null) {
     if (!session) return;
+    const callId = session.id;
     tts.stop();
     if (ask) {
       try {
-        await api.post(`${BASE}/${encodeURIComponent(session.id)}/end`);
+        await api.post(`${BASE}/${encodeURIComponent(callId)}/end`);
       } catch (error) {
         toast(error.message);
       }
     }
     close();
-    ctx.onEnded?.();
+    ctx.onEnded?.({ callId, by });
   }
   function close() {
     clearInterval(timer);
@@ -279,6 +315,7 @@ export function callScreen(ctx) {
     }
     session = null;
     messages = [];
+    notice = "";
     layer.hidden = true;
     pill.hidden = true;
   }
@@ -623,13 +660,15 @@ export function callScreen(ctx) {
     const started = Date.parse(session.startedAt || session.createdAt || "") || Date.now();
     const speaking = tts.ttsState().phase === "playing";
     const p = callPrefs();
-    timeEl.textContent = ringing
-      ? "전화가 왔어요"
-      : rec
-        ? "듣는 중 · 마이크를 다시 누르면 보내요"
-        : speaking
-          ? `${who?.name || "상대"}가 말하는 중 · ${fmt(Date.now() - started)}`
-          : fmt(Date.now() - started);
+    timeEl.textContent = notice
+      ? notice
+      : ringing
+        ? "전화가 왔어요"
+        : rec
+          ? "듣는 중 · 마이크를 다시 누르면 보내요"
+          : speaking
+            ? `${who?.name || "상대"}가 말하는 중 · ${fmt(Date.now() - started)}`
+            : fmt(Date.now() - started);
     pill.textContent = `${callName()} · ${fmt(Date.now() - started)}`;
     pill.hidden = !minimized || ringing;
     layer.hidden = minimized;

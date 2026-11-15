@@ -6,11 +6,6 @@
 export const USER = "user";
 /** The quick row above a tapped bubble (the Engine opens its full picker; this is the shortcut). */
 export const QUICK = ["❤️", "😂", "😮", "😢", "👍", "🔥"];
-/** The ＋ sheet. */
-export const MORE =
-  "😀 😆 🤣 🥹 😊 😍 🥰 😘 😎 🤔 🫠 😳 🥺 😭 😤 😡 😱 🤯 😴 🙄 😏 🤭 🫣 🤗 👏 🙌 🙏 💪 👀 🤝 ✌️ 👌 💯 ✨ 🎉 💀 💖 💔 💕 🌙 ☀️ 🌧️ 🍀 🍰 ☕ 🎵 📸 🫶".split(
-    " ",
-  );
 
 const parse = (extra) => {
   if (typeof extra !== "string") return extra || {};
