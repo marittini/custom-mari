@@ -6,7 +6,7 @@
 import { h, setChildren } from "./h.js";
 import { api } from "./api.js";
 import { chatMeta } from "./data.js";
-import { sheet, toast, ask } from "./ui.js";
+import { sheet, toast, ask, undoToast } from "./ui.js";
 
 /** The chat's settings as a profile holds them (the Engine strips what profiles don't keep). */
 export function snapshotOf(chat, { withStart = false } = {}) {
@@ -120,11 +120,33 @@ export function profileSheet({ chat, changed }) {
               class: "r two",
               role: "radio",
               "aria-checked": applied?.id === p.id ? "true" : "false",
-              onClick: () =>
-                run(
-                  () => api.post(`/chat-presets/${enc(p.id)}/apply/${enc(chat.id)}`, {}),
-                  `'${p.isDefault ? "기본" : p.name}' 적용`,
-                ),
+              onClick: async () => {
+                if (applied?.id === p.id) return;
+                const label = p.isDefault ? "기본" : p.name;
+                if (
+                  !(await ask(
+                    `'${label}' 프로필을 이 채팅에 적용할까요?\n연결·프리셋과 이 채팅의 여러 설정이 프로필대로 바뀌어요. 끝난 뒤 10초 안에는 되돌릴 수 있어요.`,
+                    { ok: "적용" },
+                  ))
+                )
+                  return;
+                const before = { ...snapshotOf(chat), personaId: chat.personaId ?? null };
+                await run(() => api.post(`/chat-presets/${enc(p.id)}/apply/${enc(chat.id)}`, {}), null);
+                undoToast(`'${label}' 적용했어요`, async () => {
+                  // The Engine merges metadata keys, so keys the profile added are cleared and the old ones put back.
+                  const now = chatMeta(await api.get(`/chats/${enc(chat.id)}`));
+                  const meta = { ...before.metadata };
+                  for (const k of Object.keys(now)) if (!(k in meta)) meta[k] = null;
+                  await api.patch(`/chats/${enc(chat.id)}/metadata`, meta);
+                  chat = await api.patch(`/chats/${enc(chat.id)}`, {
+                    connectionId: before.connectionId,
+                    promptPresetId: before.promptPresetId,
+                    personaId: before.personaId,
+                  });
+                  await changed?.();
+                  if (box.isConnected) await load();
+                });
+              },
             },
             h(
               "span",

@@ -4,7 +4,7 @@
 import { h, setChildren } from "../lib/h.js";
 import { api } from "../lib/api.js";
 import { data, chatMeta } from "../lib/data.js";
-import { pageHead, toast, errorBox } from "../lib/ui.js";
+import { pageHead, toast, errorBox, ask } from "../lib/ui.js";
 import { callPrefs, setCallPrefs } from "../lib/call.js";
 
 const sw = (on) => h("span", { class: on ? "sw on" : "sw" }, h("span"));
@@ -114,6 +114,14 @@ export function callSettingsScreen({ mount, args, go, back }) {
               type: "button",
               class: "chip",
               onClick: async () => {
+                const n = cacheSize ? `${cacheSize}개` : "모든";
+                if (
+                  !(await ask(
+                    `이 기기에 보관한 다시 듣기 음성 ${n}를 지울까요?\n다시 들으려면 음성을 새로 만들어야 해요 (음성 요청이 다시 들어요).`,
+                    { ok: "비우기", danger: true },
+                  ))
+                )
+                  return;
                 try {
                   await caches.delete(CACHE);
                   toast("비웠어요");

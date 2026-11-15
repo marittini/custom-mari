@@ -6,7 +6,6 @@
 import { h, setChildren } from "./h.js";
 import { api } from "./api.js";
 import { sheet, toast, avatar } from "./ui.js";
-import { startJob } from "./activity.js";
 import { ACTIVITY_MAX, MY_STATUSES, myStatus, setMyStatus } from "./my-status.js";
 import {
   STATUSES,
@@ -75,24 +74,17 @@ export function presenceSheet({ chat, index, fresh, me, waiting = [], replyNow, 
       toast(`되돌리지 못했어요: ${error.message}`);
     }
   }
+  // Only offered once the Engine said this character has no schedule (nothing to overwrite), by the work rule.
   async function makeSchedule(id) {
-    const done = startJob(`${index.get(id)?.name || "캐릭터"} 일정 만드는 중…`);
-    try {
-      const res = await api.post("/conversation/schedule/generate", {
-        chatId,
-        characterIds: [id],
-        forceRefresh: true,
-        timeZone: timeZoneOf(meta()) || Intl.DateTimeFormat().resolvedOptions().timeZone || undefined,
-      });
-      const r = res?.results?.[id]?.status || "";
-      if (r.startsWith("error")) toast(`만들지 못했어요: ${r.slice(6).trim()}`);
-      else toast("일정을 만들었어요");
-      await refresh();
-    } catch (error) {
-      toast(`만들지 못했어요: ${error.message}`);
-    } finally {
-      done();
-    }
+    const { regenerateSchedules } = await import("./work.js");
+    await regenerateSchedules({
+      chatId,
+      ids: [id],
+      names: [index.get(id)?.name || "캐릭터"],
+      timeZone: timeZoneOf(meta()) || Intl.DateTimeFormat().resolvedOptions().timeZone || undefined,
+      fresh: true,
+    });
+    await refresh();
   }
   const meta = () => {
     try {
@@ -189,7 +181,10 @@ export function presenceSheet({ chat, index, fresh, me, waiting = [], replyNow, 
               },
               "주간 일정 ›",
             )
-          : h("button", { type: "button", class: "pill", onClick: () => makeSchedule(id) }, "일정 만들기"),
+          : // Until the Engine's answer is here the slot stays empty, so a tap never lands on the other button.
+            statuses
+            ? h("button", { type: "button", class: "pill", onClick: () => makeSchedule(id) }, "일정 만들기")
+            : null,
       ),
       next.length
         ? h(

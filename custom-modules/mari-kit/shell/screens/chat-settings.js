@@ -8,7 +8,7 @@ import { h, icon, I, setChildren } from "../lib/h.js";
 import { api, download } from "../lib/api.js";
 import { data, characterIndex, chatMeta, chatTitle, coverOf, coverPos, textConnections } from "../lib/data.js";
 import { setPrefs, isDark, TOOL_DEFS, toolPlace } from "../lib/prefs.js";
-import { topBar, toast, errorBox, openEngine, sheet, avatar, thumb, ask } from "../lib/ui.js";
+import { topBar, toast, errorBox, openEngine, sheet, avatar, thumb, ask, workBox } from "../lib/ui.js";
 import { lorebookViews, REASON_LABEL } from "../lib/lorebooks.js";
 import { ENGINE_SECTIONS } from "../lib/engine-sections.js";
 import { pickPerson } from "../lib/picker.js";
@@ -963,6 +963,13 @@ export function chatSettingsScreen({ mount, args, go, back }) {
                 type: "button",
                 class: "pill",
                 onClick: async () => {
+                  if (
+                    !(await ask("이 채팅의 표지를 지울까요? 표지 사진 파일도 지워져요.", {
+                      ok: "지우기",
+                      danger: true,
+                    }))
+                  )
+                    return;
                   await api.delete(`/mari-kit/shell/cover/${encodeURIComponent(raw.split("/").pop())}`).catch(() => {});
                   await patchMeta({ mariKitCover: null, mariKitCoverPos: null });
                 },
@@ -1205,21 +1212,16 @@ export function chatSettingsScreen({ mount, args, go, back }) {
       },
     });
     const regenerate = async () => {
-      const done = startJob("캐릭터 일정 만드는 중…");
-      try {
-        await api.post("/conversation/schedule/generate", {
-          chatId,
-          characterIds: chat.characterIds || [],
-          forceRefresh: true,
-          timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone || "",
-        });
-        toast("캐릭터 일정을 새로 만들었어요");
-        await load();
-      } catch (error) {
-        toast(`일정을 만들지 못했어요: ${error.message}`);
-      } finally {
-        done();
-      }
+      const ids = chat.characterIds || [];
+      const { regenerateSchedules } = await import("../lib/work.js");
+      await regenerateSchedules({
+        chatId,
+        ids,
+        names: ids.map((id) => state.index.get(id)?.name || "캐릭터"),
+        timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone || "",
+        fresh: !hasSchedules,
+      });
+      await load();
     };
     return [
       h("div", { class: "gsec", style: { margin: "24px 20px 8px" } }, h("span", null, "자율 메시지")),
@@ -1291,15 +1293,7 @@ export function chatSettingsScreen({ mount, args, go, back }) {
           () => patchMeta({ conversationSchedulesEnabled: !schedOn }),
           "시간대마다 바쁨·잠 같은 상태가 바뀌고 답이 늦어지기도 해요",
         ),
-        schedOn
-          ? linkRow(
-              I.calendar,
-              hasSchedules ? "일정 다시 만들기" : "일정 만들기",
-              hasSchedules ? `${Object.keys(schedules).length}명 있음` : "없음",
-              regenerate,
-            )
-          : null,
-        // Each character's week (보기, 다시 만들기; 칸별 고치기 from there opens the Engine's editor).
+        // Each character's week (보기, 칸 고치기, 다시 만들기 for one person).
         ...(schedOn
           ? (chat.characterIds || []).map((id) =>
               linkRow(I.person, `${state.index.get(id)?.name || "캐릭터"} 일정`, schedules[id] ? "보기" : "없음", () =>
@@ -1308,6 +1302,20 @@ export function chatSettingsScreen({ mount, args, go, back }) {
             )
           : []),
       ),
+      // The AI action sits in its own box below the people (not under the switch), and asks first.
+      schedOn
+        ? h(
+            "div",
+            { style: { padding: "12px 20px 0" } },
+            workBox(
+              "AI로 새로 만들기",
+              hasSchedules
+                ? "방 안 모든 캐릭터의 이번 주 일정을 AI가 새로 짜요. 지금 일정은 바뀌어요. 끝난 뒤 10초 안에는 되돌릴 수 있어요."
+                : "아직 일정이 없는 캐릭터에게 AI가 이번 주 일정을 만들어 줘요.",
+              [[hasSchedules ? "모두 다시 만들기…" : "일정 만들기", regenerate]],
+            ),
+          )
+        : null,
       h("div", { class: "gsec", style: { margin: "24px 20px 8px" } }, h("span", null, "통화")),
       h(
         "div",

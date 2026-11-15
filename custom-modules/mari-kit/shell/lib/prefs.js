@@ -27,7 +27,6 @@ export function syncAppearance(theme) {
 }
 
 export const TOOL_DEFS = [
-  { id: "regen", label: "다시 생성", icon: "M20 12a8 8 0 1 1-2.3-5.7M20 4v5h-5", def: "show", assistantOnly: true },
   {
     id: "voice",
     label: "음성",
@@ -44,6 +43,8 @@ export const TOOL_DEFS = [
     icon: ["M4 6h9M8.5 4v2M6 6c.8 3.5 3 6 6 7M11 6c-.8 3.5-3 6-6 7", "M13 20l3.5-8 3.5 8M14.2 17.5h4.6"],
     def: "show",
   },
+  // Last among the shown tools (a generation; the old reply stays), not first beside 복사.
+  { id: "regen", label: "다시 생성", icon: "M20 12a8 8 0 1 1-2.3-5.7M20 4v5h-5", def: "show", assistantOnly: true },
   { id: "edit", label: "편집", icon: "M4 20h4L19 9l-4-4L4 16z", def: "more" },
   {
     id: "branch",

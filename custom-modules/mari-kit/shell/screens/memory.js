@@ -6,7 +6,8 @@ import { h, icon, dots, I, setChildren } from "../lib/h.js";
 import { api } from "../lib/api.js";
 import { data, chatTitle, characterIndex, chatMeta, textConnections } from "../lib/data.js";
 import { groupsOf, groupedOptions, splitByGroup } from "../lib/groups.js";
-import { toast, errorBox, sheet, ask } from "../lib/ui.js";
+import { toast, errorBox, sheet, ask, undoToast } from "../lib/ui.js";
+import { startJob } from "../lib/activity.js";
 
 const P = (d) => d;
 const SECTIONS = [
@@ -268,14 +269,24 @@ export function memoryScreen({ mount, args, go, back }) {
       return false;
     }
   };
-  const run = async (label, fn) => {
-    toast(`${label}…`);
+  // The tools follow the work rule (lib/work.js): ask when it costs an AI call or changes the memory, show the work,
+  // and offer 되돌리기 (the server keeps the memory before the last change) where it can be undone.
+  const run = async (label, fn, { confirm = null, undoable = false } = {}) => {
+    if (confirm && !(await ask(confirm, { ok: label }))) return;
+    const done = startJob(`${label} 중…`);
     try {
       const msg = await fn();
       await load();
-      if (msg) toast(msg);
+      if (msg && undoable)
+        undoToast(msg, async () => {
+          await api.post(`/mari-kit/memory/${enc}/undo`);
+          await load();
+        });
+      else if (msg) toast(msg);
     } catch (error) {
       toast(`${label} 실패: ${error.message}`);
+    } finally {
+      done();
     }
   };
 
@@ -580,28 +591,48 @@ export function memoryScreen({ mount, args, go, back }) {
               "장부 점검",
               "끝난 일 닫기 · 겹친 항목 합치기 · 호출 1번",
               () =>
-                run("장부 점검", async () => {
-                  const r = await api.post(`/mari-kit/memory/${enc}/tidy`);
-                  return `닫음 ${r.closed} · 합침 ${r.merged}`;
-                }),
+                run(
+                  "장부 점검",
+                  async () => {
+                    const r = await api.post(`/mari-kit/memory/${enc}/tidy`);
+                    return `닫음 ${r.closed} · 합침 ${r.merged}`;
+                  },
+                  {
+                    confirm:
+                      "장부를 점검할까요? 끝난 일을 닫고 겹친 항목을 합쳐요. AI 요청 1번.\n끝난 뒤 10초 안에는 되돌릴 수 있어요.",
+                    undoable: true,
+                  },
+                ),
             ],
             [
               "챕터만 다시 묶기",
               "장면·사실은 그대로 두고 챕터만 새로",
               () =>
-                run("챕터 다시 묶기", async () => {
-                  const r = await api.post(`/mari-kit/memory/${enc}/rechapter`);
-                  return `챕터 ${r.chapters}개 (호출 ${r.calls}번)`;
-                }),
+                run(
+                  "챕터 다시 묶기",
+                  async () => {
+                    const r = await api.post(`/mari-kit/memory/${enc}/rechapter`);
+                    return `챕터 ${r.chapters}개 (호출 ${r.calls}번)`;
+                  },
+                  {
+                    confirm:
+                      "챕터를 새로 묶을까요? 장면과 사실은 그대로이고 챕터만 바뀌어요. AI 요청 여러 번.\n끝난 뒤 10초 안에는 되돌릴 수 있어요.",
+                    undoable: true,
+                  },
+                ),
             ],
             [
               "마지막 정리 되돌리기",
               "방금 정리한 묶음을 취소",
               () =>
-                run("되돌리기", async () => {
-                  await api.post(`/mari-kit/memory/${enc}/undo`);
-                  return "되돌렸어요";
-                }),
+                run(
+                  "되돌리기",
+                  async () => {
+                    await api.post(`/mari-kit/memory/${enc}/undo`);
+                    return "되돌렸어요";
+                  },
+                  { confirm: "방금 정리한 묶음을 취소할까요? 그 정리 전의 기억으로 돌아가요." },
+                ),
             ],
             [
               "처음부터 다시 정리",

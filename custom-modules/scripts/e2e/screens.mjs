@@ -92,6 +92,7 @@ export const FLOW_SCREENS = {
   "convo-weather": ["chat-settings", "weather", "convo"],
   "convo-scene": ["convo", "rp"],
   "convo-media": ["convo", "chat-settings"],
+  safety: ["convo", "chat-settings", "schedule"],
 };
 
 /** Runs the tour (only screens drawn by `mods`, if given). Returns { rows, failed }. app: the shell URL. */

@@ -427,8 +427,19 @@ export const scheduleFeature = {
       });
       return view(key, profile);
     });
+    // 멈추기 in the shell cuts the request; like the Engine, a cut request saves nothing (its answer is dropped).
+    const watchGone = (reply) => {
+      let gone = false;
+      reply.raw.once("close", () => {
+        if (!reply.raw.writableFinished) gone = true;
+      });
+      return () => {
+        if (gone) throw httpError(499, "Stopped before saving.");
+      };
+    };
     // 일상 요약 (from the original extension): a short Korean paragraph about this persona's week, for the user to read.
-    app.post("/schedule/:key/summary", async (request) => {
+    app.post("/schedule/:key/summary", async (request, reply) => {
+      const stillThere = watchGone(reply);
       const key = keyOf(request.params.key);
       const { profile } = await read(key);
       if (!DAYS.some((d) => profile.days[d]?.length)) throw httpError(400, "Make a schedule first.");
@@ -454,6 +465,7 @@ export const scheduleFeature = {
         text = str(runtime.json.parseJsonish(String(result?.content ?? ""))?.summary, 2000);
       } catch {}
       if (!text) throw httpError(502, "The model did not return a summary.");
+      stillThere();
       const saved = await save(key, (p) => {
         p.summary = { text, at: new Date().toISOString() };
         return p;
@@ -462,7 +474,8 @@ export const scheduleFeature = {
     });
 
     // AI: a whole week or one day. action "rewrite" | "adjust". Real-life windows are refreshed when needed.
-    app.post("/schedule/:key/generate", async (request) => {
+    app.post("/schedule/:key/generate", async (request, reply) => {
+      const stillThere = watchGone(reply);
       const key = keyOf(request.params.key);
       const body = request.body && typeof request.body === "object" ? request.body : {};
       const day = body.day ? str(body.day, 20) : null;
@@ -514,6 +527,7 @@ export const scheduleFeature = {
       let windows = profile.windows;
       if (profile.config.lifestyle && !windows.length)
         windows = windowsFrom(await ask(WINDOWS_PROMPT(profile.config.lifestyle)));
+      stillThere();
       const next = await save(key, (p) => {
         const fresh = day
           ? { [day]: repairDay(parsed?.blocks ?? parsed?.days?.[day]) }

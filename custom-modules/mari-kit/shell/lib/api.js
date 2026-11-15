@@ -22,7 +22,7 @@ function touch(path, body) {
   if (id && !["group", "import"].includes(id)) touchedChats.add(decodeURIComponent(id));
 }
 
-async function request(method, path, body) {
+async function request(method, path, body, signal) {
   if (method !== "GET" && CHAT_WRITE.test(path)) {
     chatWrites += 1;
     touch(path, body);
@@ -34,6 +34,7 @@ async function request(method, path, body) {
     headers,
     credentials: "same-origin",
     body: body === undefined ? undefined : JSON.stringify(body),
+    ...(signal ? { signal } : {}),
   });
   const text = await res.text();
   let data = null;
@@ -48,7 +49,8 @@ async function request(method, path, body) {
 
 export const api = {
   get: (path) => request("GET", path),
-  post: (path, body) => request("POST", path, body ?? {}),
+  /** signal (optional): an AbortSignal; the Engine drops work whose request was cut (멈추기). */
+  post: (path, body, signal) => request("POST", path, body ?? {}, signal),
   patch: (path, body) => request("PATCH", path, body ?? {}),
   put: (path, body) => request("PUT", path, body ?? {}),
   delete: (path) => request("DELETE", path),
