@@ -9,13 +9,18 @@ needs the owner, a real account or a phone.
 
 ## Doing
 
-### M-11 Convo 3단계 — claude ccr-b4485093-p6ybfu
+### M-13 잘못 누르기 방지 · M-14 메뉴 정리 · M-15 통화 자막과 기록 — claude ccr-b4485093-p6ybfu
 
-Agreed with the mockup https://claude.ai/artifact/DEEdRVmDH7LouB2nSGGj7r and the owner's answers (panel kept, voice
-input and GIF left out, games built for when one is installed). Mari Kit 0.23.0: the ☺ media panel (the Engine's
-emoji lists bundled at build, kaomoji, stickers with send-now, ★ custom emojis with manage / export / import, recents
-shared with the Engine), ":name" completion and ":name:" shown in messages, the chat's emoji selection setting, games
-(/games, the panel's 게임 tab when installed, the Engine opened with the command typed, a board strip).
+The owner found the menus scattered and regenerated a character schedule by mistake; they also want call subtitles
+and call records. Agreed with the mockup https://claude.ai/artifact/MtDLAgQpp11Anr8og7ZUZk and the owner's answers
+(globals move to 설정, 되돌리기 yes, call screen face-first by default). Three releases:
+
+- 0.24.0 (M-13): the work rule (ask, 멈추기, 되돌리기) on every button that costs AI or overwrites; the new-reply
+  button apart; 종료 apart from 마이크.
+- 0.25.0 (M-14): chat settings in labelled groups, this-chat vs all-rooms (globals to 설정), 대화 기능 tidied (commands
+  folded), one name per setting.
+- 0.26.0 (M-15): the call's subtitle window and waiting states, subtitle mode and size, ☺ while calling, the call card
+  and full record in the Convo.
 
 ## Ready
 
@@ -29,6 +34,8 @@ _(none)_
 
 ## Done
 
+- M-11 Convo 3단계 — Mari Kit 0.23.0 (PR #53): ☺ media panel (emoji, kaomoji, stickers), custom emojis and
+  :name:, emoji selection, games through the Engine.
 - M-6 Convo 2단계 — Mari Kit 0.20.0 (PR #51) and 0.22.0 (PR #52): pictures, @mentions, my status, coloured
   dots, schedule block editing, reaction removal, weather, scene invitations.
 - M-4 Convo 이모지 반응·답장, M-8 화면 못 불러올 때 다시 시도, M-9 내 일정 페르소나 고르기, M-10 생성 중인 요청 화면
