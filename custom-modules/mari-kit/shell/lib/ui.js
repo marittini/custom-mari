@@ -145,15 +145,55 @@ export function toast(text, onClick = null) {
   toastTimer = setTimeout(() => el.remove(), 2600);
 }
 
-/** A notice that stays while something runs (번역 중…); returns close(). */
-export function busyNote(text) {
+/** A notice that stays while something runs (번역 중…), with a stop button when given one; returns close(). */
+export function busyNote(text, stop = null) {
   const frame = document.querySelector(".app");
   if (!frame) return () => {};
   frame.querySelector(".toast")?.remove();
   clearTimeout(toastTimer);
-  const el = h("div", { class: "toast busy", role: "status", "aria-live": "polite" }, text);
+  const el = h(
+    "div",
+    { class: stop ? "toast busy act-toast" : "toast busy", role: "status", "aria-live": "polite" },
+    h("span", null, text),
+    stop ? h("button", { type: "button", class: "toast-btn", onClick: () => stop.fn() }, stop.label || "멈추기") : null,
+  );
   frame.append(el);
   return () => el.remove();
+}
+
+/** The notice after an overwrite: what changed and 되돌리기 for `ms` (10 s). */
+export function undoToast(text, undo, ms = 10000) {
+  const frame = document.querySelector(".app");
+  if (!frame) return;
+  frame.querySelector(".toast")?.remove();
+  clearTimeout(toastTimer);
+  let used = false;
+  const el = h(
+    "div",
+    { class: "toast act-toast", role: "status" },
+    h("span", null, text),
+    h(
+      "button",
+      {
+        type: "button",
+        class: "toast-btn",
+        onClick: async () => {
+          if (used) return;
+          used = true;
+          el.remove();
+          try {
+            await undo();
+            toast("되돌렸어요");
+          } catch (error) {
+            toast(`되돌리지 못했어요: ${error.message}`);
+          }
+        },
+      },
+      "되돌리기",
+    ),
+  );
+  frame.append(el);
+  toastTimer = setTimeout(() => el.remove(), ms);
 }
 
 /** Bottom sheet over the current frame; returns { el, close }. */
@@ -219,6 +259,25 @@ export function popMenu(items) {
 /** A box whose label sits on its top border (the shell's form field). */
 export function hbox(label, ...children) {
   return h("div", { class: "hbox" }, h("span", { class: "htag" }, label), ...children);
+}
+
+/**
+ * A work box: an action that costs an AI call or overwrites something, set apart from settings and links (its own
+ * box, a plain sentence of what it changes, a button that asks before it runs). Never placed right under the
+ * switch that reveals it.
+ */
+export function workBox(label, text, buttons, { disabled = false } = {}) {
+  return h(
+    "div",
+    { class: "hbox workbox" },
+    h("span", { class: "htag" }, label),
+    h("p", null, text),
+    h(
+      "div",
+      { class: "workbox-acts" },
+      buttons.map(([title, onClick]) => h("button", { type: "button", class: "pill", disabled, onClick }, title)),
+    ),
+  );
 }
 
 /**

@@ -345,28 +345,35 @@ export function rpScreen({ mount, args, go, back }) {
     );
   }
 
+  // Organizing memory costs AI calls (up to 20 rounds), so it asks first and can be stopped (lib/work.js); with
+  // nothing waiting, the icon just opens the memory library.
   async function organize() {
     if (!memory || memory.busy) return;
-    if (!memory.waiting) return go(`memory/${encodeURIComponent(chatId)}`); // nothing waiting: open the memory library
+    if (!memory.waiting) return go(`memory/${encodeURIComponent(chatId)}`);
+    const { work } = await import("../lib/work.js");
+    let calls = 0;
     memory.busy = true;
     drawMemory();
-    let calls = 0;
-    const done = startJob("기억 정리 중…");
-    try {
-      for (let i = 0; i < 20; i += 1) {
-        const res = await api.post(`/mari-kit/memory/${encodeURIComponent(chatId)}/organize`, { force: true });
-        calls += res?.calls || 0;
-        memory.waiting = res?.status?.waitingMessages ?? 0;
-        if (!res?.organized || !res?.status?.readyChunk) break;
-      }
-      toast(calls ? `기억을 정리했어요 (모델 호출 ${calls}번)` : "정리할 내용이 없었어요");
-    } catch (error) {
-      toast(`정리하지 못했어요: ${error.message}`);
-    } finally {
-      done();
-      memory.busy = false;
-      drawMemory();
-    }
+    await work({
+      confirm: `기억에 아직 안 들어간 메시지 ${memory.waiting}개를 정리할까요?\nAI가 요약을 만들어 기억 서재에 넣어요. AI 요청 여러 번(최대 20번).\n정리한 뒤에는 기억 서재에서 되돌릴 수 있어요.`,
+      ok: "정리하기",
+      label: "기억 정리 중…",
+      run: async (signal, stopped) => {
+        for (let i = 0; i < 20 && !stopped(); i += 1) {
+          const res = await api.post(
+            `/mari-kit/memory/${encodeURIComponent(chatId)}/organize`,
+            { force: true },
+            signal,
+          );
+          calls += res?.calls || 0;
+          memory.waiting = res?.status?.waitingMessages ?? 0;
+          if (!res?.organized || !res?.status?.readyChunk) break;
+        }
+      },
+      done: calls ? `기억을 정리했어요 (모델 호출 ${calls}번)` : "기억을 정리했어요",
+    });
+    memory.busy = false;
+    drawMemory();
   }
 
   // ── drawing ────────────────────────────

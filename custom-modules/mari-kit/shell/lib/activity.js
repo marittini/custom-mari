@@ -13,7 +13,7 @@ const redraw = () => strips.forEach((fn) => fn());
 
 /** Shows `label` (with an optional stop button { label, fn }) until the returned function is called. */
 export function startJob(label, stop = null) {
-  if (!strips.size) return busyNote(label);
+  if (!strips.size) return busyNote(label, stop);
   const id = ++next;
   jobs.set(id, { label, stop });
   redraw();

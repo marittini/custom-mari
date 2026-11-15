@@ -1573,7 +1573,7 @@ label.grow {
   display: flex;
   justify-content: space-evenly;
   align-items: flex-start;
-  padding: 8px 12px 18px;
+  padding: 8px 12px 12px;
 }
 .cx-ring {
   justify-content: center;
@@ -1667,8 +1667,15 @@ label.grow {
 .cx-send:disabled {
   opacity: 0.4;
 }
+/* 종료 alone on its row, centred, with room above it */
+.cx-endrow {
+  display: flex;
+  justify-content: center;
+  padding: 4px 12px 20px;
+}
 /* typing: the keys (and 종료) step away, the face shrinks, the caption keeps the room */
-.callx.typing .cx-keys {
+.callx.typing .cx-keys,
+.callx.typing .cx-endrow {
   display: none;
 }
 .callx.typing .cx-who {
@@ -1685,6 +1692,7 @@ label.grow {
   font-size: 18px;
 }
 .cx-keys[hidden],
+.cx-endrow[hidden],
 .cx-ring[hidden],
 .cx-reply[hidden] {
   display: none;
@@ -1831,6 +1839,26 @@ label.grow {
 button.toast {
   border: 0;
   font: inherit;
+  cursor: pointer;
+}
+/* A notice with its own button (멈추기, 되돌리기) */
+.act-toast {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 6px 6px 6px 14px;
+}
+.toast-btn {
+  min-height: 36px;
+  padding: 0 12px;
+  border: 1px solid currentColor;
+  border-radius: 999px;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  font-size: 13px;
+  font-weight: 600;
+  white-space: nowrap;
   cursor: pointer;
 }
 /* Message tools on every message: the last reply keeps its row, others one faint ⋯. */
@@ -2886,6 +2914,23 @@ button.toast {
   text-align: center;
   font-size: 12px;
   font-variant-numeric: tabular-nums;
+}
+/* "＋ 새 답": a labelled button of its own, apart from the arrows (a new reply is a generation) */
+.sw-new {
+  margin-left: 10px;
+  min-height: 32px;
+  padding: 0 12px;
+  border: 1px solid var(--line-2);
+  border-radius: 999px;
+  background: transparent;
+  color: var(--ink-2);
+  font: inherit;
+  font-size: 12px;
+  cursor: pointer;
+}
+.sw-new:disabled {
+  opacity: 0.4;
+  cursor: default;
 }
 
 /* Conversation stickers share the shell's existing bottom sheet and surface tokens. */
@@ -3982,4 +4027,29 @@ button.toast {
   font-size: 22px;
   text-align: center;
   vertical-align: middle;
+}
+
+/* A work box (lib/ui.js workBox): an AI or overwriting action, set apart from settings — dashed edge, a sentence of
+   what it changes, a plain button that asks first */
+.workbox {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 10px;
+  border-style: dashed;
+  border-color: var(--line-2);
+}
+.workbox p {
+  margin: 0;
+  font-size: 13px;
+  line-height: 1.6;
+  color: var(--ink-2);
+}
+.workbox-acts {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.workbox .pill {
+  min-height: 44px;
 }

@@ -832,6 +832,9 @@ export function convoScreen({ mount, args, go, back }) {
       );
       return go(`call-settings/${encodeURIComponent(chatId)}`);
     }
+    // A call starts the character talking (AI and voice), so a stray tap on the phone icon asks first.
+    const names = (chat.characterIds || []).map((id) => index.get(id)?.name).filter(Boolean);
+    if (!(await ask(`${names.join(", ") || "캐릭터"}에게 전화를 걸까요?`, { ok: "전화 걸기" }))) return;
     try {
       call.open(await api.post("/conversation-calls/start", { chatId, mode: "audio", initiator: "user" }));
     } catch (error) {

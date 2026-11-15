@@ -10,7 +10,7 @@ import { api } from "../lib/api.js";
 import { data } from "../lib/data.js";
 import { pickPerson } from "../lib/picker.js";
 import { groupsOf } from "../lib/groups.js";
-import { pageHead, toast, errorBox, sheet, popMenu, hbox } from "../lib/ui.js";
+import { pageHead, toast, errorBox, sheet, popMenu, hbox, workBox } from "../lib/ui.js";
 
 const DAYS = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"];
 const DAY_KO = ["월", "화", "수", "목", "금", "토", "일"];
@@ -84,6 +84,20 @@ export function scheduleScreen({ mount, args, go, back }) {
     }
   }
 
+  // Changes that overwrite the week (AI, a file, a delete, a repair) follow the work rule (lib/work.js): ask when it
+  // matters, 멈추기 while it runs, and 되돌리기 for 10 seconds (the week as exported before, imported back).
+  async function kept(opts) {
+    const { work } = await import("../lib/work.js");
+    return work({
+      snapshot: () => api.get(`${base}/export`),
+      restore: async (snap) => {
+        state = await api.post(`${base}/import`, snap);
+        if (alive) draw();
+      },
+      ...opts,
+    });
+  }
+
   function openMenu() {
     const p = state?.profile;
     if (!p) return;
@@ -132,7 +146,17 @@ export function scheduleScreen({ mount, args, go, back }) {
         if (!f) return;
         try {
           if (f.size > 1024 * 1024) throw new Error("1MB 이하 파일만 돼요");
-          await call("post", "/import", JSON.parse(await f.text()), "가져왔어요");
+          const incoming = JSON.parse(await f.text());
+          await kept({
+            confirm: "지금 내 일정이 이 파일의 일정으로 모두 바뀌어요.\n끝난 뒤 10초 안에는 되돌릴 수 있어요.",
+            ok: "가져오기",
+            label: "가져오는 중…",
+            run: async (signal) => {
+              state = await api.post(`${base}/import`, incoming, signal);
+              draw();
+            },
+            done: "가져왔어요",
+          });
         } catch (error) {
           toast(error.message);
         }
@@ -291,22 +315,23 @@ export function scheduleScreen({ mount, args, go, back }) {
   /** 일상 요약: a short paragraph about the week, made on request (one model call). */
   function summaryBox(p) {
     if (!DAYS.some((d) => p.days[d]?.length)) return null;
-    const make = async (btn) => {
-      btn.disabled = true;
-      btn.textContent = "만드는 중…";
-      try {
-        state = await api.post(`${base}/summary`);
-        draw();
-      } catch (error) {
-        toast(error.message);
-        btn.disabled = false;
-        btn.textContent = p.summary ? "다시 만들기" : "요약 만들기";
-      }
-    };
+    const make = () =>
+      kept({
+        confirm: p.summary
+          ? "일상 요약을 AI로 다시 쓸까요? 지금 요약은 바뀌어요. AI 요청 1번.\n끝난 뒤 10초 안에는 되돌릴 수 있어요."
+          : null,
+        ok: "다시 쓰기",
+        label: "일상 요약 쓰는 중…",
+        run: async (signal) => {
+          state = await api.post(`${base}/summary`, {}, signal);
+          draw();
+        },
+        done: p.summary ? "요약을 다시 썼어요" : "요약을 만들었어요",
+      });
     const btn = h(
       "button",
-      { type: "button", class: "txtbtn", onClick: (e) => make(e.currentTarget) },
-      p.summary ? "다시 만들기" : "요약 만들기",
+      { type: "button", class: "txtbtn", onClick: make },
+      p.summary ? "다시 쓰기…" : "요약 만들기",
     );
     return h(
       "div",
@@ -464,20 +489,49 @@ export function scheduleScreen({ mount, args, go, back }) {
           { style: { display: "flex", gap: "12px" } },
           h(
             "button",
-            { type: "button", class: "txtbtn", onClick: () => saveDay(blocks, true, "빈 시간과 겹침을 고쳤어요") },
+            {
+              type: "button",
+              class: "txtbtn",
+              onClick: () =>
+                kept({
+                  label: "고치는 중…",
+                  run: () => saveDay(blocks, true),
+                  done: "빈 시간과 겹침을 고쳤어요",
+                }),
+            },
             "빈 시간 · 겹침 고치기",
           ),
-          h("button", { type: "button", class: "txtbtn", onClick: () => regenerateDay() }, "이 요일 다시 만들기"),
         ),
       ),
+      blocks.length
+        ? workBox(
+            "AI로 새로 만들기",
+            `${DAY_KO[DAYS.indexOf(day)]}요일 칸을 AI가 새로 짜요. 지금 칸은 바뀌어요. 끝난 뒤 10초 안에는 되돌릴 수 있어요.`,
+            [["이 요일 다시 만들기…", () => regenerateDay()]],
+          )
+        : null,
     ];
   }
   function saveDay(blocks, repair, done) {
+    if (!done)
+      return api.put(`${base}/day/${day}`, { blocks, repair }).then((next) => {
+        state = next;
+        draw();
+      });
     return call("put", `/day/${day}`, { blocks, repair }, done);
   }
-  async function regenerateDay() {
-    toast(`${DAY_KO[DAYS.indexOf(day)]}요일 만드는 중…`);
-    await call("post", "/generate", { day, action: "rewrite", chatId }, "다시 만들었어요");
+  function regenerateDay() {
+    const name = `${DAY_KO[DAYS.indexOf(day)]}요일`;
+    return kept({
+      confirm: `${name} 일정을 AI로 다시 만들까요?\n이 요일 칸은 새것으로 바뀌어요. AI 요청 1번.\n끝난 뒤 10초 안에는 되돌릴 수 있어요.`,
+      ok: "다시 만들기",
+      label: `${name} 만드는 중…`,
+      run: async (signal) => {
+        state = await api.post(`${base}/generate`, { day, action: "rewrite", chatId }, signal);
+        draw();
+      },
+      done: `${name}을 다시 만들었어요`,
+    });
   }
   function blockSheet(index) {
     const all = [...(state.profile.days[day] || [])];
@@ -534,14 +588,18 @@ export function scheduleScreen({ mount, args, go, back }) {
                 {
                   type: "button",
                   class: "pill",
-                  onClick: () => (
-                    s.close(),
-                    saveDay(
-                      blocks.filter((_, i) => i !== index),
-                      true,
-                      "지웠어요",
-                    )
-                  ),
+                  onClick: () => {
+                    s.close();
+                    kept({
+                      label: "지우는 중…",
+                      run: () =>
+                        saveDay(
+                          blocks.filter((_, i) => i !== index),
+                          true,
+                        ),
+                      done: "지웠어요",
+                    });
+                  },
                 },
                 "지우기",
               )
@@ -661,31 +719,32 @@ export function scheduleScreen({ mount, args, go, back }) {
         : null,
     ];
   }
-  async function runMake(e) {
-    const btn = e.currentTarget;
-    btn.disabled = true;
-    btn.textContent = "만드는 중…";
-    try {
-      await api.patch(`${base}/config`, {
-        instructions: make.instructions,
-        lifestyle: make.lifestyle,
-        connectionId: make.connectionId,
-        zone: make.zone,
-        mode: make.mode,
-      });
-      state = await api.post(`${base}/generate`, {
-        action: make.action,
-        day: make.span === "day" ? make.day : null,
-        chatId,
-      });
-      toast("만들었어요");
-      day = make.span === "day" ? make.day : state.today;
-      go(link("week"));
-    } catch (error) {
-      toast(error.message);
-      btn.disabled = false;
-      draw();
-    }
+  // The make screen itself is the question (its choices say what happens); 멈추기 and 되돌리기 still apply.
+  let making = false;
+  async function runMake() {
+    if (making) return;
+    making = true;
+    const ok = await kept({
+      label: make.span === "day" ? `${DAY_KO[DAYS.indexOf(make.day)]}요일 만드는 중…` : "일주일 만드는 중…",
+      run: async (signal) => {
+        await api.patch(`${base}/config`, {
+          instructions: make.instructions,
+          lifestyle: make.lifestyle,
+          connectionId: make.connectionId,
+          zone: make.zone,
+          mode: make.mode,
+        });
+        state = await api.post(
+          `${base}/generate`,
+          { action: make.action, day: make.span === "day" ? make.day : null, chatId },
+          signal,
+        );
+      },
+      done: "만들었어요",
+    }).finally(() => (making = false));
+    if (!ok) return;
+    day = make.span === "day" ? make.day : state.today;
+    go(link("week"));
   }
 
   function draw() {

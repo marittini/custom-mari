@@ -562,6 +562,44 @@ const flows = {
     );
   },
 
+  // The work rule (lib/work.js): a new reply is its own button; the schedule regeneration sits in a box, asks first
+  // and does nothing when cancelled; an overwrite in 내 일정 can be undone for 10 seconds and really comes back.
+  async safety({ page }) {
+    const generated = [];
+    page.on("request", (r) => r.url().includes("/conversation/schedule/generate") && generated.push(r.url()));
+    await open(page);
+    await goIn(page, `#/convo/${encodeURIComponent(convo.id)}`);
+    await page.locator(".sw-row").last().waitFor();
+    if (!(await page.locator(".sw-row").last().getByRole("button", { name: "다음 답" }).isDisabled()))
+      throw new Error("다음 답 should be disabled on the newest reply");
+    await page.locator(".sw-row").last().getByRole("button", { name: "새 답 만들기" }).waitFor();
+    // 대화 기능: the regeneration is in its own box below the people, and asks.
+    await goIn(page, `#/chat-settings/${encodeURIComponent(scheduled.id)}/convo`);
+    const box = page.locator(".workbox").first();
+    await box.waitFor();
+    await box.getByRole("button", { name: "모두 다시 만들기…" }).click();
+    await page.getByText("이번 주 일정을 AI로 다시 만들까요?").waitFor();
+    await page.getByRole("button", { name: "취소", exact: true }).click();
+    await page.waitForTimeout(500);
+    if (generated.length) throw new Error("cancelled regeneration still sent a request");
+    // 내 일정: 빈 시간 · 겹침 고치기 changes the day; 되돌리기 brings the old blocks back.
+    const base = "/mari-kit/schedule/default";
+    const today = (await api("GET", base)).today;
+    const before = [
+      { time: "09:00-10:00", activity: "e2e 공부", status: "dnd" },
+      { time: "13:00-14:00", activity: "e2e 점심", status: "online" },
+    ];
+    await api("PUT", `${base}/day/${today}`, { blocks: before, repair: false });
+    const blocksNow = async () => (await api("GET", base)).profile.days[today].map((b) => b.time).join(",");
+    const original = await blocksNow();
+    await goIn(page, `#/schedule/default/week/${encodeURIComponent(convo.id)}`);
+    await page.getByRole("button", { name: "빈 시간 · 겹침 고치기" }).click();
+    await until(async () => (await blocksNow()) !== original, 8000, "repair changed the day");
+    await page.locator(".act-toast").getByRole("button", { name: "되돌리기" }).click();
+    await until(async () => (await blocksNow()) === original, 8000, "되돌리기 restored the day");
+    await snap(page, "safety-week");
+  },
+
   // Reactions and replies (the Engine's data): react from the quick row and take it back, see a character's
   // reaction, reply to a message (sent as replyTo) and see its quote.
   async "convo-react"({ page }) {

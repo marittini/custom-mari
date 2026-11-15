@@ -183,11 +183,14 @@ export function callScreen(ctx) {
     }
     const recorder = new MediaRecorder(stream);
     const chunks = [];
+    const me = { recorder, chunks, discard: false };
     recorder.ondataavailable = (e) => e.data.size && chunks.push(e.data);
     recorder.onstop = async () => {
       stream.getTracks().forEach((t) => t.stop());
       rec = null;
       draw();
+      // Hung up while talking: the half sentence is dropped quietly (it used to show "알아듣지 못했어요").
+      if (me.discard || !session) return;
       const blob = new Blob(chunks, { type: recorder.mimeType || "audio/webm" });
       if (blob.size < 2000) return;
       const form = new FormData();
@@ -218,7 +221,7 @@ export function callScreen(ctx) {
         draw();
       }
     };
-    rec = { recorder, chunks };
+    rec = me;
     recorder.start();
     draw();
   }
@@ -254,7 +257,10 @@ export function callScreen(ctx) {
   }
   function close() {
     clearInterval(timer);
-    rec?.recorder.stop();
+    if (rec) {
+      rec.discard = true;
+      rec.recorder.stop();
+    }
     session = null;
     messages = [];
     layer.hidden = true;
@@ -366,7 +372,10 @@ export function callScreen(ctx) {
     h("span", { class: "cx-round end" }, icon(I.hangup, 26, 1.8)),
     h("small", null, "종료"),
   );
-  const keys = h("div", { class: "cx-keys" }, flipBtn, micBtn, endBtn, soundBtn, logBtn);
+  // 종료 sits on its own row below, like a phone's red button, away from 마이크 (a double tap on the mic used to
+  // land on it).
+  const keys = h("div", { class: "cx-keys" }, flipBtn, micBtn, soundBtn, logBtn);
+  const endRow = h("div", { class: "cx-endrow" }, endBtn);
   const reply = h("div", { class: "cx-reply" }, input, sendBtn);
   const ringRow = h(
     "div",
@@ -411,6 +420,7 @@ export function callScreen(ctx) {
     h("div", { class: "cx-say" }, prevEl, capEl),
     ringRow,
     keys,
+    endRow,
     reply,
   );
 
@@ -450,6 +460,7 @@ export function callScreen(ctx) {
     layer.classList.toggle("ringing", ringing);
     ringRow.hidden = !ringing;
     keys.hidden = ringing;
+    endRow.hidden = ringing;
     reply.hidden = ringing;
     micBtn.classList.toggle("on", !!rec);
     soundBtn.classList.toggle("on", muted);
