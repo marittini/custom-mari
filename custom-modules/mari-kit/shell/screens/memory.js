@@ -746,8 +746,8 @@ export function memoryScreen({ mount, args, go, back }) {
           status.totalMessages !== undefined
             ? h(
                 "small",
-                { class: "hint" },
-                `전체 ${status.totalMessages} · 정리됨 ${status.organizedMessages} · 최근 원문 ${Math.min(status.keepRecent, status.totalMessages)} · AI에게서 숨김 ${status.hiddenMessages}`,
+                { class: "hint", style: { wordBreak: "keep-all", overflowWrap: "anywhere" } },
+                `전체 ${status.totalMessages} · 정리됨 ${status.organizedMessages} · 최근 원문 ${Math.min(status.keepRecent, status.totalMessages)} · 숨김 ${status.hiddenMessages}`,
               )
             : null,
         ),
