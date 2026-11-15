@@ -71,7 +71,14 @@ const exists = (tree) => {
   }
 };
 const branch = gitText(["rev-parse", "--abbrev-ref", "HEAD"]).trim();
-const mainBase = (ref) => gitText(["rev-parse", `${gitText(["merge-base", ref, "HEAD"]).trim()}^{tree}`]).trim();
+// The tree where this branch left `ref`; null when the clone has no such ref (CI checks out one commit).
+const mainBase = (ref) => {
+  try {
+    return gitText(["rev-parse", `${gitText(["merge-base", ref, "HEAD"]).trim()}^{tree}`]).trim();
+  } catch {
+    return null;
+  }
+};
 const nowTree = snapshot();
 const diffs = new Map();
 const diffSince = (tree, path) => {
@@ -158,6 +165,8 @@ if (all) {
   console.log("Everything (--all)");
 } else {
   const main = mainBase("origin/main");
+  if (!main && !opt("--base") && !state[branch])
+    throw new Error("origin/main is missing in this clone: git fetch origin main, or pass --base <ref>");
   const last = state[branch];
   const useLast = !opt("--base") && last?.main === main && exists(last.tree);
   const fromTree = opt("--base") ? mainBase(opt("--base")) : useLast ? last.tree : main;
@@ -356,11 +365,9 @@ if (dataDir) await rm(dataDir, { recursive: true, force: true }).catch(() => {})
 
 const failed = results.filter((r) => !r.ok).length;
 // A full pass is the next run's starting point (--quick skips the Engine, so it does not count).
-if (!failed && !quick && !opt("--base") && !opt("--url"))
-  await writeFile(
-    join(store, "state.json"),
-    JSON.stringify({ ...state, [branch]: { tree: nowTree, main: mainBase("origin/main") } }),
-  );
+const mainNow = mainBase("origin/main");
+if (!failed && !quick && !opt("--base") && !opt("--url") && mainNow)
+  await writeFile(join(store, "state.json"), JSON.stringify({ ...state, [branch]: { tree: nowTree, main: mainNow } }));
 console.log(
   `\n${failed ? `${failed} check(s) failed` : `All ${results.length} check(s) passed`}. Not covered: the owner's phone and Termux, real models, real accounts, Android WebView.`,
 );
