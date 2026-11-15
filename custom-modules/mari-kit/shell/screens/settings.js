@@ -76,6 +76,7 @@ export function settingsScreen({ mount, args, go, back }) {
   // 모든 방 공통 switches (Mari Kit features and the Engine's call voice): moved here from chat settings, where they
   // sat among this-chat switches. Read only on the main list.
   let shared = null;
+  let kitStatusP = null;
   const loadShared = async () => {
     const [settings, tts, guide] = await Promise.all([
       api.get("/mari-kit/settings").catch(() => null),
@@ -167,7 +168,8 @@ export function settingsScreen({ mount, args, go, back }) {
     const results = h("div");
     // Mari Kit's version on top; "새 버전" appears once the Engine has checked the catalog.
     const kitVal = val("확인 중…");
-    kitStatus()
+    // Asked once per visit: the list is drawn again when the shared switches arrive.
+    (kitStatusP ||= kitStatus())
       .then((k) => {
         kitVal.textContent = `${k.update ? `새 버전 ${k.update.version}` : k.restartNeeded ? "다시 시작 필요" : k.running || ""} ›`;
         kitVal.style.fontWeight = k.update || k.restartNeeded ? "700" : "";

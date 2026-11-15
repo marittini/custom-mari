@@ -18,7 +18,7 @@ import {
   shortTime,
   messageWindow,
 } from "../lib/data.js";
-import { TOOL_DEFS, toolPlace } from "../lib/prefs.js";
+import { TOOL_DEFS, toolPlace, prefs } from "../lib/prefs.js";
 import {
   toast,
   errorBox,
@@ -34,7 +34,6 @@ import {
 import { pickVoice, stripCues, inline } from "../lib/render.js";
 import * as tts from "../lib/tts.js";
 import { syncVoiceSettings } from "../lib/voice.js";
-import { callsAvailable, callScreen, callPrefs } from "../lib/call.js";
 import { shownText, translateStickerInput, stickerTokensMatch } from "../lib/translate.js";
 import { loadStickers, stickerContent, stickerPicker, stickerLabel, withoutStickerTokens } from "../lib/stickers.js";
 import { watchGeneration, stopGeneration } from "../lib/generation.js";
@@ -102,6 +101,7 @@ export function convoScreen({ mount, args, go, back }) {
   let auto = null; // Convo autonomy while this chat is open
   let offVisible = () => {};
   let stickers = { list: [], map: new Map(), globals: [] };
+  let stickersIn = false; // the chat's stickers and emojis have been read (at least once)
   let stickerContext = "";
   let stickerAttempted = false;
   let stickerLoad = null;
@@ -431,6 +431,7 @@ export function convoScreen({ mount, args, go, back }) {
       .then((next) => {
         if (alive && context === stickerContext) {
           stickers = next;
+          stickersIn = true;
           draw();
         }
         return next;
@@ -865,9 +866,16 @@ export function convoScreen({ mount, args, go, back }) {
     );
   }
 
+  // The call screen (lib/call.js) is loaded only when the Calls package answers for this chat.
   async function setupCalls() {
-    const first = await callsAvailable(chatId);
+    // The chat's call status when the Calls package is installed (404 when it is not).
+    const first = await api.get(`/conversation-calls/chat/${encodeURIComponent(chatId)}/status`).then(
+      (r) => r || {},
+      () => null,
+    );
     if (!first || !alive) return;
+    const { callScreen } = await import("../lib/call.js");
+    if (!alive) return;
     call = callScreen({
       chatId,
       chat,
@@ -932,8 +940,12 @@ export function convoScreen({ mount, args, go, back }) {
     if (!chat) return;
     if (!stickerAttempted && messages.some((m) => /:[a-z0-9_]+:/i.test(messageText(m))))
       refreshStickers().catch(() => {}); // A failed read leaves the token visible; the picker offers retry.
-    // ":name:" shortcodes need the Engine's emoji list (read once, only when a message has one).
-    if (!standardEmoji && messages.some((m) => /(^|[^a-z0-9_]):[a-z0-9_]+:/i.test(messageText(m))))
+    // ":name:" shortcodes that are not this chat's own emojis need the Engine's emoji list (23KB): read once, and
+    // only after the chat's emojis are in, when a message still has one they do not cover.
+    const own = stickers.emojis?.map;
+    const standardLeft = (m) =>
+      [...messageText(m).matchAll(/(^|[^a-z0-9_]):([a-z0-9_]+):/gi)].some(([, , name]) => !own?.has(name));
+    if (!standardEmoji && (stickersIn || !stickerAttempted) && messages.some(standardLeft))
       import("../lib/media.js")
         .then((m) => m.emojiData())
         .then((d) => {
@@ -1006,7 +1018,8 @@ export function convoScreen({ mount, args, go, back }) {
         items.push(h("div", { class: "daysep", role: "separator" }, h("span", null, dayLabel(m.createdAt))));
       }
       if (bub.ev) {
-        if (bub.ev.status === "ended" && callPrefs().log) items.push(callCard(bub.ev, m));
+        // 통화 설정 › 대화에 통화 대사 남기기 (callPrefs().log in lib/call.js)
+        if (bub.ev.status === "ended" && prefs().callLog !== false) items.push(callCard(bub.ev, m));
         items.push(callLine(bub.ev, m));
         return;
       }

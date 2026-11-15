@@ -13,7 +13,8 @@
 //
 //   options: --base <ref> (compare with another ref, e.g. origin/main for the whole branch) · --shots <dir> (keep a screenshot per toured screen) ·
 //            --url <engine> (use a running Engine whose data can be thrown away) · --verbose (full output) ·
-//            --plan (only print what would run, and why)
+//            --plan (only print what would run, and why) · --crawl (also press every safe button on the toured
+//            screens; --all always does) · --resources (the biggest requests of each toured screen)
 //
 // Output is short on purpose: one line per check, the transfer of each toured screen, and the tail of a failure.
 
@@ -344,11 +345,16 @@ if (plan.flows.length || screens.length)
       // --all runs shell-e2e as the daily check does (every flow, first-visit transfer, every screen).
       const extra = all ? [] : ["--only", plan.flows.join(",") || "-", "--screens", screens.join(",") || "-"];
       if (opt("--shots")) extra.push("--shots", resolve(opt("--shots")));
+      // The crawl (every safe button on every toured screen) runs with --all (CI) or when asked.
+      if (all || args.includes("--crawl")) extra.push("--crawl");
+      if (args.includes("--resources")) extra.push("--resources");
       if (plan.flows.length) extra.push("--coverage", join(store, "coverage-run.json"));
       const r = await run("node", [join(kit, "scripts", "shell-e2e.mjs"), base, ...extra]);
       const keep = r.out
         .split("\n")
-        .filter((l) => /^(FAIL|First visit|Screens at|  (ok|FAIL) |  screenshots|     screen:)/.test(l));
+        .filter((l) =>
+          /^(FAIL|First visit|Screens at|Crawl:|  (ok|FAIL) |  screenshots|     screen:|        +[\d.]+KB )/.test(l),
+        );
       return { ok: r.ok, detail: (r.ok ? keep.filter((l) => !l.startsWith("FAIL")) : keep).join("\n") };
     }),
   );
