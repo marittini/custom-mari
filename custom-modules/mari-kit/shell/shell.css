@@ -4343,3 +4343,17 @@ button.cx-line {
 .ed-num {
   max-width: 160px;
 }
+/* Inside an editor section the page already has its side margin: the entry tools and rows use it, not their own. */
+.lore-entries .lore-tools {
+  padding: 4px 0 12px;
+}
+.lore-entries .r.lore-row {
+  padding-left: 0;
+  padding-right: 0;
+}
+.lore-count {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}

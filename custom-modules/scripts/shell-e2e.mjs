@@ -1219,19 +1219,18 @@ const flows = {
   // 설정 › 로어북 (no Engine screen): find a book, change its overview, switch an entry off from the list, edit an
   // entry's text and keys, add one. The list reads entries without their text (Mari Kit's slim route).
   async "lorebook-edit"({ page }) {
-    let slim = null;
-    page.on("response", async (r) => {
-      if (r.url().includes(`/mari-kit/shell/lorebook/${lore.id}/entries`)) slim = await r.text().catch(() => null);
-    });
     await open(page);
     await goIn(page, "#/settings/lorebooks");
     await page.locator(".lore-tools input[type=search]").fill("e2e 세계");
+    const slimP = page.waitForResponse((r) => r.url().includes(`/mari-kit/shell/lorebook/${lore.id}/entries`));
     await page.locator(".lore-open").filter({ hasText: "e2e 세계" }).first().click();
+    const slim = await (await slimP).text();
     await page.getByRole("tab", { name: "개요" }).waitFor({ timeout: 10000 });
     await page.locator(".ed-field").filter({ hasText: "설명" }).locator("textarea").fill("하늘섬 왕국");
     await page.getByRole("tab", { name: "항목" }).click();
     await page.locator(".lore-open").filter({ hasText: "수도" }).waitFor({ timeout: 10000 });
-    if (!slim || slim.includes("긴 설명 긴 설명")) throw new Error("the entry list should not carry entry text");
+    if (!slim.includes("수도") || slim.includes("긴 설명 ".repeat(30)))
+      throw new Error("the entry list should carry names and a short preview, not the text");
     await page.getByRole("switch", { name: "기사단 사용" }).click();
     await until(
       async () =>
