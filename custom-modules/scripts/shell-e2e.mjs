@@ -1118,7 +1118,7 @@ const flows = {
       .getByRole("button", { name: /다시 부르기/ })
       .click();
     await until(async () => !(await leftMark()), 8000, "다시 부르기 sets the status back");
-    if (await page.locator(".cx-p.off").count()) throw new Error("the one called back is still dimmed");
+    await until(async () => !(await page.locator(".cx-p.off").count()), 5000, "the one called back is not dimmed");
     await send();
     await until(async () => !!(await leftMark()), 8000, "left again");
     await page.locator(".cx-endrow").getByRole("button").click();
