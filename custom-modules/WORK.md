@@ -9,18 +9,7 @@ needs the owner, a real account or a phone.
 
 ## Doing
 
-### M-13 잘못 누르기 방지 · M-14 메뉴 정리 · M-15 통화 자막과 기록 — claude ccr-b4485093-p6ybfu
-
-The owner found the menus scattered and regenerated a character schedule by mistake; they also want call subtitles
-and call records. Agreed with the mockup https://claude.ai/artifact/MtDLAgQpp11Anr8og7ZUZk and the owner's answers
-(globals move to 설정, 되돌리기 yes, call screen face-first by default). Three releases:
-
-- 0.24.0 (M-13, PR #54, merged): the work rule (ask, 멈추기, 되돌리기) on every button that costs AI or overwrites; the new-reply
-  button apart; 종료 apart from 마이크.
-- 0.25.0 + 0.26.0 ship together (one PR): 0.25.0 (M-14) chat settings in labelled groups, this-chat vs all-rooms (globals to 설정), 대화 기능 tidied (commands
-  folded), one name per setting.
-- 0.26.0 (M-15): the call's subtitle window and waiting states, subtitle mode and size, ☺ while calling, the call card
-  and full record in the Convo.
+_(none)_
 
 ## Ready
 
@@ -34,6 +23,10 @@ _(none)_
 
 ## Done
 
+- M-13 잘못 누르기 방지 · M-14 메뉴 정리 · M-15 통화 자막과 기록 — Mari Kit 0.24.0 (PR #54) and 0.26.0 (PR #55):
+  ask / 멈추기 / 되돌리기 on AI and overwrite buttons, chat settings in groups with every-room switches in 설정, the
+  call caption (the line being said large by default, 지난 대사까지 as a choice, unspaced Japanese wraps), ☺ while
+  calling, call cards with the full record. The 360px tour now fails on text running off the screen.
 - M-11 Convo 3단계 — Mari Kit 0.23.0 (PR #53): ☺ media panel (emoji, kaomoji, stickers), custom emojis and
   :name:, emoji selection, games through the Engine.
 - M-6 Convo 2단계 — Mari Kit 0.20.0 (PR #51) and 0.22.0 (PR #52): pictures, @mentions, my status, coloured
