@@ -642,6 +642,107 @@ const flows = {
     await snap(page, "menus-call");
   },
 
+  // The call screen's subtitles and records (0.26), against the Calls package's API answered in the browser (the
+  // package is not installed in the test Engine): the subtitle window with every line, the waiting line while a
+  // reply is written, 자막 (subtitles first, larger text), and the call card in the Convo opening the full record.
+  async "call-subtitles"({ page }) {
+    const sid = "e2e-call";
+    const lines = [
+      {
+        id: "c1",
+        participantKind: "character",
+        characterId: a.id,
+        kind: "speech",
+        content: "여보세요? 늦었네",
+        extra: {},
+      },
+      { id: "u1", participantKind: "user", kind: "speech", content: "응 미안", extra: {} },
+      {
+        id: "c2",
+        participantKind: "character",
+        characterId: a.id,
+        kind: "speech",
+        content: "괜찮아, 오늘 어땠어?",
+        extra: {},
+      },
+    ];
+    const session = { id: sid, chatId: convo.id, status: "active", startedAt: new Date().toISOString() };
+    await page.route("**/api/conversation-calls/**", async (route) => {
+      const url = route.request().url();
+      const method = route.request().method();
+      const json = (body) =>
+        route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify(body) });
+      if (url.includes("/status")) return json({ activeCall: null, ringingCall: null });
+      if (url.endsWith("/start")) return json(session);
+      if (url.endsWith(`/${sid}/messages`) && method === "GET") return json(lines);
+      if (url.endsWith(`/${sid}/messages`) && method === "POST") {
+        await new Promise((r) => setTimeout(r, 1500));
+        const body = JSON.parse(route.request().postData() || "{}");
+        lines.push({ id: "u2", participantKind: "user", kind: "speech", content: body.content, extra: {} });
+        lines.push({
+          id: "c3",
+          participantKind: "character",
+          characterId: a.id,
+          kind: "speech",
+          content: "좋네!",
+          extra: {},
+        });
+        return json({ userMessage: { id: "u2" }, assistantMessages: [], session });
+      }
+      if (url.endsWith(`/${sid}/end`)) return json({ ok: true });
+      return json({});
+    });
+    await page.route("**/api/tts/config", (route) =>
+      route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({ enabled: false, callAudioEnabled: true }),
+      }),
+    );
+    await api("PATCH", `/chats/${convo.id}/metadata`, { conversationCallsEnabled: true });
+    await open(page);
+    await goIn(page, `#/convo/${encodeURIComponent(convo.id)}`);
+    await page.getByRole("button", { name: "전화 걸기" }).first().click();
+    await page.locator(".sheet").getByRole("button", { name: "전화 걸기" }).click();
+    await page.locator(".cx-subs .cx-line").filter({ hasText: "오늘 어땠어" }).waitFor({ timeout: 10000 });
+    if ((await page.locator(".cx-subs .cx-line").count()) < 3) throw new Error("subtitles should show every line");
+    await page.locator(".cx-in").fill("좋았어");
+    await page.locator(".cx-send").click();
+    await page.locator(".cx-line.wait").filter({ hasText: "답하는 중" }).waitFor({ timeout: 3000 });
+    await page.locator(".cx-subs .cx-line").filter({ hasText: "좋네!" }).waitFor({ timeout: 10000 });
+    await page.locator(".cx-in").blur();
+    await page.getByRole("button", { name: "자막" }).click();
+    await page.getByRole("radio", { name: "자막 크게" }).click();
+    await page.getByRole("radio", { name: "크게", exact: true }).click();
+    if (!(await page.locator(".callx.subs-first[data-size='l']").count())) throw new Error("자막 choices not applied");
+    await page.keyboard.press("Escape");
+    await page
+      .locator(".scrim")
+      .last()
+      .click()
+      .catch(() => {});
+    await snap(page, "call-subtitles");
+    await page.evaluate(() => {
+      const p = JSON.parse(localStorage.getItem("mari-shell") || "{}");
+      p.callSubMode = "face";
+      p.callSubSize = "m";
+      localStorage.setItem("mari-shell", JSON.stringify(p));
+    });
+    // The call card in the Convo opens the full record.
+    const ev = await api("POST", `/chats/${convo.id}/messages`, { role: "system", content: "" });
+    await api("PATCH", `/chats/${convo.id}/messages/${ev.id}/extra`, {
+      conversationCallEvent: { callId: sid, status: "ended", durationMs: 125000, summary: null },
+    });
+    await page.locator(".cx-endrow").getByRole("button").click();
+    await page.locator(".callcard").filter({ hasText: "대사" }).first().waitFor({ timeout: 10000 });
+    await page.locator(".callcard").first().click();
+    await page.locator(".tlog").getByText("통화 기록").first().waitFor();
+    await page.locator(".tlog").getByRole("button", { name: "전체 복사" }).waitFor();
+    await api("PATCH", `/chats/${convo.id}/metadata`, { conversationCallsEnabled: false });
+    await page.unroute("**/api/conversation-calls/**");
+    await page.unroute("**/api/tts/config");
+  },
+
   // Reactions and replies (the Engine's data): react from the quick row and take it back, see a character's
   // reaction, reply to a message (sent as replyTo) and see its quote.
   async "convo-react"({ page }) {

@@ -41,7 +41,7 @@ let lastKaomoji = null;
  * onInsert(text): put text at the caret. onSticker(name, how): how = "insert" | "send". manage(kind): open the
  * sticker or emoji manager (resolves when it closes).
  */
-export function mediaPanel({ media, onInsert, onSticker, manage, games = null, onGame = null }) {
+export function mediaPanel({ media, onInsert, onSticker, manage, games = null, onGame = null, tabs: only = null }) {
   const el = h("div", { class: "mpanel", role: "dialog", "aria-label": "이모지와 스티커", hidden: true });
   const tabsEl = h("div", { class: "mp-tabs", role: "tablist" });
   const body = h("div", { class: "mp-body" });
@@ -306,7 +306,9 @@ export function mediaPanel({ media, onInsert, onSticker, manage, games = null, o
   }
 
   function draw() {
-    const tabs = gameList.length ? [...TABS, ["game", "게임"]] : TABS;
+    // only: the tabs a host wants (a call takes emoji and kaomoji; its lines are spoken, not pictures).
+    const base = only ? TABS.filter(([id]) => only.includes(id)) : TABS;
+    const tabs = gameList.length && !only ? [...base, ["game", "게임"]] : base;
     if (!tabs.some(([id]) => id === lastTab)) lastTab = "emoji";
     tabsEl.style.gridTemplateColumns = `repeat(${tabs.length}, minmax(0, 1fr))`;
     setChildren(

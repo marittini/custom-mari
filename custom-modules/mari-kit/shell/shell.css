@@ -4053,3 +4053,194 @@ button.toast {
 .workbox .pill {
   min-height: 44px;
 }
+
+/* The call's subtitle window (lib/call.js): every line so far, newest at the bottom; the current character line
+   larger; my lines to the right; waiting lines in italics. 자막 크게 (subs-first) shrinks the face to a row; the
+   text size follows data-size (s · m · l). */
+.cx-subs {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  overflow-y: auto;
+  padding: 12px 24px;
+  -webkit-mask-image: linear-gradient(to bottom, transparent 0, #000 24px);
+  mask-image: linear-gradient(to bottom, transparent 0, #000 24px);
+}
+.cx-subs[hidden] {
+  display: none;
+}
+.cx-subs > :first-child {
+  margin-top: auto;
+}
+.cx-line {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 3px;
+  max-width: 100%;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--cx-ink);
+  font: inherit;
+  text-align: left;
+}
+button.cx-line {
+  cursor: pointer;
+}
+.cx-line.me {
+  align-items: flex-end;
+  text-align: right;
+}
+.cx-who2 {
+  font-size: 11px;
+  letter-spacing: 0.04em;
+  color: var(--cx-ink-2);
+}
+.cx-t {
+  font-family: var(--font-read);
+  font-size: var(--cx-sub, 17px);
+  line-height: 1.5;
+  word-break: keep-all;
+  overflow-wrap: anywhere;
+}
+.cx-line.now .cx-t {
+  font-size: calc(var(--cx-sub, 17px) + 4px);
+  font-weight: 600;
+}
+.cx-tr {
+  font-size: 12.5px;
+  line-height: 1.5;
+  color: var(--cx-ink-2);
+}
+.cx-line.wait .cx-t {
+  font-size: 14px;
+  font-style: italic;
+  color: var(--cx-ink-2);
+}
+.callx[data-size="s"] {
+  --cx-sub: 14px;
+}
+.callx[data-size="l"] {
+  --cx-sub: 21px;
+}
+.cx-whotext {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+}
+/* 자막 크게: the face becomes a small row on top, the subtitles get the room */
+.callx.subs-first .cx-who {
+  flex-direction: row;
+  justify-content: center;
+  gap: 12px;
+  padding: 6px 24px 0;
+}
+.callx.subs-first .cx-face .av {
+  width: 40px !important;
+  height: 40px !important;
+  font-size: 15px !important;
+}
+.callx.subs-first .cx-whotext {
+  align-items: flex-start;
+  gap: 2px;
+}
+.callx.subs-first .cx-name {
+  margin-top: 0;
+  font-size: 18px;
+}
+.callx:not(.subs-first) .cx-subs {
+  max-height: 34vh;
+}
+.callx:not(.subs-first) .cx-who {
+  flex: 1;
+  justify-content: center;
+}
+.cx-emo {
+  flex: none;
+  width: 44px;
+  height: 44px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: 0;
+  border-radius: 50%;
+  background: transparent;
+  color: var(--cx-ink);
+  cursor: pointer;
+}
+.cx-panel .mpanel {
+  color: var(--ink);
+}
+/* The call record sheet */
+.tlog {
+  display: flex;
+  flex-direction: column;
+  padding: 4px 20px 24px;
+  overflow-y: auto;
+}
+.tlog-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 4px 0 8px;
+}
+.tlog-sum {
+  margin: 0 0 8px;
+  font-size: 13px;
+  line-height: 1.6;
+  color: var(--ink-2);
+}
+.tlog-acts {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  padding-bottom: 8px;
+}
+/* typing: the subtitles keep the room the keys left */
+.callx.typing .cx-subs {
+  max-height: none;
+}
+.callx.typing .cx-who {
+  flex: none;
+}
+/* The call card in the Convo: duration, the call summary when the Engine has made one, the first lines */
+.callcard {
+  align-self: center;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  width: min(100%, 320px);
+  margin: 16px 0 4px;
+  padding: 12px 14px;
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  background: var(--surface);
+  color: var(--ink);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.callcard-h {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  font-weight: 600;
+}
+.callcard-q {
+  font-size: 12.5px;
+  line-height: 1.5;
+  color: var(--ink-2);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.callcard-f {
+  font-size: 12px;
+  color: var(--ink-3);
+}
