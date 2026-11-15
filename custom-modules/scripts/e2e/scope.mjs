@@ -17,6 +17,29 @@ const CSS = `${SHELL}shell.css`;
 const E2E = "custom-modules/scripts/shell-e2e.mjs";
 const HARNESS = /^custom-modules\/scripts\/e2e\/(screens|fake-llm|playwright)\.mjs$/;
 
+/** The flows whose FLOW_SCREENS entries a change to screens.mjs touched, or null when it touched anything else. */
+function flowScreenEntries(ctx, p) {
+  const d = ctx.diff?.(ctx.base, p);
+  if (!d) return null;
+  const range = (text) => {
+    const lines = (text || "").split("\n");
+    const start = lines.findIndex((l) => l.startsWith("export const FLOW_SCREENS = {")) + 1;
+    const end = lines.findIndex((l, i) => i >= start && l.startsWith("};")) + 1;
+    return start > 0 && end > start ? { start, end, lines } : null;
+  };
+  const now = range(ctx.text(p));
+  const before = range(ctx.show?.(ctx.base, p));
+  if (!now || !before) return null;
+  const inside = (r, l) => r.start < l && l <= r.end;
+  if (!d.new.every((l) => inside(now, l) && l < now.end) || !d.old.every((l) => inside(before, l))) return null;
+  // (an insertion's "old" lines are its unchanged neighbours: only lines that are gone count)
+  const kept = new Set(now.lines);
+  const gone = d.old.map((l) => before.lines[l - 1]).filter((l) => !kept.has(l));
+  const names = [...d.new.map((l) => now.lines[l - 1]), ...gone].map((l) => /^\s*"?([\w-]+)"?\s*:/.exec(l)?.[1]);
+  if (names.includes(undefined)) return null;
+  return [...new Set(names)].filter((f) => Object.hasOwn(FLOW_SCREENS, f));
+}
+
 /** Line ranges of each flow in shell-e2e.mjs ("  async name({" … next flow), for a change to one flow's own code. */
 export function flowBlocks(text) {
   const lines = text.split("\n");
@@ -185,7 +208,10 @@ export function planChecks(changed, files, ctx = {}) {
       plan.sections = true;
       note("sections", p);
     }
-    if (HARNESS.test(p)) {
+    // Adding or changing a flow's FLOW_SCREENS entry runs that flow only.
+    const entries = p === "custom-modules/scripts/e2e/screens.mjs" ? flowScreenEntries(ctx, p) : null;
+    if (entries) for (const f of entries) (plan.flows.add(f), note(`flow ${f}`, `${p} (its FLOW_SCREENS entry)`));
+    else if (HARNESS.test(p)) {
       allScreens();
       allFlows(`${p} (test harness)`);
       note("screens", `${p} (test harness)`);

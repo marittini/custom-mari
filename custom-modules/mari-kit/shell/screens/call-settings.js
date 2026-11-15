@@ -155,6 +155,29 @@ export function callSettingsScreen({ mount, args, go, back }) {
             patchMeta({ conversationCommandToggles: { ...toggles, call: on }, conversationCharactersCanCall: on });
           },
         ),
+        // How long a character's call rings before it is left as a missed call (this device; lib/call.js).
+        h(
+          "div",
+          { class: "grow", style: { gridTemplateColumns: "minmax(0, 1fr)", padding: "12px 16px" } },
+          h("span", null, "전화 울리는 시간", h("small", null, "이 시간 안에 안 받으면 부재중 전화로 남아요")),
+          h(
+            "div",
+            { class: "chips", role: "radiogroup", "aria-label": "전화 울리는 시간" },
+            [20, 30, 60].map((v) =>
+              h(
+                "button",
+                {
+                  type: "button",
+                  class: p.ringSec === v ? "chip on" : "chip",
+                  role: "radio",
+                  "aria-checked": p.ringSec === v ? "true" : "false",
+                  onClick: () => (setCallPrefs({ ringSec: v }), draw()),
+                },
+                `${v}초`,
+              ),
+            ),
+          ),
+        ),
         row(
           "통화 대사에 감정 표시",
           "음성이 [속삭임] 같은 표시를 읽어요",

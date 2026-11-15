@@ -117,6 +117,16 @@ const timeZoneOf = (meta) => meta?.conversationTimeZone || meta?.promptTimeZone 
  * it has neither a schedule nor an override. { status, activity, until, override, schedule }.
  */
 export function presenceOf(meta, characterId, now = new Date(), fresh = null) {
+  // A character who left a call is "offline" only for that call (lib/call.js); everywhere else they keep the
+  // status they had before.
+  const left = meta?.conversationStatusOverrides?.[characterId]?.mariCallLeft;
+  if (left) {
+    const overrides = { ...meta.conversationStatusOverrides };
+    if (left.prev) overrides[characterId] = left.prev;
+    else delete overrides[characterId];
+    // (the Engine's fresh reading counts the call status, so this one is worked out from the chat's own copy)
+    return presenceOf({ ...meta, conversationStatusOverrides: overrides }, characterId, now);
+  }
   const schedulesOn = meta?.conversationSchedulesEnabled !== false;
   const override = fresh ? fresh.override : meta?.conversationStatusOverrides?.[characterId];
   const schedule = schedulesOn ? (fresh ? fresh.schedule : meta?.characterSchedules?.[characterId]) : null;

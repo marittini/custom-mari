@@ -324,18 +324,28 @@ async function readRoom(runtime, chatId) {
 }
 
 async function writeRoom(runtime, chatId, update) {
+  return writeDocument(
+    runtime,
+    { id: roomDocId(chatId), kind: ROOM_KIND, name: `Translation notes for ${chatId}`, normalize: normalizeRoom },
+    update,
+    "Translation notes changed while saving. Try again.",
+  );
+}
+
+/** Read, change and save one Mari Kit document, retrying when someone else saved it in between. */
+async function writeDocument(runtime, { id, kind, name, normalize }, update, conflict) {
   const documents = runtime.persistence.documents;
   for (let attempt = 0; attempt < 3; attempt += 1) {
-    const { doc, room } = await readRoom(runtime, chatId);
-    const next = normalizeRoom(await update(room));
+    const doc = await documents.getById("mari-kit", id);
+    const next = normalize(await update(normalize(doc?.data)));
     const now = new Date().toISOString();
     if (!doc) {
       try {
         await documents.create({
-          id: roomDocId(chatId),
+          id,
           packageId: "mari-kit",
-          kind: ROOM_KIND,
-          name: `Translation notes for ${chatId}`,
+          kind,
+          name,
           description: "",
           data: next,
           createdAt: now,
@@ -357,7 +367,49 @@ async function writeRoom(runtime, chatId, update) {
     });
     if (saved) return next;
   }
-  throw Object.assign(new Error("Translation notes changed while saving. Try again."), { statusCode: 409 });
+  throw Object.assign(new Error(conflict), { statusCode: 409 });
+}
+
+// ── Call translations ───────────────────────────
+// The Calls package keeps no translation of a call line and accepts no Mari Kit field on its messages, so each
+// call's translations (and what I typed before my line was translated) are kept here, one document per call:
+// opening the call log again shows them without asking the model again.
+
+const CALL_KIND = "translation-call";
+const CALL_LINES = 2000;
+const callDocId = (callId) => `mari-kit:translation-call:${callId}`;
+
+export function normalizeCallTranslations(raw) {
+  const source = record(raw);
+  const pick = (value, ok) => {
+    const out = {};
+    for (const [id, item] of Object.entries(record(value)).slice(-CALL_LINES)) {
+      const key = str(id, 200);
+      if (key && ok(item)) out[key] = item;
+    }
+    return out;
+  };
+  return {
+    lines: pick(source.lines, (v) => v && typeof v.source === "string" && typeof v.text === "string" && !!v.text),
+    mine: pick(source.mine, (v) => typeof v === "string" && !!v),
+  };
+}
+
+function callTranslationPatch(body, httpError) {
+  const source = record(body);
+  const lines = {};
+  for (const [id, item] of Object.entries(record(source.lines))) {
+    const key = str(id, 200);
+    const text = str(item?.text, 20000);
+    if (key && text && typeof item?.source === "string") lines[key] = { source: item.source.slice(0, 20000), text };
+  }
+  const mine = {};
+  for (const [id, text] of Object.entries(record(source.mine))) {
+    const key = str(id, 200);
+    if (key && str(text, 20000)) mine[key] = str(text, 20000);
+  }
+  if (!Object.keys(lines).length && !Object.keys(mine).length) throw httpError(400, "Nothing to save.");
+  return { lines, mine };
 }
 
 function chatPrompts(metadata) {
@@ -444,6 +496,30 @@ export const translationFeature = {
       inheritId: INHERIT_PRESET_ID,
       limit: FIT_LIMIT,
     }));
+
+    app.get("/translation/call/:callId", async (request) => {
+      const callId = str(request.params.callId, 200);
+      if (!callId) throw httpError(400, "Call ID is required.");
+      const doc = await runtime.persistence.documents.getById("mari-kit", callDocId(callId));
+      return normalizeCallTranslations(doc?.data);
+    });
+
+    app.put("/translation/call/:callId", async (request) => {
+      const callId = str(request.params.callId, 200);
+      if (!callId) throw httpError(400, "Call ID is required.");
+      const patch = callTranslationPatch(request.body, httpError);
+      return writeDocument(
+        runtime,
+        {
+          id: callDocId(callId),
+          kind: CALL_KIND,
+          name: `Call translations for ${callId}`,
+          normalize: normalizeCallTranslations,
+        },
+        (current) => ({ lines: { ...current.lines, ...patch.lines }, mine: { ...current.mine, ...patch.mine } }),
+        "Call translations changed while saving. Try again.",
+      );
+    });
 
     app.get("/translation/:chatId", async (request) => {
       const chatId = chatIdParam(request, httpError);

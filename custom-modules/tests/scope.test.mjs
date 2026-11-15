@@ -102,4 +102,16 @@ p = planChecks([`${S}lib/reactions.js`], files, ctx);
 assert.ok(p.flows.includes("convo-react") && !p.flows.includes("convo-send"));
 assert.ok(p.flows.includes("back")); // no coverage yet: by its screens
 
+// A new FLOW_SCREENS entry runs that flow only (no tour); any other change to screens.mjs runs everything.
+const H = "custom-modules/scripts/e2e/screens.mjs";
+const before = 'x\nexport const FLOW_SCREENS = {\n  home: ["home"],\n  back: ["convos"],\n};\n';
+const after =
+  'x\nexport const FLOW_SCREENS = {\n  home: ["home"],\n  back: ["convos"],\n  "convo-send": ["convo"],\n};\n';
+const hctx = (d, now) => ({ coverage: {}, diff: () => d, show: () => before, base: "T", text: () => now });
+p = planChecks([H], files, hctx({ old: [4, 5], new: [5], cssOld: [] }, after));
+assert.deepEqual(p.flows, ["convo-send"]);
+assert.deepEqual(p.screens, []);
+p = planChecks([H], files, hctx({ old: [1], new: [1], cssOld: [1] }, after.replace("x", "y")));
+assert.ok(p.flows.includes("home") && p.screens.length);
+
 console.log("verify scope: picks only the checks a change reaches");
