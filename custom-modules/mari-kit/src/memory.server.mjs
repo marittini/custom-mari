@@ -18,6 +18,11 @@ import { createHash, randomUUID } from "node:crypto";
 export const TOKEN_BUDGET = 5000;
 export const DEFAULT_CHUNK_MESSAGES = 24;
 export const KEEP_RECENT = 6;
+// 묶음 (messages per organize call) and 최근 제외 (newest messages left as they are): the one place for their limits.
+export const CHUNK_RANGE = Object.freeze([1, 60]);
+export const KEEP_RANGE = Object.freeze([0, 40]);
+const clampChunk = (n, fallback) =>
+  Number.isInteger(n) ? Math.min(CHUNK_RANGE[1], Math.max(CHUNK_RANGE[0], n)) : fallback;
 const CHUNK_CHAR_BUDGET = 24000;
 const CHAPTER_AFTER_SCENES = 24;
 const CHAPTER_FOLD = 12;
@@ -81,9 +86,9 @@ export function normalizeSettings(raw) {
   // Before 0.15 this was "memoryLanguage" and the translation went to the model; it was always meant for the screen.
   if (source.showLanguage === undefined && SETTING_CHOICES.showLanguage.includes(source.memoryLanguage))
     out.showLanguage = source.memoryLanguage;
-  // 최근 제외: any whole number from 0 to 40 (the newest replies can still be swiped or edited).
+  // 최근 제외: the newest messages stay as they are (not organized, not hidden; they can still be swiped or edited).
   const keep = Number(source.keepRecent);
-  if (Number.isInteger(keep) && keep >= 0 && keep <= 40) out.keepRecent = keep;
+  if (Number.isInteger(keep) && keep >= KEEP_RANGE[0] && keep <= KEEP_RANGE[1]) out.keepRecent = keep;
   out.translateConnectionId = str(source.translateConnectionId, 200) || null;
   out.embedding = source.embedding === true;
   return out;
@@ -102,7 +107,7 @@ export function normalizePresets(raw) {
       return {
         id: str(p.id, 40) || Math.random().toString(36).slice(2, 10),
         name: str(p.name, 40),
-        chunkMessages: Number.isInteger(chunk) ? Math.min(60, Math.max(6, chunk)) : DEFAULT_CHUNK_MESSAGES,
+        chunkMessages: clampChunk(chunk, DEFAULT_CHUNK_MESSAGES),
         contextMessageLimit: Number.isInteger(limit) && limit > 0 ? Math.min(2000, limit) : null,
         settings,
       };
@@ -128,6 +133,7 @@ export function emptyMemory() {
     scenes: [],
     chapters: [],
     chunks: [],
+    hidden: [],
     undo: null,
   };
 }
@@ -138,10 +144,7 @@ export function normalizeMemory(raw) {
   return {
     ...base,
     connectionId: str(data.connectionId, 200) || null,
-    chunkMessages: Math.min(
-      60,
-      Math.max(6, Number.isInteger(data.chunkMessages) ? data.chunkMessages : base.chunkMessages),
-    ),
+    chunkMessages: clampChunk(data.chunkMessages, base.chunkMessages),
     settings: normalizeSettings(data.settings),
     routines: list(data.routines),
     notebook: list(data.notebook),
@@ -156,6 +159,8 @@ export function normalizeMemory(raw) {
     scenes: list(data.scenes),
     chapters: list(data.chapters),
     chunks: list(data.chunks),
+    // Messages memory hid from the AI (최근 제외); only these are ever shown again by memory.
+    hidden: list(data.hidden).filter((id) => typeof id === "string"),
     undo: data.undo && typeof data.undo === "object" ? data.undo : null,
   };
 }
@@ -190,8 +195,11 @@ export function splitSentences(text) {
   return out;
 }
 
-/** Messages that memory may read: user and assistant turns the AI can see, in order. */
-export function readableMessages(records, nameOf) {
+/**
+ * Messages that memory may read: user and assistant turns the AI can see, in order. Those memory itself hid
+ * (`keep`, 최근 제외) still count: they were read and organized, and hiding them must not change any count.
+ */
+export function readableMessages(records, nameOf, keep = new Set()) {
   return records
     .filter((m) => m.role === "user" || m.role === "assistant")
     .map((m) => {
@@ -205,7 +213,7 @@ export function readableMessages(records, nameOf) {
         hiddenFrom: list(extra.hiddenFromAICharacterIds).filter((id) => typeof id === "string"),
       };
     })
-    .filter((m) => m.text && !m.hidden);
+    .filter((m) => m.text && (!m.hidden || keep.has(m.id)));
 }
 
 /** The next chunk to organize, or null. The newest KEEP_RECENT messages are never organized. */
@@ -902,11 +910,38 @@ async function chatNames(runtime, chat) {
   return { idToName, personaName };
 }
 
-async function loadMessages(runtime, chat) {
+async function loadMessages(runtime, chat, memory) {
   const { idToName, personaName } = await chatNames(runtime, chat);
   const records = await runtime.persistence.listMessages(chat.id);
   const nameOf = (m) => (m.role === "user" ? personaName : (idToName.get(m.characterId) ?? "Narrator"));
-  return { messages: readableMessages(records, nameOf), idToName, personaName };
+  return { messages: readableMessages(records, nameOf, new Set(memory?.hidden)), idToName, personaName };
+}
+
+/** 최근 제외: the organized messages older than the newest keepRecent, which the AI no longer needs to read. */
+export function hiddenTarget(memory, messages) {
+  const keep = memory.settings?.keepRecent ?? KEEP_RECENT;
+  const done = new Set(memory.chunks.flatMap((c) => c.messageIds));
+  return messages
+    .slice(0, Math.max(0, messages.length - keep))
+    .filter((m) => done.has(m.id))
+    .map((m) => m.id);
+}
+
+/**
+ * Hides those from the AI with the Engine's own hide (it leaves a message the user hid or showed by hand alone) and
+ * shows again the ones memory hid that no longer qualify (최근 제외 raised, a chunk undone, memory cleared). Returns
+ * the new list of messages memory hid. Without the Engine call (an older Engine) nothing is hidden.
+ */
+export async function syncHidden(runtime, chatId, memory, messages, hiddenNow = memory.hidden) {
+  const persistence = runtime.persistence;
+  if (typeof persistence.setMessagesHiddenFromAI !== "function") return hiddenNow;
+  const target = new Set(hiddenTarget(memory, messages));
+  const now = new Set(hiddenNow);
+  const show = [...now].filter((id) => !target.has(id));
+  const hide = [...target].filter((id) => !now.has(id));
+  if (show.length) await persistence.setMessagesHiddenFromAI(chatId, show, false);
+  const hid = hide.length ? await persistence.setMessagesHiddenFromAI(chatId, hide, true) : [];
+  return [...now].filter((id) => target.has(id)).concat(Array.isArray(hid) ? hid : []);
 }
 
 function statusOf(memory, messages) {
@@ -920,7 +955,11 @@ function statusOf(memory, messages) {
     connectionId: memory.connectionId,
     chunkMessages: memory.chunkMessages,
     keepRecent: memory.settings?.keepRecent ?? KEEP_RECENT,
+    chunkRange: CHUNK_RANGE,
+    keepRange: KEEP_RANGE,
+    totalMessages: messages.length,
     organizedMessages: memory.chunks.reduce((n, c) => n + c.messageIds.length, 0),
+    hiddenMessages: memory.hidden.length,
     waitingMessages: waiting,
     readyChunk: full,
     changedChunks: changed,
@@ -1065,7 +1104,7 @@ export const memoryFeature = {
     app.get("/memory/:chatId", async (request) => {
       const chat = await chatOf(request);
       const { memory } = await readMemory(runtime, chat.id);
-      const { messages } = await loadMessages(runtime, chat);
+      const { messages } = await loadMessages(runtime, chat, memory);
       return { status: statusOf(memory, messages) };
     });
 
@@ -1081,8 +1120,10 @@ export const memoryFeature = {
           ? { settings: { ...memory.settings, ...body.settings } }
           : {}),
       });
+      const { messages } = await loadMessages(runtime, chat, memory);
+      if (next.settings.keepRecent !== memory.settings.keepRecent)
+        next.hidden = await syncHidden(runtime, chat.id, next, messages);
       await saveMemory(runtime, chat.id, doc, next);
-      const { messages } = await loadMessages(runtime, chat);
       return { status: statusOf(next, messages) };
     });
 
@@ -1092,7 +1133,7 @@ export const memoryFeature = {
       const body = request.body && typeof request.body === "object" ? request.body : {};
       const debug = body.debugMode === true || runtime.isDebugAgentsEnabled();
       const { doc, memory } = await readMemory(runtime, chat.id);
-      const { messages, idToName } = await loadMessages(runtime, chat);
+      const { messages, idToName } = await loadMessages(runtime, chat, memory);
       const { chunk } = nextChunk(memory, messages, { force: body.force === true });
       if (!chunk) return { organized: false, calls: 0, status: statusOf(memory, messages) };
 
@@ -1175,6 +1216,7 @@ export const memoryFeature = {
         }
       }
       next.undo = { chunkId, before: { ...memory, undo: null } };
+      next.hidden = await syncHidden(runtime, chat.id, next, messages);
       await saveMemory(runtime, chat.id, doc, next);
       return {
         organized: true,
@@ -1190,8 +1232,9 @@ export const memoryFeature = {
       const { doc, memory } = await readMemory(runtime, chat.id);
       if (!memory.undo?.before) throw httpError(409, "There is nothing to undo.");
       const previous = normalizeMemory(memory.undo.before);
+      const { messages } = await loadMessages(runtime, chat, memory);
+      previous.hidden = await syncHidden(runtime, chat.id, previous, messages, memory.hidden);
       await saveMemory(runtime, chat.id, doc, { ...previous, undo: null });
-      const { messages } = await loadMessages(runtime, chat);
       return { status: statusOf(previous, messages) };
     });
 
@@ -1205,8 +1248,9 @@ export const memoryFeature = {
         chunkMessages: memory.chunkMessages,
         undo: { chunkId: null, before: memory },
       };
+      const { messages } = await loadMessages(runtime, chat, memory);
+      cleared.hidden = await syncHidden(runtime, chat.id, cleared, messages, memory.hidden);
       await saveMemory(runtime, chat.id, doc, cleared);
-      const { messages } = await loadMessages(runtime, chat);
       return { status: statusOf(cleared, messages) };
     });
 
@@ -1300,7 +1344,7 @@ export const memoryFeature = {
     app.get("/memory/:chatId/data", async (request) => {
       const chat = await chatOf(request);
       const { memory } = await readMemory(runtime, chat.id);
-      const { messages } = await loadMessages(runtime, chat);
+      const { messages } = await loadMessages(runtime, chat, memory);
       const records = await runtime.persistence.listMessages(chat.id);
       let embedding = { label: "", available: false };
       try {
@@ -1627,8 +1671,11 @@ export const memoryFeature = {
       const next = normalizeMemory({
         ...source,
         chunks: body.fromChatId ? [] : list(source.chunks),
+        hidden: memory.hidden,
         undo: { chunkId: null, before: { ...memory, undo: null } },
       });
+      const { messages } = await loadMessages(runtime, chat, memory);
+      next.hidden = await syncHidden(runtime, chat.id, next, messages);
       await saveMemory(runtime, chat.id, doc, next);
       return { memory: strip(next) };
     });

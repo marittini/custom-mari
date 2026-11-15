@@ -9,7 +9,8 @@ import { startJob } from "./activity.js";
 /**
  * confirm: the question (null = no question, for actions the user just chose on a screen made for them).
  * run(signal, stopped): does the work; snapshot(): what to put back (called before run), restore(snap).
- * done: the notice afterwards. Resolves true when the work finished and was kept.
+ * done: the notice afterwards (text, or a function called when the work is done). chat: the room the work belongs to (default: the one in the address).
+ * Resolves true when the work finished and was kept.
  */
 export async function work({
   confirm = null,
@@ -20,6 +21,7 @@ export async function work({
   snapshot = null,
   restore = null,
   done,
+  chat,
 }) {
   if (confirm && !(await ask(confirm, { ok, danger }))) return false;
   let snap = null;
@@ -31,25 +33,35 @@ export async function work({
   }
   const controller = new AbortController();
   let stopped = false;
-  const end = startJob(label, {
-    label: "멈추기",
-    fn: () => {
-      stopped = true;
-      controller.abort();
-      end();
+  const end = startJob(
+    label,
+    {
+      label: "멈추기",
+      fn: () => {
+        stopped = true;
+        controller.abort();
+        end();
+      },
     },
-  });
+    chat === undefined ? undefined : { chat },
+  );
   try {
     await run(controller.signal, () => stopped);
     if (stopped) throw new DOMException("stopped", "AbortError");
-    if (restore && snap) undoToast(done, () => restore(snap));
-    else if (done) toast(done);
+    const said = typeof done === "function" ? done() : done;
+    if (restore && snap) undoToast(said, () => restore(snap));
+    else if (said) toast(said);
     return true;
   } catch (error) {
     if (stopped || error?.name === "AbortError") {
-      // Whatever the Engine wrote before the stop goes back.
-      if (restore && snap) await restore(snap).catch(() => {});
-      toast("멈췄어요 · 바뀐 것은 원래대로 돌려놨어요");
+      // Whatever the Engine wrote before the stop goes back (said only when there is something to put back).
+      if (restore && snap) {
+        const back = await restore(snap).then(
+          () => true,
+          () => false,
+        );
+        toast(back ? "멈췄어요 · 바뀐 것은 원래대로 돌려놨어요" : "멈췄어요 · 되돌리지 못한 부분이 있어요");
+      } else toast("멈췄어요");
     } else toast(`하지 못했어요: ${error.message}`);
     return false;
   } finally {

@@ -161,7 +161,7 @@ export function rpScreen({ mount, args, go, back }) {
     if (sceneBar.hidden) return;
     const toOrigin = () => (origin ? go(`convo/${encodeURIComponent(origin)}`) : back("convos"));
     const run = async (label, fn, after) => {
-      const done = startJob(label);
+      const done = startJob(label, null, { chat: chatId });
       try {
         const res = await fn();
         data.chats(true);
@@ -345,32 +345,17 @@ export function rpScreen({ mount, args, go, back }) {
     );
   }
 
-  // Organizing memory costs AI calls (up to 20 rounds), so it asks first and can be stopped (lib/work.js); with
-  // nothing waiting, the icon just opens the memory library.
+  // Organizing memory costs AI calls, so it asks first and can be stopped (lib/memory-work.js); with nothing
+  // waiting, the icon just opens the memory library.
   async function organize() {
     if (!memory || memory.busy) return;
     if (!memory.waiting) return go(`memory/${encodeURIComponent(chatId)}`);
-    const { work } = await import("../lib/work.js");
-    let calls = 0;
+    const { organizeMemory } = await import("../lib/memory-work.js");
     memory.busy = true;
     drawMemory();
-    await work({
-      confirm: `기억에 아직 안 들어간 메시지 ${memory.waiting}개를 정리할까요?\nAI가 요약을 만들어 기억 서재에 넣어요. AI 요청 여러 번(최대 20번).\n정리한 뒤에는 기억 서재에서 되돌릴 수 있어요.`,
-      ok: "정리하기",
-      label: "기억 정리 중…",
-      run: async (signal, stopped) => {
-        for (let i = 0; i < 20 && !stopped(); i += 1) {
-          const res = await api.post(
-            `/mari-kit/memory/${encodeURIComponent(chatId)}/organize`,
-            { force: true },
-            signal,
-          );
-          calls += res?.calls || 0;
-          memory.waiting = res?.status?.waitingMessages ?? 0;
-          if (!res?.organized || !res?.status?.readyChunk) break;
-        }
-      },
-      done: calls ? `기억을 정리했어요 (모델 호출 ${calls}번)` : "기억을 정리했어요",
+    await organizeMemory(chatId, {
+      waiting: memory.waiting,
+      onStatus: (status) => (memory.waiting = status?.waitingMessages ?? 0),
     });
     memory.busy = false;
     drawMemory();
@@ -568,16 +553,8 @@ export function rpScreen({ mount, args, go, back }) {
             inline(hideCues(translation, m.content)),
           )
         : null,
-      // Other replies to this turn; on the newest reply always, so › can ask for a new one.
-      (m.swipeCount || 1) > 1 || (isLast && m.role === "assistant")
-        ? swipeNav({
-            chatId,
-            message: m,
-            reload: () => load(),
-            regenerate: isLast ? () => generate({ regenerateMessageId: m.id }) : null,
-            busy,
-          })
-        : null,
+      // Other replies to this turn, when there are some (a new one is 다시 생성 in the message tools).
+      (m.swipeCount || 1) > 1 ? swipeNav({ chatId, message: m, reload: () => load(), busy }) : null,
       busy ? null : tools(m, !isLast),
     );
   }
@@ -778,7 +755,7 @@ export function rpScreen({ mount, args, go, back }) {
     draw();
     scroller.scrollTop = scroller.scrollHeight;
     abort = new AbortController();
-    const done = startJob("답장 쓰는 중…", { label: "멈추기", fn: () => stopGenerating() });
+    const done = startJob("답장 쓰는 중…", { label: "멈추기", fn: () => stopGenerating() }, { chat: chatId });
     try {
       await streamGenerate({
         chatId,
@@ -914,7 +891,7 @@ export function rpScreen({ mount, args, go, back }) {
     onState: (state) => {
       busy = state?.active === true;
       if (busy && !recoveredJob)
-        recoveredJob = startJob("이 채팅에서 생성 중…", { label: "멈추기", fn: stopGenerating });
+        recoveredJob = startJob("이 채팅에서 생성 중…", { label: "멈추기", fn: stopGenerating }, { chat: chatId });
       if (!busy) {
         recoveredJob?.();
         recoveredJob = null;

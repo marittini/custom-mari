@@ -200,6 +200,7 @@ if (vv) {
 }
 // Convo autonomy for chats the user is not looking at (the Engine runs this in its client, so the shell must):
 // a character may write first; the chat gets an unread mark and a notice that opens it. Polls only while visible.
+let lastUnread = null; // chat id → unread count, as last drawn
 const openConvo = () => /^#\/convo\/([^/]+)/.exec(location.hash)?.[1] ?? null;
 backgroundAutonomy({
   activeChatId: () => (openConvo() ? decodeURIComponent(openConvo()) : null),
@@ -210,12 +211,23 @@ backgroundAutonomy({
     return { produced };
   },
   onArrived: (chat) => {
-    data.chats(true);
-    if (["home", "convos"].includes(parseRoute().name)) render();
-    else document.querySelector(".dock")?.replaceWith(dock(parseRoute().name)); // the 대화 count
+    showUnread();
     if (chat?.id) toast(`${chat.name || "대화"} · 새 메시지 ›`, () => go(`convo/${encodeURIComponent(chat.id)}`));
   },
+  // 선톡 written elsewhere: when a chat's unread count differs from what the screen drew, draw it again.
+  onUnread: (list) => {
+    const now = new Map(list.map((c) => [c.id, Number(chatMeta(c).autonomousUnreadCount) || 0]));
+    if (lastUnread && [...now].every(([id, n]) => (lastUnread.get(id) || 0) === n)) return;
+    const first = !lastUnread;
+    lastUnread = now;
+    if (!first) showUnread();
+  },
 });
+function showUnread() {
+  data.chats(true);
+  if (["home", "convos"].includes(parseRoute().name)) render();
+  else document.querySelector(".dock")?.replaceWith(dock(parseRoute().name)); // the 대화 count
+}
 
 // Chrome offers to install the shell as an app; the home hint uses it when it is there.
 addEventListener("beforeinstallprompt", (e) => {

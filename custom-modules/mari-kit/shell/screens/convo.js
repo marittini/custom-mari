@@ -90,11 +90,10 @@ export function convoScreen({ mount, args, go, back }) {
   // generation); offNote = why the last message got no answer (offline, in a Scene), until the next send.
   let wait = null;
   let offNote = null;
-  let queued = null;
   let pictures = []; // pictures waiting to be sent: the Engine's attachments, made small on the phone
   let replyDraft = null; // { messageId, name, content }: sent as the generate request's replyTo (the Engine's reply)
   let fresh = null; // GET /conversation/status/:chatId statuses (characters' presence), once per open and reply
-  let tick = null; // 지금 답하게: { body, ready } runs once the delayed generation has stopped
+  let tick = null; // the presence line's minute timer
   let me = null; // the persona's schedule state (Mari Kit 내 일정), when there is one
   let phoneBtn = null;
   let call = null; // the call screen, when the Calls package is installed
@@ -323,7 +322,7 @@ export function convoScreen({ mount, args, go, back }) {
       const files = [...(e.target.files || [])].slice(0, 6 - pictures.length);
       e.target.value = "";
       if (!files.length) return;
-      const done = startJob(`사진 ${files.length}장 줄이는 중…`);
+      const done = startJob(`사진 ${files.length}장 줄이는 중…`, null, { chat: chatId });
       try {
         for (const f of files) {
           try {
@@ -567,7 +566,7 @@ export function convoScreen({ mount, args, go, back }) {
         "button",
         {
           type: "button",
-          class: "r",
+          class: "r two",
           role: "switch",
           "aria-checked": scene.repliesHere ? "true" : "false",
           onClick: async () => {
@@ -739,8 +738,6 @@ export function convoScreen({ mount, args, go, back }) {
       index,
       fresh,
       me,
-      waiting: busy && wait?.kind === "delayed" ? wait.characterIds || [] : [],
-      replyNow,
       go,
       changed: async () => {
         await load(false);
@@ -1023,18 +1020,11 @@ export function convoScreen({ mount, args, go, back }) {
         // The time under the last bubble of a run (one speaker within 5 minutes).
         lastOfRun && bub.last && !bub.sys ? h("span", { class: "btime" }, timeLabel(m.createdAt)) : null,
       );
-      // Other replies to this turn: always under the newest reply (› there asks for a new one), else when tapped.
+      // Other replies to this turn, when there are some: on the newest reply always, on others when tapped. A new
+      // reply is 다시 생성 in the message tools.
       const newest = m.id === lastReplyId;
-      if (bub.last && m.role === "assistant" && (newest || (on && (m.swipeCount || 1) > 1)))
-        wrap.append(
-          swipeNav({
-            chatId,
-            message: m,
-            reload: () => load(),
-            regenerate: newest ? () => generate({ regenerateMessageId: m.id }) : null,
-            busy,
-          }),
-        );
+      if (bub.last && m.role === "assistant" && (m.swipeCount || 1) > 1 && (newest || on))
+        wrap.append(swipeNav({ chatId, message: m, reload: () => load(), busy }));
       if (on && bub.last && !bub.sys) wrap.append(reactBar(m, me));
       if (on && bub.last) {
         const { shown, more } = toolsFor(m);
@@ -1052,7 +1042,7 @@ export function convoScreen({ mount, args, go, back }) {
                 marginRight: me ? "-10px" : "0",
               },
             },
-            shown.map((t) =>
+            shown.map((t) => [
               h(
                 "button",
                 {
@@ -1067,7 +1057,8 @@ export function convoScreen({ mount, args, go, back }) {
                 },
                 icon(t.icon, 15, 1.6),
               ),
-            ),
+              t.id === "voice" ? remakeVoice(m) : null,
+            ]),
             more.length
               ? h(
                   "button",
@@ -1112,7 +1103,9 @@ export function convoScreen({ mount, args, go, back }) {
       }
       items.push(wrap);
     });
-    if (busy && !live && wait) items.push(waitRow());
+    // Typing shows like a messenger; a busy or away character's later answer shows nothing extra (the header's
+    // status already says it), and nothing offers to hurry it.
+    if (busy && !live && wait?.kind === "typing") items.push(waitRow());
     else if (busy) {
       const parts = String(live || "")
         .split(/\n{2,}/)
@@ -1220,7 +1213,7 @@ export function convoScreen({ mount, args, go, back }) {
       { label: "사진" },
     );
   }
-  // While a character is typing, or busy/away and answering later (the Engine waits on the same request).
+  // While a character is typing.
   function waitRow() {
     // A typing notice carries names only; find their faces by name among the room's characters.
     const cast = (chat?.characterIds || []).map((id) => index.get(id)).filter(Boolean);
@@ -1245,17 +1238,7 @@ export function convoScreen({ mount, args, go, back }) {
         presenceText(info),
         wait.kind === "typing" ? h("span", { class: "tdots" }, h("i"), h("i"), h("i")) : null,
       ),
-      wait.kind === "delayed" && wait.characterIds?.length === 1
-        ? h("button", { type: "button", class: "pill", onClick: () => replyNow(wait.characterIds[0]) }, "지금 답하게")
-        : null,
     );
-  }
-  // The Engine's Reply now: stop the delayed generation and ask that character again without the delay.
-  function replyNow(characterId) {
-    if (queued) return;
-    queued = { body: { forCharacterId: characterId, skipPresenceDelay: true }, ready: null };
-    abort?.abort();
-    queued.ready = stopGeneration(chatId).catch(() => {});
   }
 
   // ── Reactions (the Engine's MessageReaction) and replies (its replyTo) ──
@@ -1675,11 +1658,45 @@ export function convoScreen({ mount, args, go, back }) {
     };
   }
 
-  async function speakMessage(m) {
+  // fresh: 다시 만들기 — the kept clip is dropped and made again (like RP's line popup).
+  async function speakMessage(m, fresh = false) {
     const req = messageRequest(m);
     if (!stripCues(req.body.text).trim()) return;
-    if (tts.activeLine() === req.key) return tts.stop();
+    if (tts.activeLine() === req.key && !fresh) return tts.stop();
+    if (fresh) {
+      tts.stop();
+      await tts.forget(req.key);
+    }
     await tts.speak(req.key, req.body);
+    voiceMade.add(req.key);
+    if (alive) draw();
+  }
+
+  // 음성 다시 만들기, beside 음성 once this message has a clip (checked when its tools open; like RP's line popup).
+  const voiceMade = new Set();
+  const voiceChecked = new Set();
+  function remakeVoice(m) {
+    const { key } = messageRequest(m);
+    if (!voiceChecked.has(key)) {
+      voiceChecked.add(key);
+      tts.isCached(key).then((yes) => yes && alive && (voiceMade.add(key), draw()));
+    }
+    if (!voiceMade.has(key) || tts.activeLine() === key) return null;
+    return h(
+      "button",
+      {
+        type: "button",
+        class: "ma",
+        "aria-label": "음성 다시 만들기",
+        title: "음성 다시 만들기",
+        onClick: (e) => {
+          e.stopPropagation();
+          picked = null;
+          speakMessage(m, true).catch((error) => toast(`음성을 만들지 못했어요: ${error.message}`));
+        },
+      },
+      icon(["M20 12a8 8 0 1 1-2.3-5.7", "M20 4v5h-5"], 15, 1.6),
+    );
   }
 
   // Other replies to the same turn (the Engine's swipes): shown under a tapped message that has them.
@@ -1704,7 +1721,7 @@ export function convoScreen({ mount, args, go, back }) {
     abort = new AbortController();
     const done = body?.autonomous
       ? () => {}
-      : startJob("답장 쓰는 중…", { label: "멈추기", fn: () => stopGenerating() });
+      : startJob("답장 쓰는 중…", { label: "멈추기", fn: () => stopGenerating() }, { chat: chatId });
     try {
       await streamGenerate({
         chatId,
@@ -1758,12 +1775,6 @@ export function convoScreen({ mount, args, go, back }) {
               .filter((request) => stripCues(request.body.text).trim()),
           );
         await recovery.check();
-        if (queued) {
-          const next = queued;
-          queued = null;
-          await next.ready;
-          if (alive) return generate(next.body);
-        }
       }
     }
     return produced;
@@ -1880,7 +1891,7 @@ export function convoScreen({ mount, args, go, back }) {
     onState: (state) => {
       busy = state?.active === true;
       if (busy && !recoveredJob)
-        recoveredJob = startJob("이 채팅에서 생성 중…", { label: "멈추기", fn: stopGenerating });
+        recoveredJob = startJob("이 채팅에서 생성 중…", { label: "멈추기", fn: stopGenerating }, { chat: chatId });
       if (!busy) {
         recoveredJob?.();
         recoveredJob = null;

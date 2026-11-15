@@ -78,6 +78,19 @@ export function readerScreen({ mount, back }) {
           h("span", null, "대사 형광펜"),
           h("span", { class: p.highlight === true ? "sw on" : "sw" }, h("span")),
         ),
+        // The same switch as 설정 › 음성 (one setting, shown where the lines are read too).
+        h(
+          "button",
+          {
+            type: "button",
+            class: "r two",
+            role: "switch",
+            "aria-checked": p.lineVoice === true ? "true" : "false",
+            onClick: () => setPrefs({ lineVoice: p.lineVoice !== true }),
+          },
+          h("span", null, "Mari 화면 · 대사 옆 ▶ 늘 보이기"),
+          h("span", { class: p.lineVoice === true ? "sw on" : "sw" }, h("span")),
+        ),
         STEPS.map((s) => {
           const v = Number(p[s.key]);
           return h(

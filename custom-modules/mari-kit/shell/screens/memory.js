@@ -42,23 +42,15 @@ const SETTINGS = [
         key: "chunk",
         label: "묶음",
         help: "한 번 정리할 때 읽는 메시지 수 · 묶음마다 호출 1번",
-        chips: [12, 24, 36, 48],
-        range: [6, 60],
+        chips: [1, 12, 24, 48],
+        range: "chunkRange",
       },
       {
         key: "keepRecent",
         label: "최근 제외",
-        help: "정리하지 않고 원문으로 남길 최근 메시지",
+        help: "최근 이만큼은 원문 그대로 · 그보다 오래되고 정리된 메시지는 AI에게서 숨겨요 (기억이 대신 알려줘요)",
         chips: [4, 6, 10],
-        range: [0, 40],
-      },
-      {
-        key: "context",
-        label: "AI가 읽을 최근 메시지",
-        help: "이보다 오래된 메시지는 AI에게 보내지 않아요 · 지난 일은 기억이 대신 알려줘요 · 엔진의 채팅 설정 › 컨텍스트와 같은 값",
-        chips: [0, 40, 80, 150],
-        range: [0, 2000],
-        fmt: (v) => (v ? String(v) : "전부"),
+        range: "keepRange",
       },
       { key: "connection", label: "기억 정리에 쓸 연결" },
       {
@@ -273,7 +265,7 @@ export function memoryScreen({ mount, args, go, back }) {
   // and offer 되돌리기 (the server keeps the memory before the last change) where it can be undone.
   const run = async (label, fn, { confirm = null, undoable = false } = {}) => {
     if (confirm && !(await ask(confirm, { ok: label }))) return;
-    const done = startJob(`${label} 중…`);
+    const done = startJob(`${label} 중…`, null, { chat: chatId });
     try {
       const msg = await fn();
       await load();
@@ -669,16 +661,11 @@ export function memoryScreen({ mount, args, go, back }) {
         { label: "정리 도구" },
       );
     };
-    const organize = () =>
-      run("정리", async () => {
-        let calls = 0;
-        for (let i = 0; i < 20; i += 1) {
-          const r = await api.post(`/mari-kit/memory/${enc}/organize`, { force: true });
-          calls += r.calls || 0;
-          if (!r.organized || !r.status?.readyChunk) break;
-        }
-        return calls ? `정리했어요 (모델 호출 ${calls}번)` : "정리할 메시지가 없어요";
-      });
+    const organize = async () => {
+      const { organizeMemory } = await import("../lib/memory-work.js");
+      await organizeMemory(chatId, { waiting: status.waitingMessages });
+      await load();
+    };
     const used = lastRecall?.tokens ?? 0;
     return [
       h(
@@ -751,8 +738,18 @@ export function memoryScreen({ mount, args, go, back }) {
         },
         h(
           "span",
-          { style: { flex: "1", minWidth: "0", fontSize: "14px" } },
+          {
+            style: { flex: "1", minWidth: "0", fontSize: "14px", display: "flex", flexDirection: "column", gap: "2px" },
+          },
           status.waitingMessages ? `메시지 ${status.waitingMessages}개 정리 대기` : "밀린 메시지 없음",
+          // The counts behind it, so they add up: every message memory reads, what is organized, what stays as is.
+          status.totalMessages !== undefined
+            ? h(
+                "small",
+                { class: "hint", style: { wordBreak: "keep-all", overflowWrap: "anywhere" } },
+                `전체 ${status.totalMessages} · 정리됨 ${status.organizedMessages} · 최근 원문 ${Math.min(status.keepRecent, status.totalMessages)} · 숨김 ${status.hiddenMessages}`,
+              )
+            : null,
         ),
         h(
           "button",
@@ -1404,14 +1401,6 @@ export function memoryScreen({ mount, args, go, back }) {
       }
     };
     const contextLimit = Number(chatMeta(state.chat).contextMessageLimit) || 0;
-    const setContextLimit = async (v) => {
-      try {
-        await api.patch(`/chats/${enc}/metadata`, { contextMessageLimit: v > 0 ? v : null });
-        await load();
-      } catch (error) {
-        toast(error.message);
-      }
-    };
     const connSelect = (value, empty, onPick) =>
       h(
         "select",
@@ -1426,13 +1415,8 @@ export function memoryScreen({ mount, args, go, back }) {
       );
     const control = (r) => {
       if (r.chips) {
-        const cur = r.key === "chunk" ? m.chunkMessages : r.key === "context" ? contextLimit : s[r.key];
-        const set = (v) =>
-          r.key === "chunk"
-            ? save({ chunkMessages: v })
-            : r.key === "context"
-              ? setContextLimit(v)
-              : save({ settings: { [r.key]: v } });
+        const cur = r.key === "chunk" ? m.chunkMessages : s[r.key];
+        const set = (v) => (r.key === "chunk" ? save({ chunkMessages: v }) : save({ settings: { [r.key]: v } }));
         const chips = r.chips.map((v) =>
           h(
             "button",
@@ -1447,7 +1431,9 @@ export function memoryScreen({ mount, args, go, back }) {
         );
         if (!r.range) return h("span", { style: { display: "flex", gap: "6px", flexWrap: "wrap" } }, chips);
         // Any number in the range: type it, then leave the box (or press Enter).
-        const [lo, hi] = r.range;
+        // The limits come from the server (one place); older servers: the ones they had.
+        const [lo, hi] =
+          state.status?.[r.range] || (r.range === "chunkRange" ? [6, 60] : r.range === "keepRange" ? [0, 40] : r.range);
         const box = h("input", {
           class: "inp",
           type: "number",

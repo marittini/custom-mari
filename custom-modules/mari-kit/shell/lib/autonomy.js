@@ -134,7 +134,13 @@ function parseMeta(chat) {
 }
 
 // Convo chats the user is not looking at; runs app-wide.
-export function backgroundAutonomy({ activeChatId, userStatus, generate, onArrived }) {
+/**
+ * onUnread(list): the chats that let characters write first, each time that list is read again, so the shell can
+ * show 선톡 written elsewhere (the Engine, another browser) without a reload. It is read every minute while there are
+ * such chats (the same minute's checks cost more), every 5 minutes when there are none, and at once when the app
+ * comes back into view.
+ */
+export function backgroundAutonomy({ activeChatId, userStatus, generate, onArrived, onUnread = null }) {
   let stopped = false;
   let timer = null;
   let noCandidatesRoute = false; // older servers lack /chats/autonomous-candidates
@@ -149,9 +155,11 @@ export function backgroundAutonomy({ activeChatId, userStatus, generate, onArriv
 
   let cached = null; // { at, list }
   async function candidates() {
-    if (cached && Date.now() - cached.at < CANDIDATES_MS) return cached.list;
+    const ttl = cached?.list.length ? POLL_MS - 1000 : CANDIDATES_MS;
+    if (cached && Date.now() - cached.at < ttl) return cached.list;
     const list = await readCandidates();
     cached = { at: Date.now(), list };
+    onUnread?.(list);
     return list;
   }
   async function readCandidates() {
@@ -245,10 +253,18 @@ export function backgroundAutonomy({ activeChatId, userStatus, generate, onArriv
   }
 
   schedule(20_000);
+  // Back from another app or browser tab: look now, not at the next minute.
+  const onShow = () => {
+    if (!visible() || stopped) return;
+    cached = null;
+    schedule(0);
+  };
+  document.addEventListener("visibilitychange", onShow);
 
   return {
     stop() {
       stopped = true;
+      document.removeEventListener("visibilitychange", onShow);
       clearTimeout(timer);
       for (const t of timers.values()) clearTimeout(t);
       timers.clear();

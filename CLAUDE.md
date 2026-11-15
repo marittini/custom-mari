@@ -35,6 +35,8 @@ Lessons from earlier sessions. They are the owner's standing expectations.
 - Do not do everything yourself. Hand self-contained parts (reading and summarizing Engine code, mechanical edits,
   focused checks, screenshots) to subagents on a lower model tier, with a precise brief and the exact output wanted;
   keep design decisions, integration and the final verification with the main session.
+- `verify.mjs` starts from the last passing run and picks flows by the code each one actually ran (WORKFLOW.md
+  section 7); edit in batches and verify once per batch, `--plan` to see what a run would cover.
 - Verify only the connection points the change directly touches. Re-run the flows that use the changed code and
   the places that call it; skip unrelated flows, which only burn tokens. Run the broad regression set before a
   release-sized merge, not after every small step.
@@ -56,6 +58,9 @@ Lessons from earlier sessions. They are the owner's standing expectations.
 
 ### Design
 
+- `custom-modules/WORKFLOW.md` section 8 (screen rules) is the checklist for anything drawn: no unasked buttons or
+  notices, no text beside icons, running work only in its own room, the existing row and card pieces, one shared
+  module per flow. Its layout rules are checked automatically by every flow and the 360px tour.
 - Monotone only (no cream or ink tints, no browser accent colors such as the default focus ring); fonts only
   through the shell's tokens. One exception the owner asked for: presence status dots (online/away/busy/offline)
   are coloured (`--st-*` tokens in `shell.css`).

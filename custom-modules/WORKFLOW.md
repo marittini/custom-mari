@@ -83,17 +83,26 @@ after a new push is not a failure. The checks that matter are **Mari Engine guar
 ## 7. Checks
 
 By default `verify.mjs` checks only what the change reaches, so a small change costs little time and output (tokens).
-It reads the files changed since `origin/main` (commits, staged, unstaged, new) and picks, through the shell's
-imports (`scripts/e2e/scope.mjs`):
+It starts from **the last passing run on this branch** (the first run: from `origin/main`), so work already checked
+is not checked again; `--base origin/main` checks the whole branch. It picks (`scripts/e2e/scope.mjs`):
 
 - formatting and parsing of the changed files, and the package build when anything in `mari-kit/` changed;
 - the Engine-routes check when shell code or `engine-api.json` changed, the chat-settings-sections check only for
   `chat-settings.js` / `engine-sections.js`;
-- the 360px tour only for the screens that load a changed file (a lib used by one screen tours that screen; `app.js`
-  or `shell.css` tours all), and only the shell flows that go through those screens (`FLOW_SCREENS` in
-  `scripts/e2e/screens.mjs`);
+- the 360px tour for the screens that load a changed file (through imports); for `shell.css`, only the screens whose
+  code uses the classes of the changed rules (a rule without a class, like `:root` or `button`, tours all);
+- **flows by what they ran**: every passing flow records which shell functions it executed and which Engine routes it
+  called (`scripts/e2e/coverage.mjs`, kept in `.git/mari-verify/`). A change runs only the flows that executed a
+  changed function, built an element a changed CSS rule styles, or called a changed server feature's routes. A
+  change to one flow in `shell-e2e.mjs` runs that flow; a change to its shared setup runs all. A flow with no record
+  yet falls back to the screens it opens (`FLOW_SCREENS`);
+- the old Mari Kit regressions in `scripts/regressions/mari-kit-*.mjs` that load a changed file through their
+  imports (they run outside a browser, so code that assumes `location` or `document` breaks them);
 - the tests in `custom-modules/tests/` that changed or name a changed file. A test that needs an Engine is named
   `*.engine.test.mjs`; the Engine starts only when something needs it.
+
+`--plan` prints what would run and why, without running it. Batch edits and verify once per batch: every run of a
+flow costs output, so do not run the scoped check after each small edit (`--quick` is for that).
 
 Each check prints one line; a toured screen prints its transfer; a failure prints its tail.
 
@@ -107,7 +116,12 @@ Each check prints one line; a toured screen prints its transfer; a failure print
 | `Mari verify` (CI)                               | `--all` on every PR that touches Mari Kit (costs no tokens)                                                     | automatic                                                         |
 | `Upstream Check` (CI, daily)                     | Mari Kit on the newest upstream Engine; a failure shows as a failed run (and an issue, if Issues are turned on) | automatic                                                         |
 
-When you add a flow to `shell-e2e.mjs`, add it to `FLOW_SCREENS` too, or the scoped run never picks it.
+When you add a flow to `shell-e2e.mjs`, add it to `FLOW_SCREENS` too (its fallback before it has a record).
+
+Flows run at 360px (a phone's narrowest common width). Every flow and every toured screen is also checked for
+layout faults (`layoutFaults` in `scripts/e2e/screens.mjs`):
+text squeezed into a one- or two-letter column, an icon button that draws nothing, a `.r` row with fewer cells than
+its grid has columns, and text running off the screen. A fault fails the check; fix it, do not loosen the check.
 
 The fake model (`scripts/e2e/fake-llm.mjs`) answers every request with fixed text. A flow that needs a particular
 reply (a reaction, a selfie command, a schedule) adds a scenario there instead of calling a real model.
@@ -115,7 +129,32 @@ reply (a reaction, a selfie command, a schedule) adds a scenario there instead o
 What these cannot check, and the report must say so: the owner's phone and Termux, real models and their output,
 real provider accounts (ElevenLabs, credits), Android WebView quirks.
 
-## 8. Delegating
+## 8. Screen rules
+
+The owner's rules for anything drawn in the shell, from the mistakes that reached the owner. Read them before
+building UI; the layout ones are checked automatically (section 7).
+
+1. **No buttons, notices or steps nobody asked for.** No "＋ 새 답", "지금 답하게", "곧 대답합니다", "잠시 기다려 주세요".
+   When porting an Engine feature, port what the Engine has, no more. Anything extra goes into the mockup first, as
+   a question.
+2. **No explanation text beside an icon.** An icon button has its name in `aria-label`/`title` only. A settings row
+   may have one short `small` line under its label; nothing longer.
+3. **Running work shows once, in its own room.** Use `startJob` (`lib/activity.js`; it belongs to the chat it
+   started in) or `work()` for anything that costs an AI call. Never a toast that follows the user into other rooms.
+   No apology or hurry-up text.
+4. **Use the existing pieces.** Rows: `.r` (icon · text · value) or `.r.two` (text · value), never two children in a
+   `.r`. Cards: `gcard` / `grow`. Text in a cell may wrap (`min-width: 0`, `overflow-wrap: anywhere`; `keep-all`
+   only together with `overflow-wrap: anywhere`); a short label that must stay whole (a time) gets `nowrap` and the
+   long neighbour wraps.
+5. **Filled icons are filled.** `icon(path, size, 0)` draws a filled shape; never a line 0 wide.
+6. **No raw Engine text.** English system lines and ids are shown in Korean, in the shell's monotone style.
+7. **One flow, one place.** When two screens do the same thing (organize memory, make a voice clip), they share one
+   `lib/` module. Number limits and defaults come from one constant (the server's, sent to the screen).
+8. **Say only what happened.** A notice never claims something that did not happen ("되돌렸어요" only after a real
+   restore).
+9. **Before reporting:** run the whole flow at 360px, back and reload included; look at the screenshots.
+
+## 9. Delegating
 
 The main session keeps design decisions, integration and the final verification. Hand self-contained parts to
 subagents on a lower model tier with a precise brief and the exact output wanted: reading and summarising Engine

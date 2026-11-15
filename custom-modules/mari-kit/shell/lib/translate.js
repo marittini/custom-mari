@@ -57,7 +57,11 @@ export async function translate(text, direction, meta, chatId, validate) {
       }),
     );
   // 번역 중…: shown while the translation is being made (not for one already made).
-  const done = startJob(direction === "input" ? "보낼 말 번역 중…" : "번역 중…");
+  const done = startJob(
+    direction === "input" ? "보낼 말 번역 중…" : "번역 중…",
+    null,
+    chatId ? { chat: chatId } : undefined,
+  );
   try {
     const result = await translated.get(key);
     validate?.(result);
