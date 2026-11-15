@@ -23,6 +23,13 @@ _(none)_
 
 ## Done
 
+- Owner round of 13 + memory — Mari Kit 0.27.0 (PR #56) and 0.28.0 (PR #57): memory work per room, 묶음 from 1,
+  최근 제외 hides organized messages, one organize flow; squeezed text, invisible ▶, reactions over translations
+  fixed; 새 답 and 지금 답하게 removed; voice 다시 만들기; 선톡 marks without reload; weather draws at once; the
+  composer's ＋ menu, any-emoji reactions, Korean call lines with 통화 종료, characters hang up by themselves
+  (call-only lorebook guide), highlighter in the speaker's 대사 색. Checks: verify starts from the last pass, picks
+  flows by coverage, runs the old regressions a change reaches; layout faults fail every flow; screen rules in
+  WORKFLOW.md section 8.
 - M-13 잘못 누르기 방지 · M-14 메뉴 정리 · M-15 통화 자막과 기록 — Mari Kit 0.24.0 (PR #54) and 0.26.0 (PR #55):
   ask / 멈추기 / 되돌리기 on AI and overwrite buttons, chat settings in groups with every-room switches in 설정, the
   call caption (the line being said large by default, 지난 대사까지 as a choice, unspaced Japanese wraps), ☺ while
