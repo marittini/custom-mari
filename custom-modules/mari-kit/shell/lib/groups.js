@@ -125,11 +125,14 @@ export function foldGroup(h, key, label, count, content) {
   return el;
 }
 
-/** A list split by group: a folding heading over each group (none when nothing is grouped), rows from `render`. */
-export function sectioned(h, parts, render, key = "list") {
+/**
+ * A list split by group: a folding heading over each group (none when nothing is grouped), rows from `render`.
+ * `cls` is the box the rows sit in ("list" for rows, "cardgrid" for cards in columns).
+ */
+export function sectioned(h, parts, render, key = "list", cls = "list") {
   const grouped = parts.length > 1 || (parts.length === 1 && parts[0].label);
   return parts.map((p) => {
-    const rows = h("div", { class: "list" }, p.items.map(render));
+    const rows = h("div", { class: cls }, p.items.map(render));
     return grouped ? foldGroup(h, key, p.label, p.items.length, rows) : rows;
   });
 }

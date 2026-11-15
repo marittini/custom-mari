@@ -147,7 +147,7 @@ export function lorebookEditor({ mount, id, go, back }) {
       ].join(" · ");
       return h(
         "div",
-        { class: "r lore-row" },
+        { class: e.enabled ? "lcard" : "lcard off" },
         h(
           "button",
           {
@@ -192,12 +192,22 @@ export function lorebookEditor({ mount, id, go, back }) {
             ...folders.map((f) => {
               const inside = list.filter((e) => e.folderId === f.id);
               return inside.length
-                ? foldGroup(h, `lore:${id}`, f.name, inside.length, h("div", { class: "list" }, inside.map(entryRow)))
+                ? foldGroup(
+                    h,
+                    `lore:${id}`,
+                    f.name,
+                    inside.length,
+                    h("div", { class: "cardgrid" }, inside.map(entryRow)),
+                  )
                 : null;
             }),
-            h("div", { class: "list" }, list.filter((e) => !folders.some((f) => f.id === e.folderId)).map(entryRow)),
+            h(
+              "div",
+              { class: "cardgrid" },
+              list.filter((e) => !folders.some((f) => f.id === e.folderId)).map(entryRow),
+            ),
           ]
-        : [h("div", { class: "list" }, list.map(entryRow))];
+        : [h("div", { class: "cardgrid" }, list.map(entryRow))];
       setChildren(
         entriesBox,
         h(

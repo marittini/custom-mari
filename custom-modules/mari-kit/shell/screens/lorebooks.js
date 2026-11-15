@@ -55,7 +55,7 @@ export function lorebooksPage(body, go) {
     const sub = [catName[b.category] || "분류 없음", flag(b.isGlobal, false) ? "전역" : ""].filter(Boolean).join(" · ");
     return h(
       "div",
-      { class: "r lore-row" },
+      { class: on ? "lcard" : "lcard off" },
       h(
         "button",
         { type: "button", class: "lore-open", onClick: () => go(`edit/lorebook/${encodeURIComponent(b.id)}`) },
@@ -80,7 +80,7 @@ export function lorebooksPage(body, go) {
     setChildren(
       listBox,
       items.length
-        ? sectioned(h, splitByGroup(items, folders), bookRow, "lorebooks")
+        ? sectioned(h, splitByGroup(items, folders), bookRow, "lorebooks", "cardgrid")
         : h("div", { class: "empty" }, query || category ? "찾는 로어북이 없어요" : "아직 로어북이 없어요"),
       more ? h("button", { type: "button", class: "pill lore-more", onClick: () => load(false) }, "더 보기") : null,
     );

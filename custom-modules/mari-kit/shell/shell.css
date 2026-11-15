@@ -4281,10 +4281,6 @@ button.cx-line {
 .lore-tools .ed-hint {
   margin: 0;
 }
-.r.lore-row {
-  grid-template-columns: minmax(0, 1fr) auto;
-  cursor: default;
-}
 .lore-open {
   display: flex;
   flex-direction: column;
@@ -4314,7 +4310,7 @@ button.cx-line {
 }
 .lore-open .lore-prev {
   display: -webkit-box;
-  -webkit-line-clamp: 1;
+  -webkit-line-clamp: 2;
   -webkit-box-orient: vertical;
   overflow: hidden;
 }
@@ -4347,13 +4343,69 @@ button.cx-line {
 .lore-entries .lore-tools {
   padding: 4px 0 12px;
 }
-.lore-entries .r.lore-row {
-  padding-left: 0;
-  padding-right: 0;
-}
 .lore-count {
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: 12px;
+}
+/* Cards in columns (the owner asked for lists in several columns, not one row a line): as many 150px+ columns as
+   fit (two at 360px). Each card holds its name (opens it) over its details, and its own switch at the bottom. */
+.cardgrid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+  gap: 10px;
+  padding: 4px 20px 12px;
+}
+.lore-entries .cardgrid {
+  padding: 4px 0 12px;
+}
+.lcard {
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  gap: 4px;
+  min-width: 0;
+  min-height: 96px;
+  padding: 10px 10px 4px 12px;
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  background: var(--surface);
+}
+.lcard .lore-open {
+  flex: 1;
+  justify-content: flex-start;
+}
+.lcard .lore-sw {
+  align-self: flex-end;
+}
+.lcard.off {
+  background: transparent;
+}
+/* A card that is one button (presets, personas): a face if any, the name in up to two lines, a small note. */
+.libcard {
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  justify-content: center;
+  gap: 6px;
+  min-width: 0;
+  min-height: 72px;
+  padding: 12px;
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  background: var(--surface);
+  color: var(--ink);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.libcard-name {
+  font-size: 14px;
+  overflow-wrap: anywhere;
+}
+.libcard small {
+  font-size: 12px;
+  color: var(--ink-3);
 }

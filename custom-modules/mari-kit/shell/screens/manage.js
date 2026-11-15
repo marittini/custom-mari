@@ -391,17 +391,13 @@ function newPersona(go) {
 export function personasPage(body, go) {
   guard(body, async () => {
     const [list, groups] = await Promise.all([data.personas(), groupsOf("personas")]);
+    // Cards in columns, the face over the name (it wraps rather than being cut).
     const open = (p) =>
       h(
         "button",
-        { type: "button", class: "r two", onClick: () => go(`edit/persona/${p.id}`) },
-        h(
-          "span",
-          { style: { display: "flex", alignItems: "center", gap: "12px", minWidth: "0" } },
-          avatar(p.avatarPath, String(p.name || "·")[0], 32),
-          h("span", { style: { overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" } }, p.name),
-        ),
-        h("span", { class: "val" }, "편집 ›"),
+        { type: "button", class: "libcard", onClick: () => go(`edit/persona/${p.id}`) },
+        avatar(p.avatarPath, String(p.name || "·")[0], 44),
+        h("span", { class: "libcard-name" }, p.name || "이름 없음"),
       );
     setChildren(
       body,
@@ -412,7 +408,7 @@ export function personasPage(body, go) {
           "채팅마다 쓸 페르소나는 그 채팅의 설정에서 골라요. 페르소나를 누르면 이름, 카드, 사진 자르기, 그룹, 로어북까지 여기서 고칠 수 있어요. 갤러리와 스탯만 엔진에서 열려요.",
         ),
         list.length
-          ? h("div", null, sectioned(h, splitByGroup(list, groups), open, "personas"))
+          ? h("div", null, sectioned(h, splitByGroup(list, groups), open, "personas", "cardgrid"))
           : h("div", { class: "empty" }, "페르소나가 아직 없어요."),
         actions(
           h("button", { type: "button", class: "pill", onClick: () => newPersona(go) }, "새 페르소나"),
@@ -434,10 +430,14 @@ export function presetsPage(body, go) {
           h,
           splitByGroup(list, folders),
           (p) =>
-            row(p.name, p.isDefault === true || p.isDefault === "true" ? "기본" : "", () =>
-              go(`settings/preset/${encodeURIComponent(p.id)}`),
+            h(
+              "button",
+              { type: "button", class: "libcard", onClick: () => go(`settings/preset/${encodeURIComponent(p.id)}`) },
+              h("span", { class: "libcard-name" }, p.name || "이름 없음"),
+              p.isDefault === true || p.isDefault === "true" ? h("small", null, "기본") : null,
             ),
           "presets",
+          "cardgrid",
         ),
         actions(h("button", { type: "button", class: "pill", onClick: () => go("folders/presets") }, "폴더 관리")),
       ),
