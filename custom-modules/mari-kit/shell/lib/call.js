@@ -20,15 +20,6 @@ import { subject } from "./convo-bits.js";
 
 const BASE = "/conversation-calls";
 
-/** The chat's call status when the Calls package is installed (404 when it is not), else null. */
-export async function callsAvailable(chatId) {
-  try {
-    return (await api.get(`${BASE}/chat/${encodeURIComponent(chatId)}/status`)) || {};
-  } catch {
-    return null;
-  }
-}
-
 const visible = (m) => m && m.extra?.hiddenFromUser !== true && !["command", "system"].includes(m.kind);
 const fmt = (ms) =>
   `${String(Math.floor(ms / 60000)).padStart(2, "0")}:${String(Math.floor((ms % 60000) / 1000)).padStart(2, "0")}`;

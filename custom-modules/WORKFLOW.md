@@ -102,7 +102,10 @@ is not checked again; `--base origin/main` checks the whole branch. It picks (`s
 - the tests in `custom-modules/tests/` that changed or name a changed file. A test that needs an Engine is named
   `*.engine.test.mjs`; the Engine starts only when something needs it.
 
-`--plan` prints what would run and why, without running it. Batch edits and verify once per batch: every run of a
+`--plan` prints what would run and why, without running it. `--resources` lists the biggest requests of each toured
+screen (where a screen's transfer goes). `--crawl` also presses every safe button, tab and in-app link on every
+toured screen (not switches, nothing that sends, generates, deletes or calls) and checks whatever opens — the sheets
+and sub-screens no flow reaches; `--all` (CI) always crawls. Batch edits and verify once per batch: every run of a
 flow costs output, so do not run the scoped check after each small edit (`--quick` is for that).
 
 Each check prints one line; a toured screen prints its transfer; a failure prints its tail.

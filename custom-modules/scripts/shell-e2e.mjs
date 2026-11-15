@@ -6,7 +6,7 @@
 // (transfer per screen, sideways page scroll, page errors; e2e/screens.mjs). Needs Playwright's Chromium.
 //
 //   node custom-modules/scripts/shell-e2e.mjs [http://127.0.0.1:7860] [--only flow,flow] [--screens mod,mod]
-//                                             [--shots <dir>] [--coverage <file>]
+//                                             [--shots <dir>] [--coverage <file>] [--crawl] [--resources]
 //   --only: just these flows (none: "--only -"). --screens: tour only the screens drawn by these screen modules
 //   (shell/screens/<mod>.js; "-" for none). Without either, everything runs, with the first-visit transfer.
 //   --coverage: write which shell functions and Engine routes each passing flow used (e2e/coverage.mjs), so the
@@ -18,7 +18,7 @@ import { mkdir } from "node:fs/promises";
 import { fileURLToPath } from "node:url";
 import { tmpdir } from "node:os";
 import { startFakeLlm } from "./e2e/fake-llm.mjs";
-import { layoutFaults, offscreenText, screenTour } from "./e2e/screens.mjs";
+import { crawlScreens, layoutFaults, offscreenText, screenTour } from "./e2e/screens.mjs";
 import { routeOf, summarize } from "./e2e/coverage.mjs";
 import { writeFile } from "node:fs/promises";
 
@@ -28,6 +28,8 @@ const list = (name) =>
   args.includes(name) ? args[args.indexOf(name) + 1].split(",").filter((x) => x && x !== "-") : null;
 const only = list("--only");
 const tourMods = list("--screens");
+const crawl = args.includes("--crawl");
+const resources = args.includes("--resources");
 const coverageOut = args.includes("--coverage") ? resolve(args[args.indexOf("--coverage") + 1]) : null;
 const shots = args.includes("--shots") ? resolve(args[args.indexOf("--shots") + 1]) : null;
 const base = (args.find((a) => a.startsWith("http")) || process.env.ENGINE_URL || "http://127.0.0.1:7860").replace(
@@ -564,9 +566,17 @@ const flows = {
   async "convo-media"({ page }) {
     await uploadPicture("/custom-stickers", "e2e_wave");
     await uploadPicture("/custom-emojis", "e2e_blob");
+    // A standard ":heart:" in a saved message still shows as ❤️ (the 23KB emoji list now loads only for such a
+    // message, after the chat's own emojis are in).
+    await api("POST", `/chats/${convo.id}/messages`, {
+      role: "assistant",
+      characterId: a.id,
+      content: "고마워 :heart:",
+    });
     await page.setViewportSize({ width: 360, height: 780 });
     await open(page);
     await goIn(page, `#/convo/${encodeURIComponent(convo.id)}`);
+    await page.locator(".bub").filter({ hasText: "고마워 ❤️" }).first().waitFor({ timeout: 10000 });
     const box = page.locator(".cin");
     await box.waitFor();
     const before = (await box.boundingBox()).width;
@@ -1205,8 +1215,19 @@ if (tourMods ? tourMods.length : !only) {
     app: APP,
     ids: { convo: convo.id, group: group.id, rp: rp.id, a: a.id, persona: persona.id },
     shots,
+    resources,
   });
   failed += tour.failed;
+}
+// --crawl: every safe button on every toured screen (the sheets no flow opens).
+if (crawl) {
+  const result = await crawlScreens({
+    browser,
+    app: APP,
+    mods: tourMods,
+    ids: { convo: convo.id, group: group.id, rp: rp.id, a: a.id, persona: persona.id },
+  });
+  failed += result.failed;
 }
 if (coverageOut) await writeFile(coverageOut, JSON.stringify(coverage));
 await browser.close();

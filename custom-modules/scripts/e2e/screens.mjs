@@ -171,16 +171,115 @@ export function layoutFaults(root = document.body) {
     if (!visible(r)) continue;
     const cs = getComputedStyle(r);
     if (cs.display !== "grid") continue;
-    const tracks = cs.gridTemplateColumns.split(" ").filter(Boolean).length;
+    const tracks = cs.gridTemplateColumns.split(" ").filter(Boolean);
     const kids = [...r.children].filter(visible);
     const first = kids[0];
-    if (kids.length < tracks && first && !first.querySelector("svg, img") && first.textContent.trim().length > 1)
-      out.add(`cells: ${first.textContent.trim().slice(0, 16)} (${kids.length} of ${tracks})`);
+    // Only when the text really lands in a narrow first column (the 24px icon cell), not a wide one.
+    if (
+      kids.length < tracks.length &&
+      parseFloat(tracks[0]) < 48 &&
+      first &&
+      !first.querySelector("svg, img") &&
+      first.textContent.trim().length > 1
+    )
+      out.add(`cells: ${first.textContent.trim().slice(0, 16)} (${kids.length} of ${tracks.length})`);
   }
   return [...out].slice(0, 6);
 }
 
-export async function screenTour({ browser, app, ids, mods = null, shots = null, log = console.log }) {
+// Labels the crawl never presses: they send, generate, delete, leave, call, play, or leave the shell.
+const CRAWL_SKIP =
+  /보내기|전송|삭제|지우기|나가기|끊기|종료|초기화|생성|만들기|다시|정리|업데이트|설치|내보내기|가져오기|복사|엔진|로그아웃|마이크|전화|통화 걸|재생|듣기|멈춤|멈추기|저장|적용|비우기|되돌리기|취소|닫기|뒤로/;
+
+/**
+ * The crawl: on every toured screen, presses each visible button, tab and in-app link once (not switches, not the
+ * dock, nothing in CRAWL_SKIP) and checks what opens — a sheet, a menu, a popup, a sub-screen — for layout faults
+ * and text running off the screen, then closes it and goes back. Catches the sheets no flow opens. Returns
+ * { failed, found: ["screen › button: fault"] }.
+ */
+export async function crawlScreens({ browser, app, ids, mods = null, log = console.log }) {
+  const ctx = await browser.newContext({ viewport: { width: 360, height: 780 }, isMobile: true, hasTouch: true });
+  const page = await ctx.newPage();
+  page.on("filechooser", () => {});
+  page.on("dialog", (d) => d.dismiss().catch(() => {}));
+  const found = [];
+  let pressed = 0;
+  await page.goto(app);
+  await page.waitForSelector(".dock");
+  const screens = tourScreens(ids).filter(([, hash]) => !mods || mods.includes(hash.split("/")[0]));
+  const candidates = (skip) =>
+    page.evaluate((skipSource) => {
+      const skipRe = new RegExp(skipSource);
+      const els = [
+        ...document.querySelectorAll('.app button, .app [role="button"], .app [role="tab"], .app a[href^="#/"]'),
+      ];
+      return els
+        .map((el, i) => {
+          const r = el.getBoundingClientRect();
+          const label = (el.getAttribute("aria-label") || el.textContent || "")
+            .trim()
+            .replace(/\s+/g, " ")
+            .slice(0, 30);
+          const ok =
+            r.width > 0 &&
+            r.height > 0 &&
+            !el.disabled &&
+            el.getAttribute("role") !== "switch" &&
+            !el.closest(".dock, .sheet, .qr, .scrim") &&
+            !skipRe.test(label);
+          return ok ? { i, label } : null;
+        })
+        .filter(Boolean);
+    }, skip.source);
+  const goTo = async (hash) => {
+    await page.evaluate((h) => (location.hash = `#/${h}`), hash);
+    await page.waitForTimeout(500);
+  };
+  for (const [name, hash] of screens) {
+    await goTo(hash);
+    const list = await candidates(CRAWL_SKIP);
+    for (const { i, label } of list) {
+      if (!(await page.url()).includes("/api/mari-kit/app")) {
+        await page.goto(`${app}#/${hash}`);
+        await page.waitForSelector(".dock");
+      }
+      const target = page.locator('.app button, .app [role="button"], .app [role="tab"], .app a[href^="#/"]').nth(i);
+      if (!(await target.isVisible().catch(() => false))) continue;
+      pressed += 1;
+      await target.click({ timeout: 2000 }).catch(() => {});
+      await page.waitForTimeout(450);
+      if ((await page.url()).includes("/api/mari-kit/app")) {
+        const faults = await page.evaluate(layoutFaults).catch(() => []);
+        const off = await page.evaluate(offscreenText).catch(() => []);
+        for (const f of [...faults, ...off.map((t) => `runs off: ${t}`)]) found.push(`${name} › ${label}: ${f}`);
+      }
+      // Close whatever opened and come back.
+      await page.keyboard.press("Escape").catch(() => {});
+      await page.evaluate(() => document.querySelectorAll(".scrim").forEach((s) => s.click())).catch(() => {});
+      if (!(await page.url()).includes("/api/mari-kit/app")) {
+        await page.goto(`${app}#/${hash}`);
+        await page.waitForSelector(".dock");
+      } else if (!(await page.evaluate((h) => location.hash === `#/${h}`, hash))) await goTo(hash);
+    }
+  }
+  await ctx.close();
+  const unique = [...new Set(found)];
+  log(
+    `Crawl: pressed ${pressed} buttons on ${screens.length} screens · ${unique.length ? `${unique.length} FAULT(S)` : "no faults"}`,
+  );
+  for (const f of unique.slice(0, 30)) log(`  FAIL ${f}`);
+  return { failed: unique.length ? 1 : 0, found: unique };
+}
+
+export async function screenTour({
+  browser,
+  app,
+  ids,
+  mods = null,
+  shots = null,
+  resources = false,
+  log = console.log,
+}) {
   if (shots) await mkdir(shots, { recursive: true });
   const ctx = await browser.newContext({
     viewport: { width: 360, height: 780 },
@@ -192,9 +291,15 @@ export async function screenTour({ browser, app, ids, mods = null, shots = null,
   let errors = [];
   page.on("pageerror", (e) => errors.push(e.message));
   let bytes = 0;
+  let heavy = []; // [kb, path] of this screen's requests, for --resources
   page.on("requestfinished", async (r) => {
     const s = await r.sizes().catch(() => null);
-    if (s) bytes += s.responseBodySize + s.responseHeadersSize;
+    if (!s) return;
+    bytes += s.responseBodySize + s.responseHeadersSize;
+    heavy.push([
+      (s.responseBodySize + s.responseHeadersSize) / 1024,
+      new URL(r.url()).pathname.replace(/\/v\/[0-9a-f]{12}\//, "/"),
+    ]);
   });
   await page.goto(app);
   await page.waitForSelector(".dock");
@@ -206,6 +311,7 @@ export async function screenTour({ browser, app, ids, mods = null, shots = null,
   for (const [name, hash] of screens) {
     errors = [];
     bytes = 0;
+    heavy = [];
     const waiting = settle(page);
     await page.evaluate((h) => (location.hash = `#/${h}`), hash); // in-app move, as a tap does
     await waiting;
@@ -231,7 +337,14 @@ export async function screenTour({ browser, app, ids, mods = null, shots = null,
     check.faults = await page.evaluate(layoutFaults);
     const bad = check.wide > 1 || check.offscreen.length > 0 || check.faults.length > 0 || errors.length > 0;
     if (bad) failed += 1;
-    rows.push({ name, hash, kb: bytes / 1024, ...check, errors: [...errors] });
+    rows.push({
+      name,
+      hash,
+      kb: bytes / 1024,
+      ...check,
+      errors: [...errors],
+      heavy: heavy.sort((x, y) => y[0] - x[0]).slice(0, 6),
+    });
     if (shots)
       await page.screenshot({ path: join(shots, `${String(rows.length).padStart(2, "0")}-${hash.split("/")[0]}.png`) });
   }
@@ -251,6 +364,7 @@ export async function screenTour({ browser, app, ids, mods = null, shots = null,
     log(
       `  ${r.wide > 1 || r.offscreen.length || r.faults.length || r.errors.length ? "FAIL" : "ok  "} ${r.name.padEnd(14)} ${r.kb.toFixed(1).padStart(7)}KB  ${notes}`,
     );
+    if (resources) for (const [kb, path] of r.heavy) log(`        ${kb.toFixed(1).padStart(6)}KB ${path}`);
   }
   if (shots) log(`  screenshots: ${shots}`);
   return { rows, failed };
