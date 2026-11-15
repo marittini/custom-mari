@@ -832,10 +832,10 @@ export function convoScreen({ mount, args, go, back }) {
       callLines.set(ev.callId, "loading");
       Promise.all([
         api.get(`/conversation-calls/${encodeURIComponent(ev.callId)}/messages`),
-        data.personas().catch(() => []),
+        data.personaName(chat?.personaId),
       ])
-        .then(([rows, personas]) => {
-          const myName = (personas || []).find((p) => p.id === chat?.personaId)?.name || "나";
+        .then(([rows, personaName]) => {
+          const myName = personaName || "나";
           const said = (Array.isArray(rows) ? rows : []).filter(
             (r) => r.extra?.hiddenFromUser !== true && !["command", "system"].includes(r.kind) && r.content,
           );

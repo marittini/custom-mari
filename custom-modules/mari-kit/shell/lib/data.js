@@ -9,6 +9,7 @@ let charsP = null;
 const cards = new Map();
 let connsP = null;
 let personasP = null;
+const personaNames = new Map(); // persona id → Promise<name>
 let uiP = null;
 
 export const data = {
@@ -71,6 +72,21 @@ export const data = {
         })),
       )
       .catch(() => [])),
+  /** One persona's name (a call record's "who"): from the list when it is loaded, else that persona alone. */
+  personaName: (id) => {
+    if (!id) return Promise.resolve("");
+    if (!personaNames.has(id))
+      personaNames.set(
+        id,
+        (personasP
+          ? personasP.then((list) => list.find((p) => p.id === id))
+          : api.get(`/characters/personas/${encodeURIComponent(id)}`)
+        )
+          .then((p) => p?.name || "")
+          .catch(() => ""),
+      );
+    return personaNames.get(id);
+  },
   /** The Engine's own synced UI settings (quick replies live here). */
   /**
    * The Engine's UI settings (quick replies live here), the newer of the two copies the Engine keeps: the server's

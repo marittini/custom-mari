@@ -66,7 +66,9 @@ export function callScreen(ctx) {
   // first; it also expires by itself after 3 hours). This device remembers what it changed (prefs().callLeft).
   const leftList = () => ({ ...(prefs().callLeft || {}) }); // character id → { callId, chatId, prev }
   const leftHere = (id) => !!session && leftList()[id]?.callId === session.id;
-  const away = (c) => !leftHere(c.id) && presenceOf(chatMeta(ctx.chat), c.id)?.status === "offline";
+  let statuses = null; // the Engine's fresh reading, once this screen has asked (after a leave or a call back)
+  const away = (c) =>
+    !leftHere(c.id) && presenceOf(chatMeta(ctx.chat), c.id, new Date(), statuses?.[c.id])?.status === "offline";
   const inCall = () => cast().filter((c) => !leftHere(c.id) && !away(c));
   const saveOverride = (characterId, override) =>
     api.patch(`/characters/${encodeURIComponent(characterId)}`, {
@@ -74,7 +76,11 @@ export function callScreen(ctx) {
       skipVersionSnapshot: true,
     });
   // The package reads the chat's copy of the statuses, which the Engine refreshes from the cards here.
-  const syncStatuses = () => api.get(`/conversation/status/${encodeURIComponent(ctx.chatId)}`).catch(() => null);
+  const syncStatuses = () =>
+    api
+      .get(`/conversation/status/${encodeURIComponent(ctx.chatId)}`)
+      .then((st) => ((statuses = st?.statuses || statuses), st))
+      .catch(() => null);
   async function leave(characterId) {
     if (leftHere(characterId)) return;
     try {
@@ -160,16 +166,8 @@ export function callScreen(ctx) {
   }
   // My lines carry the chat's persona name (and voice), read once when a call or its record opens.
   let persona = null; // { id, name }
-  const loadPersona = () =>
-    persona ||
-    data
-      .personas()
-      .then((list) => {
-        const p = (list || []).find((x) => x.id === ctx.chat.personaId);
-        persona = p ? { id: p.id, name: p.name } : { id: null, name: "" };
-        return persona;
-      })
-      .catch(() => ({ id: null, name: "" }));
+  const loadPersona = async () =>
+    persona || (persona = { id: ctx.chat.personaId || null, name: await data.personaName(ctx.chat.personaId) });
   const speakerName = (m) =>
     m.participantKind === "user" ? persona?.name || "나" : ctx.index.get(m.characterId)?.name || "상대";
   const layer = h("div", { class: "callx", hidden: true });
