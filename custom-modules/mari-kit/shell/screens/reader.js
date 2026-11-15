@@ -78,6 +78,24 @@ export function readerScreen({ mount, back }) {
           h("span", null, "대사 형광펜"),
           h("span", { class: p.highlight === true ? "sw on" : "sw" }, h("span")),
         ),
+        h(
+          "button",
+          {
+            type: "button",
+            class: "r two",
+            role: "switch",
+            "aria-checked": p.hlColor === true ? "true" : "false",
+            disabled: p.highlight !== true,
+            onClick: () => setPrefs({ hlColor: p.hlColor !== true }),
+          },
+          h(
+            "span",
+            { style: { display: "flex", flexDirection: "column", gap: "2px" } },
+            "형광펜에 프로필 대사 색 쓰기",
+            h("span", { class: "hint" }, "캐릭터·페르소나 편집 › 색·음성의 대사 색 · 없으면 회색"),
+          ),
+          h("span", { class: p.hlColor === true ? "sw on" : "sw" }, h("span")),
+        ),
         // The same switch as 설정 › 음성 (one setting, shown where the lines are read too).
         h(
           "button",

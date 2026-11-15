@@ -173,6 +173,12 @@ export function callSettingsScreen({ mount, args, go, back }) {
           ),
           h("span", { class: "val" }, "›"),
         ),
+        h(
+          "button",
+          { type: "button", class: "grow", onClick: () => go("settings/shared") },
+          h("span", null, "캐릭터가 알아서 전화 끊기", h("small", null, "모든 방 공통 · 설정에서 바꿔요")),
+          h("span", { class: "val" }, "›"),
+        ),
       ),
     );
   }

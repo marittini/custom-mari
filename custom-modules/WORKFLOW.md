@@ -95,7 +95,8 @@ is not checked again; `--base origin/main` checks the whole branch. It picks (`s
   called (`scripts/e2e/coverage.mjs`, kept in `.git/mari-verify/`). A change runs only the flows that executed a
   changed function, built an element a changed CSS rule styles, or called a changed server feature's routes. A
   change to one flow in `shell-e2e.mjs` runs that flow; a change to its shared setup runs all. A flow with no record
-  yet falls back to the screens it opens (`FLOW_SCREENS`);
+  yet, or whose record is partial (it reloaded or left the page, which drops what ran before), falls back to the
+  screens it opens (`FLOW_SCREENS`);
 - the old Mari Kit regressions in `scripts/regressions/mari-kit-*.mjs` that load a changed file through their
   imports (they run outside a browser, so code that assumes `location` or `document` breaks them);
 - the tests in `custom-modules/tests/` that changed or name a changed file. A test that needs an Engine is named
@@ -146,13 +147,16 @@ building UI; the layout ones are checked automatically (section 7).
    `.r`. Cards: `gcard` / `grow`. Text in a cell may wrap (`min-width: 0`, `overflow-wrap: anywhere`; `keep-all`
    only together with `overflow-wrap: anywhere`); a short label that must stay whole (a time) gets `nowrap` and the
    long neighbour wraps.
-5. **Filled icons are filled.** `icon(path, size, 0)` draws a filled shape; never a line 0 wide.
-6. **No raw Engine text.** English system lines and ids are shown in Korean, in the shell's monotone style.
-7. **One flow, one place.** When two screens do the same thing (organize memory, make a voice clip), they share one
+5. **Menus and lists are the existing ones.** A menu of actions is the quick-reply menu (`.qr`: icon and name per
+   row), a longer choice is a `sheet` of `.r` rows, a setting is a row in `gcard`/`grow`. Chips are only for picking
+   one value out of a few (a size, a mode), never as a menu or a row of buttons.
+6. **Filled icons are filled.** `icon(path, size, 0)` draws a filled shape; never a line 0 wide.
+7. **No raw Engine text.** English system lines and ids are shown in Korean, in the shell's monotone style.
+8. **One flow, one place.** When two screens do the same thing (organize memory, make a voice clip), they share one
    `lib/` module. Number limits and defaults come from one constant (the server's, sent to the screen).
-8. **Say only what happened.** A notice never claims something that did not happen ("되돌렸어요" only after a real
+9. **Say only what happened.** A notice never claims something that did not happen ("되돌렸어요" only after a real
    restore).
-9. **Before reporting:** run the whole flow at 360px, back and reload included; look at the screenshots.
+10. **Before reporting:** run the whole flow at 360px, back and reload included; look at the screenshots.
 
 ## 9. Delegating
 

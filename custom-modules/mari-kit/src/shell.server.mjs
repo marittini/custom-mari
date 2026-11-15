@@ -186,6 +186,8 @@ export function slimCharacter(record) {
     name: typeof card.name === "string" ? card.name.trim() : "",
     phoneticName: typeof ext.phoneticName === "string" ? ext.phoneticName : "",
     fav: ext.fav === true,
+    // 대사 색 (the Engine's dialogueColor), for 보기 설정 › 형광펜에 프로필 대사 색 쓰기.
+    ...(/^#[0-9a-f]{3,8}$/i.test(ext.dialogueColor ?? "") ? { dialogueColor: ext.dialogueColor } : {}),
   };
 }
 

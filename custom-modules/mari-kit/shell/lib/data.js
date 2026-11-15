@@ -222,7 +222,15 @@ export function characterIndex(rows) {
     // Slim rows (the shell's list) carry no card; full Engine rows still work.
     const card = row.data ? characterCard(row) : null;
     const name = row.name || card?.name || "";
-    map.set(row.id, { id: row.id, name: name || "이름 없음", card, avatar: row.avatarPath || null, row });
+    const color = row.dialogueColor || card?.extensions?.dialogueColor || "";
+    map.set(row.id, {
+      id: row.id,
+      name: name || "이름 없음",
+      card,
+      avatar: row.avatarPath || null,
+      row,
+      color: /^#[0-9a-f]{3,8}$/i.test(color) ? color : "",
+    });
   }
   return map;
 }

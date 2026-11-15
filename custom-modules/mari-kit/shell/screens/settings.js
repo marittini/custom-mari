@@ -77,11 +77,12 @@ export function settingsScreen({ mount, args, go, back }) {
   // sat among this-chat switches. Read only on the main list.
   let shared = null;
   const loadShared = async () => {
-    const [settings, tts] = await Promise.all([
+    const [settings, tts, guide] = await Promise.all([
       api.get("/mari-kit/settings").catch(() => null),
       api.get("/tts/config").catch(() => null),
+      import("../lib/call-guide.js").then((g) => g.guideOn()).catch(() => true),
     ]);
-    shared = { features: settings?.features || {}, tts };
+    shared = { features: settings?.features || {}, tts, guide: guide !== false };
     if (!page || page === "shared") draw();
     if (page === "shared") scrollShared();
   };
@@ -91,6 +92,14 @@ export function settingsScreen({ mount, args, go, back }) {
   const setFeature = async (id, on) => {
     try {
       await api.patch("/mari-kit/settings", { features: { [id]: on } });
+      await loadShared();
+    } catch (error) {
+      toast(error.message);
+    }
+  };
+  const setGuide = async (on) => {
+    try {
+      await (await import("../lib/call-guide.js")).setGuide(on);
       await loadShared();
     } catch (error) {
       toast(error.message);
@@ -131,6 +140,13 @@ export function settingsScreen({ mount, args, go, back }) {
             setCallAudio(shared.tts.callAudioEnabled !== true),
           )
         : null,
+      swRow(
+        I.phone,
+        "캐릭터가 알아서 전화 끊기",
+        "상황과 성격에 따라 스스로 끊어요 · 로어북 'Mari Kit · 통화'에서 문장을 고칠 수 있어요",
+        shared.guide,
+        () => setGuide(!shared.guide),
+      ),
     ];
   }
 
@@ -250,6 +266,7 @@ export function settingsScreen({ mount, args, go, back }) {
     ["기억 켜기", "설정 › 모든 방 공통 기능", "memory 기억 정리 켜기", () => jumpShared()],
     ["날씨 켜기", "설정 › 모든 방 공통 기능", "weather 날씨", () => jumpShared()],
     ["통화 음성", "설정 › 모든 방 공통 기능", "call audio 통화 목소리", () => jumpShared()],
+    ["캐릭터가 알아서 전화 끊기", "설정 › 모든 방 공통 기능", "통화 끊기 전화 hang up end call", () => jumpShared()],
     ["글꼴", "설정 › 화면", "font 폰트", () => go("settings/font")],
     ["읽기", "설정 › 화면", "글자 크기 줄 간격 정렬 글꼴 롤플레이 대화 대사 형광펜 reading", () => go("reader")],
     ["메시지 도구", "설정 › 화면", "버튼 tools 복사 수정", () => go("settings/tools")],

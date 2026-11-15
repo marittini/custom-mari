@@ -311,6 +311,7 @@ export function mediaPanel({ media, onInsert, onSticker, manage, games = null, o
     const tabs = gameList.length && !only ? [...base, ["game", "게임"]] : base;
     if (!tabs.some(([id]) => id === lastTab)) lastTab = "emoji";
     tabsEl.style.gridTemplateColumns = `repeat(${tabs.length}, minmax(0, 1fr))`;
+    tabsEl.hidden = tabs.length < 2; // one tab (the reaction picker) needs no tab row
     setChildren(
       tabsEl,
       tabs.map(([id, text]) =>

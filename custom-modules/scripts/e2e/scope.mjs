@@ -98,7 +98,8 @@ export function planChecks(changed, files, ctx = {}) {
   }
   const allScreens = () => screenFiles.forEach((s) => plan.screens.add(screenName(s)));
   const cov = ctx.coverage || {};
-  const covered = (f) => Boolean(cov[f]?.tree && ctx.diff);
+  // A partial record (the flow reloaded or left the page, which drops earlier coverage) cannot rule a flow out.
+  const covered = (f) => Boolean(cov[f]?.tree && !cov[f].partial && ctx.diff);
   const allFlows = (reason) => Object.keys(FLOW_SCREENS).forEach((f) => (plan.flows.add(f), note(`flow ${f}`, reason)));
   const pickFlows = (test, reason) => {
     for (const f of Object.keys(FLOW_SCREENS))
