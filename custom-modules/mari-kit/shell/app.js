@@ -35,6 +35,7 @@ const SCREENS = {
   voice: ["voice", "voiceScreen"],
   radio: ["radio", "radioScreen"],
   "call-settings": ["call-settings", "callSettingsScreen"],
+  weather: ["weather", "weatherScreen"],
   credit: ["credit", "creditScreen"],
   groups: ["groups", "groupsScreen"],
   search: ["search", "searchScreen"],

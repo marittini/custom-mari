@@ -14,6 +14,7 @@ import { ENGINE_SECTIONS } from "../lib/engine-sections.js";
 import { pickPerson } from "../lib/picker.js";
 import { profileSheet } from "../lib/profiles.js";
 import { startJob } from "../lib/activity.js";
+import { pickPresetChoices, NO_CHOICES } from "../lib/preset-choices.js";
 import { groupsOf, splitByGroup, groupedOptions, sectioned, forgetGroups } from "../lib/groups.js";
 
 const VIEW_TITLES = {
@@ -231,156 +232,26 @@ export function chatSettingsScreen({ mount, args, go, back }) {
   }
 
   /**
-   * The preset's choice blocks for this chat (RP), the same way the Engine's choice window works: each question with
-   * its options; the chat's saved choice first, then the preset's default, then the first option (a random one when
-   * the block says so); multi-select blocks pick any number. Saved to presetChoices; optionally as the preset's
-   * defaultChoices too. The preset's full record (~27KB with its sections) is read only when this opens.
+   * The preset's choice blocks for this chat (RP), the Engine's choice window (lib/preset-choices.js), saved to the
+   * chat's presetChoices.
    */
   async function presetChoices(chat) {
     const presetId = chat.promptPresetId;
     if (!presetId) return toast("기본 프리셋에는 선택지가 없어요");
-    let full;
     try {
-      full = await api.get(`/prompts/${encodeURIComponent(presetId)}/full`);
+      const picks = await pickPresetChoices({
+        presetId,
+        existing: chatMeta(chat).presetChoices || {},
+        title: (name) => `${name} · 이 채팅의 선택`,
+        onEdit: () => openEngine(chat.id, { preset: presetId }),
+      });
+      if (picks === NO_CHOICES) return toast("이 프리셋에는 선택지가 없어요");
+      if (!picks) return;
+      await patchMeta({ presetChoices: picks });
+      toast("선택을 저장했어요");
     } catch (error) {
-      return toast(error.message);
+      toast(error.message);
     }
-    const parse = (v, fallback) => {
-      if (typeof v !== "string") return v ?? fallback;
-      try {
-        return JSON.parse(v);
-      } catch {
-        return fallback;
-      }
-    };
-    const truthy = (v) => v === true || v === "true";
-    const blocks = (full?.choiceBlocks || []).map((cb) => {
-      const options = (parse(cb.options, []) || []).filter((o) => o && typeof o.value === "string");
-      if ((cb.optionSort ?? cb.option_sort) === "alphabetical")
-        options.sort((a, b) => String(a.label).localeCompare(String(b.label)));
-      return {
-        name: cb.variableName ?? cb.variable_name ?? "",
-        question: cb.question || "선택",
-        options,
-        multi: truthy(cb.multiSelect ?? cb.multi_select),
-        random: truthy(cb.randomPick ?? cb.random_pick),
-      };
-    });
-    if (!blocks.length) return toast("이 프리셋에는 선택지가 없어요");
-    const existing = chatMeta(chat).presetChoices || {};
-    const defaults = parse(full.preset?.defaultChoices ?? full.preset?.default_choices, {}) || {};
-    const valid = (b, v) => {
-      const values = new Set(b.options.map((o) => o.value));
-      const list = Array.isArray(v) ? v : typeof v === "string" ? [v] : [];
-      return b.multi ? list.filter((x, i) => values.has(x) && list.indexOf(x) === i) : list.find((x) => values.has(x));
-    };
-    const picks = {};
-    for (const b of blocks) {
-      const fallback = b.multi
-        ? []
-        : b.random && b.options.length
-          ? b.options[Math.floor(Math.random() * b.options.length)].value
-          : b.options[0]?.value;
-      picks[b.name] =
-        existing[b.name] !== undefined
-          ? (valid(b, existing[b.name]) ?? fallback)
-          : defaults[b.name] !== undefined && !(b.random && !b.multi)
-            ? (valid(b, defaults[b.name]) ?? fallback)
-            : fallback;
-    }
-    let asDefault = false;
-    const body = h("div", { style: { overflowY: "auto", minHeight: "0", padding: "4px 0 20px" } });
-    const s = sheet(body, { label: "프리셋 선택지" });
-    const paint = () =>
-      setChildren(
-        body,
-        h(
-          "div",
-          { style: { padding: "8px 20px 4px", fontSize: "15px", fontWeight: "600" } },
-          `${full.preset?.name || "프리셋"} · 이 채팅의 선택`,
-        ),
-        blocks.map((b) =>
-          h(
-            "div",
-            { style: { padding: "12px 20px 4px" } },
-            h(
-              "div",
-              { class: "hint", style: { marginBottom: "8px" } },
-              b.question,
-              b.multi ? " · 여럿 고르기" : b.random ? " · 처음엔 무작위" : "",
-            ),
-            h(
-              "div",
-              { class: "chips" },
-              b.options.map((o) => {
-                const on = b.multi ? picks[b.name].includes(o.value) : picks[b.name] === o.value;
-                return h(
-                  "button",
-                  {
-                    type: "button",
-                    class: on ? "chip on" : "chip",
-                    "aria-pressed": on ? "true" : "false",
-                    title: o.value.length > 80 ? `${o.value.slice(0, 200)}…` : o.value,
-                    onClick: () => {
-                      picks[b.name] = b.multi
-                        ? on
-                          ? picks[b.name].filter((x) => x !== o.value)
-                          : [...picks[b.name], o.value]
-                        : o.value;
-                      paint();
-                    },
-                  },
-                  o.label || o.value.slice(0, 24),
-                );
-              }),
-            ),
-          ),
-        ),
-        h(
-          "button",
-          {
-            type: "button",
-            class: "r",
-            role: "switch",
-            "aria-checked": asDefault ? "true" : "false",
-            style: { marginTop: "12px" },
-            onClick: () => {
-              asDefault = !asDefault;
-              paint();
-            },
-          },
-          h("span", { class: "ic" }, icon(I.list)),
-          h("span", null, "이 프리셋의 기본값으로도 저장"),
-          sw(asDefault),
-        ),
-        h(
-          "div",
-          { style: { padding: "16px 20px 0", display: "flex", justifyContent: "flex-end", gap: "8px" } },
-          h(
-            "button",
-            { type: "button", class: "pill", onClick: () => (s.close(), openEngine(chat.id, { preset: presetId })) },
-            "프리셋 편집",
-          ),
-          h(
-            "button",
-            {
-              type: "button",
-              class: "pill main",
-              onClick: async () => {
-                s.close();
-                if (asDefault)
-                  await api
-                    .patch(`/prompts/${encodeURIComponent(presetId)}`, { defaultChoices: picks })
-                    .catch(() => {});
-                await patchMeta({ presetChoices: picks });
-                toast("선택을 저장했어요");
-              },
-            },
-            "저장",
-          ),
-        ),
-      );
-    paint();
   }
 
   /** Who is in the room: add or take out characters (at least one stays). */
@@ -1265,6 +1136,11 @@ export function chatSettingsScreen({ mount, args, go, back }) {
                 : null,
               chat.mode === "conversation"
                 ? linkRow(I.phone, "통화 설정", "", () => go(`call-settings/${encodeURIComponent(chatId)}`))
+                : null,
+              chat.mode === "conversation"
+                ? linkRow(I.sun, "날씨", features.weather ? "" : "꺼짐", () =>
+                    go(`weather/${encodeURIComponent(chatId)}`),
+                  )
                 : null,
               chat.mode === "conversation"
                 ? linkRow(I.chat, "대화 기능", "자율 메시지 · 일정 · 통화", () => go(here("convo")))

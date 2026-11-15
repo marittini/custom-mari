@@ -3,7 +3,7 @@
 // (/app-settings/ui), so the Engine's own screen shows the same. "일정대로" (follow) lets Mari Kit's 내 일정 decide,
 // as before.
 
-import { api } from "./api.js";
+import { mergeEngineUi } from "./engine-ui.js";
 import { prefs, setPrefs } from "./prefs.js";
 
 export const MY_STATUSES = [
@@ -37,15 +37,10 @@ export async function setMyStatus(next) {
       };
   setPrefs({ myStatus: value });
   try {
-    const res = await api.get("/app-settings/ui");
-    const current = typeof res?.value === "string" ? JSON.parse(res.value || "{}") : res?.value || {};
-    const merged = {
-      ...current,
+    await mergeEngineUi({
       userStatusManual: value.follow ? "active" : value.status,
       userActivity: value.follow ? "" : value.activity,
-      __updatedAt: Date.now(),
-    };
-    await api.put("/app-settings/ui", { value: JSON.stringify(merged) });
+    });
   } catch {}
   return myStatus();
 }

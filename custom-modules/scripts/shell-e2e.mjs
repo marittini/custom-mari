@@ -12,6 +12,7 @@
 
 import { chromium, devices } from "./e2e/playwright.mjs";
 import { dirname, join, resolve } from "node:path";
+import { mkdir } from "node:fs/promises";
 import { fileURLToPath } from "node:url";
 import { tmpdir } from "node:os";
 import { startFakeLlm } from "./e2e/fake-llm.mjs";
@@ -53,7 +54,27 @@ async function until(fn, ms, what) {
 }
 
 // ── Seed ──
-const llm = await startFakeLlm();
+// The Engine's scene planner asks for a JSON plan; the fake answers with one that casts the offered characters.
+const scenePlan = (req) => {
+  const system = String(req.messages?.find((m) => m.role === "system")?.content || "");
+  if (!system.includes("creative scene planner")) return null;
+  const ids = [...(/<available_character_ids>\n([^<]*)/.exec(system)?.[1] || "").matchAll(/"([^"]+)"/g)].map(
+    (m) => m[1],
+  );
+  return JSON.stringify({
+    name: "Scene: e2e 비 오는 밤",
+    description: "비가 그치지 않는 밤, 둘은 처마 밑에 섰다.",
+    scenario: "e2e hidden plot",
+    firstMessage: '*빗소리가 가까워졌다.* "왔어?"',
+    background: null,
+    characterIds: ids,
+    systemPrompt: "Write in first person, past tense.",
+    rating: "sfw",
+    relationshipHistory: "e2e",
+    participationGuide: "마음대로 해 보세요.",
+  });
+};
+const llm = await startFakeLlm({ scenario: scenePlan });
 const conn = await api("POST", "/connections", {
   name: "e2e fake",
   provider: "custom",
@@ -113,6 +134,9 @@ async function phone() {
   return { ctx, page, errors };
 }
 const hash = (page) => page.evaluate(() => location.hash);
+// With --shots, flows keep a screenshot of the states worth a look (an edit form, a sheet) next to the tour's.
+const snap = (page, name) => (shots ? page.screenshot({ path: join(shots, `flow-${name}.png`) }) : null);
+if (shots) await mkdir(shots, { recursive: true });
 const goIn = (page, h) => page.evaluate((x) => (location.hash = x), h); // in-app move, as a tap does
 async function open(page) {
   await page.goto(APP);
@@ -329,8 +353,111 @@ const flows = {
     if ((await page.locator(".wblocks .r").count()) !== 2) throw new Error("week view should list 2 blocks");
     await page.locator(".daytabs button").nth(6).click();
     await page.locator(".wblocks").getByText("e2e shift").waitFor();
+    // 칸 고치기: add a block on Sunday, set it, copy Sunday onto Monday, save on the card.
+    await page.getByRole("button", { name: "칸 고치기" }).click();
+    await page.getByRole("button", { name: "＋ 칸 추가" }).click();
+    const added = page.locator(".eblk").last();
+    await added.getByLabel(/하는 일$/).fill("e2e 산책");
+    await added.getByRole("radio", { name: "바쁨" }).click();
+    await snap(page, "schedule-edit");
+    await page.getByRole("button", { name: "다른 요일에 복사…" }).click();
+    await page.getByRole("button", { name: "월요일", exact: true }).click();
+    await snap(page, "schedule-copy");
+    await page.getByRole("button", { name: "1개 요일에 복사" }).click();
+    await page.getByRole("button", { name: "저장", exact: true }).click();
+    await page.locator(".wblocks").getByText("e2e 산책").waitFor({ timeout: 10000 });
+    const card = await api("GET", `/characters/${rin.id}`);
+    const saved = (typeof card.data === "string" ? JSON.parse(card.data) : card.data).extensions.conversationSchedule;
+    for (const d of ["Sunday", "Monday"]) {
+      const b = saved.days[d].find((x) => x.activity === "e2e 산책");
+      if (!b || b.status !== "dnd" || saved.days[d].length !== 3)
+        throw new Error(`${d} not saved: ${JSON.stringify(saved.days[d])}`);
+    }
+    if (saved.routineSummary !== "e2e routine") throw new Error("saving the blocks lost the routine summary");
     await goIn(page, "#/convos");
     await page.locator(`a[href="#/convo/${encodeURIComponent(scheduled.id)}"] .avp .sdot`).waitFor({ timeout: 10000 });
+  },
+
+  // 날씨 (Mari Kit weather): from chat settings, turn it on, pick my place and the character's from the built-in
+  // cities, put it in this room; the status sheet shows the row and opens the same screen.
+  async "convo-weather"({ page }) {
+    const room = () => api("GET", `/mari-kit/weather/${convo.id}`);
+    await open(page);
+    await goIn(page, `#/chat-settings/${encodeURIComponent(convo.id)}/kit`);
+    await page.getByRole("button", { name: /^날씨/ }).click();
+    await until(async () => (await hash(page)).startsWith("#/weather/"), 5000, "weather screen");
+    await page.getByRole("switch", { name: /Mari Kit 날씨/ }).click();
+    await until(async () => (await api("GET", "/mari-kit/settings")).features?.weather === true, 5000, "feature on");
+    await page.getByRole("button", { name: "고르기" }).first().click();
+    await page.locator(".sheet").getByRole("button", { name: /^서울/ }).click();
+    await until(async () => (await room()).userLocation?.name === "서울", 8000, "my place saved");
+    await page.getByRole("switch", { name: /이 방에 날씨 넣기/ }).click();
+    await until(async () => (await room()).room?.enabled === true, 8000, "room on");
+    await page.getByRole("button", { name: "고르기" }).click();
+    await page.locator(".sheet").getByRole("button", { name: /^부산/ }).click();
+    await until(async () => (await room()).room?.characterLocation?.name === "부산", 8000, "character place saved");
+    await page.locator(".wx-sum").first().waitFor({ timeout: 10000 });
+    await snap(page, "weather");
+    await page.getByRole("button", { name: "뒤로" }).click();
+    await until(async () => (await hash(page)).startsWith("#/chat-settings/"), 5000, "back to chat settings");
+    await goIn(page, `#/convo/${encodeURIComponent(convo.id)}`);
+    await page.locator(".me-line").click();
+    await page.getByRole("button", { name: /^날씨 · / }).click();
+    await until(async () => (await hash(page)).startsWith("#/weather/"), 5000, "weather from the status sheet");
+    await api("PUT", `/mari-kit/weather/${convo.id}`, { enabled: false, characterLocation: null });
+    await api("PUT", "/mari-kit/weather/user", { location: null });
+    await api("PATCH", "/mari-kit/settings", { features: { weather: false } });
+  },
+
+  // Scenes (the Engine's flow): a character's invitation, the setup sheet (POV and tense remembered in the Engine's
+  // settings), plan and create, the scene chat's bar; back in the Convo the banner and its replies-here switch; end
+  // the scene and its summary arrives in the Convo.
+  async "convo-scene"({ page }) {
+    const msg = await api("POST", `/chats/${convo.id}/messages`, {
+      role: "assistant",
+      characterId: a.id,
+      content: "비 오는데, 잠깐 나올래?",
+    });
+    await api("PATCH", `/chats/${convo.id}/messages/${msg.id}/extra`, {
+      sceneRequest: { prompt: "e2e 비 오는 밤 산책", initiatorCharId: a.id, initiatorCharName: a.name || "Aoi" },
+    });
+    await open(page);
+    await goIn(page, `#/convo/${encodeURIComponent(convo.id)}`);
+    await page.locator(".scncard").getByRole("button", { name: "장면 준비하기" }).click();
+    await page.getByRole("radio", { name: "1인칭" }).click();
+    await page.getByRole("radio", { name: "과거" }).click();
+    await snap(page, "scene-setup");
+    await page.getByRole("button", { name: "장면 짜기" }).click();
+    await until(async () => (await hash(page)).startsWith("#/rp/"), 20000, "into the scene");
+    const sceneId = decodeURIComponent((await hash(page)).split("/")[2]);
+    const sm = await meta(sceneId);
+    if (sm.sceneStatus !== "active" || sm.sceneOriginChatId !== convo.id) throw new Error("not a scene chat");
+    const ui = await api("GET", "/app-settings/ui");
+    const saved = JSON.parse(ui.value || "{}").scenePromptPreferences;
+    if (saved?.pov !== "first_person" || saved?.tense !== "past") throw new Error("scene choices not remembered");
+    await page.locator(".scnend").getByRole("button", { name: "장면 끝내기" }).waitFor();
+    await snap(page, "scene-bar");
+    await page.getByRole("button", { name: "‹ 대화로" }).click();
+    await until(async () => (await hash(page)).startsWith("#/convo/"), 5000, "back to the Convo");
+    await page.locator(".scnbar").waitFor();
+    await page.getByRole("switch", { name: /여기서도 답하게/ }).click();
+    await until(async () => (await meta(sceneId)).sceneOriginRepliesAllowed === true, 5000, "replies here");
+    await page.locator(".scncard").getByRole("button", { name: "진행 중인 장면으로" }).waitFor();
+    await page.locator(".scnbar").getByRole("button", { name: "장면으로 가기" }).click();
+    await until(async () => (await hash(page)).startsWith("#/rp/"), 5000, "to the scene");
+    await page.getByRole("button", { name: "장면 끝내기" }).click();
+    await page.getByRole("button", { name: "끝내기", exact: true }).click();
+    await until(async () => (await hash(page)).startsWith("#/convo/"), 20000, "back after the end");
+    await until(
+      async () =>
+        (await api("GET", `/chats/${convo.id}/messages`)).some(
+          (m) => m.role === "narrator" && /returned from their scene/.test(m.content),
+        ),
+      10000,
+      "summary in the Convo",
+    );
+    if ((await meta(convo.id)).activeSceneChatId) throw new Error("the Convo still points at the scene");
+    await until(async () => !(await page.locator(".scnbar").count()), 5000, "banner gone");
   },
 
   // Reactions and replies (the Engine's data): react from the quick row and take it back, see a character's
@@ -362,6 +489,13 @@ const flows = {
     await bubble.locator(".rx.mine").click();
     await until(async () => !(await reactionsNow()).some((r) => r.emoji === "❤️"), 5000, "reaction taken back");
     if (!(await reactionsNow()).some((r) => r.emoji === "😂")) throw new Error("the character's reaction was lost");
+    // A long press shows who reacted; the character's reaction can be removed (asked first).
+    await bubble.locator(".rx").filter({ hasText: "😂" }).click({ delay: 700 });
+    await snap(page, "reactors");
+    await page.getByRole("button", { name: /의 😂 반응 지우기$/ }).click();
+    await page.getByRole("button", { name: "지우기", exact: true }).click();
+    await until(async () => !(await reactionsNow()).some((r) => r.emoji === "😂"), 5000, "character reaction removed");
+    if (await bubble.locator(".rx").count()) throw new Error("the removed reaction is still drawn");
     await bubble.locator(".bub").last().click();
     await page.getByRole("button", { name: "답장" }).first().click();
     await page.locator(".rbar").waitFor();

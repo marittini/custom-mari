@@ -3179,6 +3179,13 @@ button.toast {
   padding: 0 20px;
   font-size: 15px;
 }
+/* A sheet of plain controls (no cards with their own margins): the side gutter on the sheet itself */
+.psheet.pad {
+  padding: 4px 20px 24px;
+}
+.psheet.pad .psheet-title {
+  padding: 0;
+}
 .pcard {
   display: flex;
   flex-direction: column;
@@ -3340,6 +3347,62 @@ button.toast {
   gap: 8px;
   margin: 20px 0 8px;
 }
+.eblks {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.eblk {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 12px;
+  border: 1px solid var(--line);
+  border-radius: 14px;
+}
+.eblk.warn {
+  border-color: var(--ink-2);
+  border-style: dashed;
+}
+.eblk-t {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.eblk-t .inp {
+  flex: 1 1 0;
+  min-width: 0;
+  font-variant-numeric: tabular-nums;
+}
+.eblk-x {
+  flex: none;
+  width: 44px;
+  height: 44px;
+  border: 0;
+  border-radius: 12px;
+  background: transparent;
+  color: var(--ink-2);
+  font: inherit;
+  font-size: 22px;
+  cursor: pointer;
+}
+.eblk-warn {
+  margin: 0;
+}
+.ebar {
+  position: sticky;
+  bottom: -32px; /* the screen's bottom padding: sit on the edge, not above it */
+  display: flex;
+  gap: 10px;
+  margin: 16px -20px 0;
+  padding: 12px 20px calc(12px + env(safe-area-inset-bottom));
+  background: var(--surface);
+  border-top: 1px solid var(--line);
+}
+.ebar .pill {
+  flex: 1;
+  min-height: 48px;
+}
 
 /* A screen that could not load: say so plainly, with a way to retry and a way out */
 .loadfail {
@@ -3387,6 +3450,8 @@ button.toast {
 }
 .rx {
   position: relative;
+  -webkit-touch-callout: none;
+  user-select: none;
   display: inline-flex;
   align-items: center;
   gap: 3px;
@@ -3606,4 +3671,133 @@ button.toast {
 }
 .pcard > .pcard-name {
   flex: none;
+}
+
+/* 날씨: place rows, the place sheet's search, what the model is told now */
+.wx-acts {
+  display: inline-flex;
+  gap: 6px;
+}
+.wx-find {
+  display: flex;
+  gap: 8px;
+}
+.wx-find .inp {
+  flex: 1;
+  min-width: 0;
+}
+.wx-sum {
+  margin: 0;
+  padding: 12px 16px 14px;
+  border-top: 1px solid var(--line);
+  font-size: 13px;
+  line-height: 1.6;
+  color: var(--ink-2);
+  white-space: pre-line;
+}
+
+/* Scenes: the invitation under a character's message, the Convo banner while one runs, the scene chat's end bar,
+   and the setup sheet's rows */
+.scncard {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 12px;
+  margin-top: 8px;
+  padding: 12px 14px;
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  font-size: 14px;
+  color: var(--ink-2);
+}
+.scnbar {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin: 24px 0 8px;
+  padding: 14px;
+  border: 1px solid var(--line-2);
+  border-radius: 14px;
+}
+.scnbar-t {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+.scnbar-t span {
+  font-size: 13px;
+  color: var(--ink-2);
+  overflow-wrap: anywhere;
+}
+.scnbar .r {
+  padding-left: 0;
+  padding-right: 0;
+}
+.scnbar .r small {
+  display: block;
+  font-size: 12px;
+  color: var(--ink-3);
+}
+.scnend {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 16px;
+  border-top: 1px solid var(--line);
+}
+.scnend[hidden] {
+  display: none;
+}
+.scnend-t {
+  flex: 1;
+  min-width: 0;
+  font-size: 13px;
+  color: var(--ink-3);
+}
+.scn {
+  gap: 14px;
+}
+.scn-row {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.scn-row .label {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--ink-2);
+}
+.scn-more summary {
+  min-height: 44px;
+  display: flex;
+  align-items: center;
+  font-size: 14px;
+  color: var(--ink-2);
+  cursor: pointer;
+}
+.scn-more summary::-webkit-details-marker {
+  display: none;
+}
+.scn-more summary::after {
+  content: "›";
+  margin-left: auto;
+  padding-left: 12px;
+  transition: transform 0.15s;
+}
+.scn-more[open] summary::after {
+  transform: rotate(90deg);
+}
+.scn-more[open] {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+.scn-acts {
+  display: flex;
+  gap: 10px;
+}
+.scn-acts .pill {
+  flex: 1;
+  min-height: 48px;
 }

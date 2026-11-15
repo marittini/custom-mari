@@ -45,6 +45,13 @@ export function toggleReaction(list, emoji, imageUrl = null, reactor = USER) {
   return next.filter((r) => r.by.length);
 }
 
+/** The list without one reactor on that emoji (the whole emoji goes when nobody is left). */
+export function removeReactor(list, emoji, reactor) {
+  return list
+    .map((r) => (same(r, emoji) ? { ...r, by: r.by.filter((x) => x !== reactor) } : { ...r, by: [...r.by] }))
+    .filter((r) => r.by.length);
+}
+
 /** A reply snapshot for the generate request (the Engine's messageReplySchema limits). */
 export function replyFor(message, name, content) {
   const text = String(content || "").trim();

@@ -74,8 +74,19 @@ export function hiddenFromAI(m) {
   );
 }
 
-/** A tool's label for this message (hide turns into show back). */
-export const toolLabel = (t, m) => (t.id === "hide" && hiddenFromAI(m) ? "AI에게 다시 보이기" : t.label);
+/** A scene's Roleplay chat (the Engine's isSceneChat): its 분기 is the Engine's "Clone from here". */
+export function isSceneChat(chat) {
+  const m = chat ? chatMeta(chat) : {};
+  return m.sceneStatus === "active" || typeof m.sceneOriginChatId === "string";
+}
+
+/** A tool's label for this message (hide turns into show back; 분기 in a scene clones it). */
+export const toolLabel = (t, m, chat = null) =>
+  t.id === "hide" && hiddenFromAI(m)
+    ? "AI에게 다시 보이기"
+    : t.id === "branch" && isSceneChat(chat)
+      ? "여기까지 롤플로 복제"
+      : t.label;
 
 /** Last in every message menu: what the shell does not draw (reactions, replies, marks, prompt, thinking, …). */
 export const ENGINE_TOOL = {
@@ -107,6 +118,14 @@ export async function runTool(id, { chatId, chat, message, reload, generate, go,
       await reload();
     } else if (id === "edit") {
       editMessage(message, base, reload);
+    } else if (id === "branch" && isSceneChat(chat)) {
+      // In a scene the Engine offers "Clone from here" instead: a standalone Roleplay up to this message; the scene
+      // keeps running.
+      const { forkScene } = await import("./scene.js");
+      const created = await forkScene(chatId, "clone", message.id);
+      data.chats(true);
+      toast("장면을 여기까지 롤플로 복제했어요");
+      if (created?.chatId) go(`rp/${encodeURIComponent(created.chatId)}`);
     } else if (id === "branch") {
       const created = await api.post(`/chats/${encodeURIComponent(chatId)}/branch`, { upToMessageId: message.id });
       data.chats(true);

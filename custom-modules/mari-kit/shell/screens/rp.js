@@ -10,7 +10,7 @@ import { h, icon, dots, I, setChildren } from "../lib/h.js";
 import { api } from "../lib/api.js";
 import { data, characterIndex, chatTitle, chatMeta, messageText, messageWindow, charLabel } from "../lib/data.js";
 import { TOOL_DEFS, toolPlace, prefs } from "../lib/prefs.js";
-import { olderButton, topBar, toast, errorBox, fitMenus, jumpTo } from "../lib/ui.js";
+import { olderButton, topBar, toast, errorBox, fitMenus, jumpTo, ask, sheet } from "../lib/ui.js";
 import {
   parseMessage,
   resolveTranslationSpeechLines,
@@ -149,7 +149,111 @@ export function rpScreen({ mount, args, go, back }) {
   // 지금 하는 일 (reply being written, translating, voice) with a stop button, right above the composer.
   const strip = activityStrip();
   const scroll = chatScrolling(scroller);
-  mount.append(head, scroller, scroll.anchor, quickLayer, strip.el, composer);
+  // A running scene (the Engine's EndSceneBar): back to the Convo, end it with a summary, or (⋯) discard it or turn
+  // it into a standalone Roleplay.
+  const sceneBar = h("div", { class: "scnend", hidden: true });
+  mount.append(head, scroller, scroll.anchor, quickLayer, strip.el, sceneBar, composer);
+
+  function drawSceneBar() {
+    const m = chatMeta(chat);
+    const origin = typeof m.sceneOriginChatId === "string" ? m.sceneOriginChatId : null;
+    sceneBar.hidden = m.sceneStatus !== "active";
+    if (sceneBar.hidden) return;
+    const toOrigin = () => (origin ? go(`convo/${encodeURIComponent(origin)}`) : back("convos"));
+    const run = async (label, fn, after) => {
+      const done = startJob(label);
+      try {
+        const res = await fn();
+        data.chats(true);
+        after(res);
+      } catch (error) {
+        toast(`하지 못했어요: ${error.message}`);
+      } finally {
+        done();
+      }
+    };
+    const lib = () => import("../lib/scene.js");
+    const end = async () => {
+      if (!(await ask("장면을 끝내고 요약을 남길까요?\n요약은 대화에 남고 캐릭터의 기억이 돼요.", { ok: "끝내기" })))
+        return;
+      run(
+        "장면 요약 만드는 중…",
+        async () => (await lib()).concludeScene(chatId),
+        (res) => {
+          toast("장면을 끝냈어요 · 요약을 기억으로 남겼어요");
+          go(`convo/${encodeURIComponent(res?.originChatId || origin || "")}`);
+        },
+      );
+    };
+    const more = () => {
+      const s = sheet(
+        h(
+          "div",
+          { class: "list", style: { padding: "4px 0 20px" } },
+          h(
+            "button",
+            {
+              type: "button",
+              class: "r",
+              onClick: async () => {
+                s.close();
+                if (
+                  !(await ask("이 장면을 버릴까요?\n장면 채팅은 지워지고 대화에는 아무것도 남지 않아요.", {
+                    ok: "버리기",
+                    danger: true,
+                  }))
+                )
+                  return;
+                run(
+                  "장면 버리는 중…",
+                  async () => (await lib()).abandonScene(chatId),
+                  (res) => {
+                    toast("장면을 버렸어요");
+                    go(`convo/${encodeURIComponent(res?.originChatId || origin || "")}`);
+                  },
+                );
+              },
+            },
+            h("span", null, "장면 버리기", h("small", null, "요약 없이 지워요")),
+          ),
+          h(
+            "button",
+            {
+              type: "button",
+              class: "r",
+              onClick: async () => {
+                s.close();
+                if (
+                  !(await ask(
+                    "이 장면을 따로 떨어진 롤플로 바꿀까요?\n원래 대화와의 연결은 끊기고, 요약이나 기억은 대화에 남지 않아요.",
+                    { ok: "바꾸기", danger: true },
+                  ))
+                )
+                  return;
+                run(
+                  "롤플로 바꾸는 중…",
+                  async () => (await lib()).forkScene(chatId, "convert"),
+                  (res) => {
+                    toast("장면을 롤플로 바꿨어요");
+                    if (res?.chatId) go(`rp/${encodeURIComponent(res.chatId)}`);
+                  },
+                );
+              },
+            },
+            h("span", null, "롤플로 바꾸기", h("small", null, "대화와 떼어 따로 이어 가요")),
+          ),
+        ),
+        { label: "장면 더보기" },
+      );
+    };
+    setChildren(
+      sceneBar,
+      h("button", { type: "button", class: "pill", onClick: toOrigin }, "‹ 대화로"),
+      h("span", { class: "scnend-t" }, "장면 중"),
+      h("button", { type: "button", class: "pill main", onClick: end }, "장면 끝내기"),
+      h("button", { type: "button", class: "ib", "aria-label": "장면 더보기", onClick: more }, dots()),
+    );
+  }
 
   function grow() {
     input.style.height = "auto";
@@ -169,6 +273,7 @@ export function rpScreen({ mount, args, go, back }) {
       if (!alive) return;
       chat = c;
       trBtn.hidden = chatMeta(chat).showInputTranslateButton !== true;
+      drawSceneBar();
       index = characterIndex(chars);
       messages = win.list;
       total = Number.isFinite(count?.get(chatId)?.chars) ? count.get(chatId).chars : null;
@@ -489,8 +594,8 @@ export function rpScreen({ mount, args, go, back }) {
           {
             type: "button",
             class: "ma",
-            "aria-label": toolLabel(t, m),
-            title: toolLabel(t, m),
+            "aria-label": toolLabel(t, m, chat),
+            title: toolLabel(t, m, chat),
             onClick: () => runTool(t.id, m),
           },
           icon(t.icon, 16, 1.6),
@@ -529,7 +634,7 @@ export function rpScreen({ mount, args, go, back }) {
                   },
                 },
                 h("span", { style: { display: "flex", color: "var(--ink-2)" } }, icon(t.icon, 16, 1.6)),
-                toolLabel(t, m),
+                toolLabel(t, m, chat),
               ),
             ),
           )

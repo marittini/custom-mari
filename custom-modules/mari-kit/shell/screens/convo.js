@@ -19,7 +19,7 @@ import {
   messageWindow,
 } from "../lib/data.js";
 import { TOOL_DEFS, toolPlace } from "../lib/prefs.js";
-import { toast, errorBox, avatar, avatarStack, olderButton, fitMenus, jumpTo, sheet } from "../lib/ui.js";
+import { toast, errorBox, avatar, avatarStack, olderButton, fitMenus, jumpTo, sheet, ask } from "../lib/ui.js";
 import { pickVoice, stripCues, inline } from "../lib/render.js";
 import * as tts from "../lib/tts.js";
 import { syncVoiceSettings } from "../lib/voice.js";
@@ -33,7 +33,17 @@ import { presenceOf, presenceLine, STATUS_KO } from "../lib/presence.js";
 let composeP = null;
 const compose = () => composeP || (composeP = import("../lib/compose.js"));
 import { presenceFields } from "../lib/my-status.js";
-import { MORE, QUICK, USER, reactionsOf, reactorNames, replyFor, replyOf, toggleReaction } from "../lib/reactions.js";
+import {
+  MORE,
+  QUICK,
+  USER,
+  reactionsOf,
+  reactorNames,
+  removeReactor,
+  replyFor,
+  replyOf,
+  toggleReaction,
+} from "../lib/reactions.js";
 import { activeAutonomy, clearUnread } from "../lib/autonomy.js";
 import { runSlash } from "../lib/slash.js";
 import {
@@ -364,11 +374,99 @@ export function convoScreen({ mount, args, go, back }) {
     return request.promise;
   }
 
+  // A scene running from this Convo (the Engine's SceneBanner): { id, name, repliesHere }, read when the chat says so.
+  let scene = null;
+  const sceneLib = () => import("../lib/scene.js");
+  async function loadScene() {
+    const id = chatMeta(chat).activeSceneChatId;
+    if (!id) return (scene = null);
+    try {
+      const sc = await data.chat(id);
+      const m = chatMeta(sc);
+      scene =
+        m.sceneStatus === "active"
+          ? { id, name: sc.name || "장면", repliesHere: m.sceneOriginRepliesAllowed === true }
+          : null;
+    } catch {
+      scene = null;
+    }
+  }
+  const extraOf = (m) => {
+    if (typeof m.extra !== "string") return m.extra || {};
+    try {
+      return JSON.parse(m.extra) || {};
+    } catch {
+      return {};
+    }
+  };
+  async function beginScene(request) {
+    const { startScene } = await sceneLib();
+    await startScene({ chat, index, request, go });
+    await loadScene();
+    if (alive) draw();
+  }
+  // The invitation under a character's message (extra.sceneRequest): set it up, or go to the scene already running.
+  function sceneCard(m) {
+    const r = extraOf(m).sceneRequest;
+    if (!r || typeof r !== "object") return null;
+    const name = r.initiatorCharName || index.get(r.initiatorCharId)?.name || "캐릭터";
+    return h(
+      "div",
+      { class: "scncard" },
+      h("span", null, `${name}이(가) 장면에 초대했어요.`),
+      scene
+        ? h(
+            "button",
+            { type: "button", class: "pill", onClick: () => go(`rp/${encodeURIComponent(scene.id)}`) },
+            "진행 중인 장면으로",
+          )
+        : h("button", { type: "button", class: "pill main", onClick: () => beginScene(r) }, "장면 준비하기"),
+    );
+  }
+  function sceneBanner() {
+    if (!scene) return null;
+    return h(
+      "div",
+      { class: "scnbar", role: "status" },
+      h("div", { class: "scnbar-t" }, h("b", null, "장면 진행 중"), h("span", null, scene.name)),
+      h(
+        "button",
+        {
+          type: "button",
+          class: "r",
+          role: "switch",
+          "aria-checked": scene.repliesHere ? "true" : "false",
+          onClick: async () => {
+            const next = !scene.repliesHere;
+            scene.repliesHere = next;
+            draw();
+            try {
+              await (await sceneLib()).setRepliesHere(scene.id, next);
+            } catch (error) {
+              scene.repliesHere = !next;
+              draw();
+              toast(`바꾸지 못했어요: ${error.message}`);
+            }
+          },
+        },
+        h("span", null, "여기서도 답하게", h("small", null, "장면 중에도 이 대화에서 답해요 · 먼저 말 걸지는 않아요")),
+        h("span", { class: scene.repliesHere ? "sw on" : "sw" }, h("span")),
+      ),
+      h(
+        "button",
+        { type: "button", class: "pill main", onClick: () => go(`rp/${encodeURIComponent(scene.id)}`) },
+        "장면으로 가기",
+      ),
+    );
+  }
+
   async function load(first, tail = false) {
     try {
       const [c, chars] = await Promise.all([data.chat(chatId), data.characters(), win.reload(tail)]);
       if (!alive) return;
       chat = c;
+      await loadScene();
+      if (!alive) return;
       stickerBtn.disabled = false;
       const context = JSON.stringify([chat.personaId, chat.characterIds || []]);
       if (context !== stickerContext) {
@@ -741,6 +839,7 @@ export function convoScreen({ mount, args, go, back }) {
         bub.sub ? h("span", { class: "bub-tr" }, stickerContent(bub.sub, stickers.map)) : null,
         bub.last && !bub.sys ? mediaOf(m, me) : null,
         bub.last && !bub.sys ? reactionRow(m, me) : null,
+        bub.last && !me && !bub.sys ? sceneCard(m) : null,
         // The time under the last bubble of a run (one speaker within 5 minutes).
         lastOfRun && bub.last && !bub.sys ? h("span", { class: "btime" }, timeLabel(m.createdAt)) : null,
       );
@@ -850,6 +949,7 @@ export function convoScreen({ mount, args, go, back }) {
       );
     }
     if (offNote && !busy) items.push(h("div", { class: "pnote", role: "status" }, presenceText(offNote)));
+    items.push(sceneBanner());
     if (!messages.length && !busy) items.push(h("div", { class: "empty" }, "첫 메시지를 보내 보세요."));
     setChildren(list, items);
     setChildren(sendBtn, icon(busy ? I.stop : I.send, busy ? 14 : 16, 2));
@@ -982,25 +1082,91 @@ export function convoScreen({ mount, args, go, back }) {
     return h(
       "div",
       { class: `rxrow ${me ? "me" : "them"}` },
-      list.map((r) =>
-        h(
+      list.map((r) => {
+        // Tap: add or take back mine. Long-press (or right-click): who reacted, and remove any of them.
+        let timer = null;
+        let held = false;
+        const hold = () => {
+          if (held) return;
+          held = true;
+          clearTimeout(timer);
+          reactors(m, r);
+        };
+        const cancel = () => clearTimeout(timer);
+        return h(
           "button",
           {
             type: "button",
             class: r.by.includes(USER) ? "rx mine" : "rx",
             "aria-pressed": r.by.includes(USER) ? "true" : "false",
-            "aria-label": `${r.emoji} · ${reactorNames(r, nameOf)}`,
+            "aria-label": `${r.emoji} · ${reactorNames(r, nameOf)} (길게 누르면 지우기)`,
             title: reactorNames(r, nameOf),
+            onPointerdown: () => {
+              held = false;
+              clearTimeout(timer);
+              timer = setTimeout(hold, 500);
+            },
+            onPointerup: cancel,
+            onPointerleave: cancel,
+            onPointercancel: cancel,
+            onContextmenu: (e) => {
+              e.preventDefault();
+              e.stopPropagation();
+              hold();
+            },
             onClick: (e) => {
               e.stopPropagation();
+              if (held) return (held = false);
               react(m, r.emoji, r.imageUrl || null);
             },
           },
           r.imageUrl ? h("img", { src: r.imageUrl, alt: r.emoji, loading: "lazy" }) : h("span", null, r.emoji),
           r.by.length > 1 ? h("small", null, String(r.by.length)) : null,
-        ),
-      ),
+        );
+      }),
     );
+  }
+  // Who reacted with this emoji; each one can be removed (a character's too, like the Engine's reaction details).
+  function reactors(m, r) {
+    const box = h("div", { class: "rxsheet" });
+    const s = sheet(box, { label: `${r.emoji} 반응` });
+    const paint = () => {
+      const cur = reactionsOf(m).find((x) => x.emoji === r.emoji && (x.segment ?? null) === null);
+      if (!cur) return s.close();
+      setChildren(
+        box,
+        h("b", null, `${r.emoji} 반응한 사람`),
+        h(
+          "div",
+          { class: "list" },
+          cur.by.map((id) => {
+            const c = id === USER ? null : index.get(id);
+            const who = id === USER ? "나" : c?.name || "누군가";
+            return h(
+              "div",
+              { class: "r static" },
+              h("span", { class: "ic" }, id === USER ? null : avatar(c?.avatar, who[0] || "·", 28)),
+              h("span", null, who),
+              h(
+                "button",
+                {
+                  type: "button",
+                  class: "pill",
+                  "aria-label": `${who}의 ${r.emoji} 반응 지우기`,
+                  onClick: async () => {
+                    if (id !== USER && !(await ask(`${who}의 ${r.emoji} 반응을 지울까요?`, { ok: "지우기" }))) return;
+                    await saveReactions(m, removeReactor(reactionsOf(m), r.emoji, id), "반응을 지우지 못했어요");
+                    if (box.isConnected) paint();
+                  },
+                },
+                "지우기",
+              ),
+            );
+          }),
+        ),
+      );
+    };
+    paint();
   }
   function reactBar(m, me) {
     const mine = new Set(
@@ -1071,9 +1237,10 @@ export function convoScreen({ mount, args, go, back }) {
         );
     } catch {}
   }
-  async function react(m, emoji, imageUrl = null) {
+  const react = (m, emoji, imageUrl = null) =>
+    saveReactions(m, toggleReaction(reactionsOf(m), emoji, imageUrl), "반응을 달지 못했어요");
+  async function saveReactions(m, next, failed) {
     const before = m.extra;
-    const next = toggleReaction(reactionsOf(m), emoji, imageUrl);
     let extra = m.extra;
     try {
       extra = typeof extra === "string" ? JSON.parse(extra) : { ...(extra || {}) };
@@ -1090,7 +1257,7 @@ export function convoScreen({ mount, args, go, back }) {
     } catch (error) {
       m.extra = before;
       draw();
-      toast(`반응을 달지 못했어요: ${error.message}`);
+      toast(`${failed}: ${error.message}`);
     }
   }
   function quoteOf(m) {
@@ -1426,6 +1593,14 @@ export function convoScreen({ mount, args, go, back }) {
   }
 
   async function slash(text) {
+    // /scene (or /rp) [what kind of scene]: the Engine's scene start from this Convo; empty asks the planner to
+    // build it from the conversation.
+    const sc = /^\/(scene|rp)(?:\s+([\s\S]*))?$/i.exec(text.trim());
+    if (sc) {
+      if (!sc[2]?.trim() && !messages.length)
+        return toast("장면의 바탕이 될 대화가 없어요. /scene 뒤에 어떤 장면인지 적어 주세요");
+      return beginScene({ prompt: sc[2]?.trim() || "", initiatorCharId: null, connectionId: null });
+    }
     try {
       const note = await runSlash(text, {
         chatId,
