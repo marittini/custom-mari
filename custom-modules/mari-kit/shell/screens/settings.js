@@ -31,6 +31,7 @@ export function settingsScreen({ mount, args, go, back }) {
     preset: "프리셋",
     voice: "엔진 TTS 연결",
     personas: "페르소나",
+    shared: "모든 방 공통 기능",
   };
   const parent =
     { connection: "settings/connections", preset: "settings/presets", voice: "voice/settings" }[page] || "settings";
@@ -72,11 +73,78 @@ export function settingsScreen({ mount, args, go, back }) {
     );
   }
 
+  // 모든 방 공통 switches (Mari Kit features and the Engine's call voice): moved here from chat settings, where they
+  // sat among this-chat switches. Read only on the main list.
+  let shared = null;
+  const loadShared = async () => {
+    const [settings, tts] = await Promise.all([
+      api.get("/mari-kit/settings").catch(() => null),
+      api.get("/tts/config").catch(() => null),
+    ]);
+    shared = { features: settings?.features || {}, tts };
+    if (!page || page === "shared") draw();
+    if (page === "shared") scrollShared();
+  };
+  // #/settings/shared (from chat settings and 통화 설정): the same list, opened at 모든 방 공통 기능.
+  const scrollShared = () =>
+    requestAnimationFrame(() => body.querySelector("#shared")?.scrollIntoView({ block: "start" }));
+  const setFeature = async (id, on) => {
+    try {
+      await api.patch("/mari-kit/settings", { features: { [id]: on } });
+      await loadShared();
+    } catch (error) {
+      toast(error.message);
+    }
+  };
+  const setCallAudio = async (on) => {
+    try {
+      await api.put("/tts/config", { ...shared.tts, callAudioEnabled: on });
+      await loadShared();
+    } catch (error) {
+      toast(error.message);
+    }
+  };
+  function sharedRows() {
+    if (!shared) return [h("div", { class: "empty", style: { padding: "12px 20px" } }, "불러오는 중…")];
+    const f = shared.features;
+    const swRow = (path, label, sub, on, onClick) =>
+      h(
+        "button",
+        { type: "button", class: "r", role: "switch", "aria-checked": on ? "true" : "false", onClick },
+        h("span", { class: "ic" }, icon(path)),
+        h("span", null, label, sub ? h("small", { class: "hint", style: { display: "block" } }, sub) : null),
+        sw(on),
+      );
+    return [
+      swRow(I.voice, "대사 음성", "캐릭터 대사를 목소리로 읽어요", !!f.tts, () => setFeature("tts", !f.tts)),
+      swRow(I.translate, "번역 (Mari Kit)", "번역 프리셋과 단어장", !!f.translation, () =>
+        setFeature("translation", !f.translation),
+      ),
+      swRow(I.memory, "기억", "긴 롤플을 장면·사실로 정리해 기억해요", !!f.memory, () =>
+        setFeature("memory", !f.memory),
+      ),
+      swRow(I.sun, "날씨", "Convo에 지금 날씨를 알려요 (방마다 켜요)", !!f.weather, () =>
+        setFeature("weather", !f.weather),
+      ),
+      shared.tts
+        ? swRow(I.phone, "통화 음성", "통화에서 캐릭터 목소리 (엔진 TTS)", shared.tts.callAudioEnabled === true, () =>
+            setCallAudio(shared.tts.callAudioEnabled !== true),
+          )
+        : null,
+    ];
+  }
+
+  // A search hit for one of them: the list comes back (search cleared) and scrolls to the group.
+  const jumpShared = () => {
+    draw();
+    scrollShared();
+  };
   const sec = (label) =>
     h("div", { class: "sec", style: { padding: "18px 20px 6px" } }, h("span", { class: "hint" }, label));
   const val = (t) => h("span", { class: "val" }, `${t} ›`);
 
   function listPage() {
+    if (!shared) loadShared();
     const p = prefs();
     const shown = TOOL_DEFS.filter((t) => toolPlace(t) === "show").length;
     const more = TOOL_DEFS.filter((t) => toolPlace(t) === "more").length;
@@ -126,6 +194,8 @@ export function settingsScreen({ mount, args, go, back }) {
         row(I.person, "페르소나", val(""), () => go("settings/personas")),
         row(I.lore, "로어북", val("엔진"), () => openEngine(null, { panel: "lorebooks" })),
       ),
+      sec("모든 방 공통 기능"),
+      h("div", { class: "list", id: "shared" }, sharedRows()),
       sec("Mari 기능"),
       h(
         "div",
@@ -175,6 +245,11 @@ export function settingsScreen({ mount, args, go, back }) {
   // settings sections (read once from the Engine's shared module through Mari Kit, ~6KB, only when searching).
   const SHELL_ITEMS = [
     ["다크 모드", "설정 › 화면", "dark theme 테마 어둡게", () => setPrefs({ theme: isDark() ? "light" : "dark" })],
+    ["대사 음성 켜기", "설정 › 모든 방 공통 기능", "tts 음성 목소리 읽기 켜기 끄기", () => jumpShared()],
+    ["번역 (Mari Kit) 켜기", "설정 › 모든 방 공통 기능", "translation 번역 프리셋 단어장 켜기", () => jumpShared()],
+    ["기억 켜기", "설정 › 모든 방 공통 기능", "memory 기억 정리 켜기", () => jumpShared()],
+    ["날씨 켜기", "설정 › 모든 방 공통 기능", "weather 날씨", () => jumpShared()],
+    ["통화 음성", "설정 › 모든 방 공통 기능", "call audio 통화 목소리", () => jumpShared()],
     ["글꼴", "설정 › 화면", "font 폰트", () => go("settings/font")],
     ["읽기", "설정 › 화면", "글자 크기 줄 간격 정렬 글꼴 롤플레이 대화 대사 형광펜 reading", () => go("reader")],
     ["메시지 도구", "설정 › 화면", "버튼 tools 복사 수정", () => go("settings/tools")],

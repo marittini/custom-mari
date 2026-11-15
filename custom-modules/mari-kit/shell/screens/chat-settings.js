@@ -16,7 +16,7 @@ import { profileSheet } from "../lib/profiles.js";
 import { startJob } from "../lib/activity.js";
 import { pickPresetChoices, NO_CHOICES } from "../lib/preset-choices.js";
 import { emojiSelectionSheet, selectionLabel } from "../lib/emoji-selection.js";
-import { groupsOf, splitByGroup, groupedOptions, sectioned, forgetGroups } from "../lib/groups.js";
+import { groupsOf, splitByGroup, groupedOptions, sectioned, forgetGroups, foldGroup } from "../lib/groups.js";
 
 const VIEW_TITLES = {
   translation: "번역",
@@ -24,13 +24,14 @@ const VIEW_TITLES = {
   author: "작가 노트",
   cover: "표지",
   lorebooks: "로어북",
-  kit: "Mari Kit · 기능",
+  kit: "Mari Kit · 이 방",
   convo: "대화 기능",
   view: "화면",
   all: "모든 채팅 설정",
 };
 
-// The Engine's Convo commands (ChatSettingsDrawer CONVERSATION_COMMAND_TOGGLE_OPTIONS), in its order.
+// The Engine's Convo commands (ChatSettingsDrawer CONVERSATION_COMMAND_TOGGLE_OPTIONS), in its order. "call" is not
+// here: it is "캐릭터가 먼저 전화 걸기" in 통화 설정, its one home. Shown folded in three groups (COMMAND_GROUPS).
 const CONVO_COMMANDS = [
   ["schedule_update", "상태 바꾸기", "지금 하는 일·상태를 스스로 바꿔요"],
   ["cross_post", "다른 채팅으로 보내기", "메시지를 함께 쓰는 다른 채팅으로 옮겨요"],
@@ -42,7 +43,6 @@ const CONVO_COMMANDS = [
   ["haptic", "진동", "연결된 진동 기기를 움직여요"],
   ["influence", "영향", "연결된 채팅에 한 번 영향을 줘요"],
   ["note", "메모", "연결된 채팅에 오래 남는 메모를 써요"],
-  ["call", "전화 걸기 명령", "캐릭터가 통화를 걸어요"],
   ["react", "반응", "메시지에 이모지 반응을 달아요"],
   ["uno", "UNO", "함께 하자면 UNO를 시작해요"],
   ["chess", "체스", "체스 대결을 받아요"],
@@ -50,6 +50,12 @@ const CONVO_COMMANDS = [
   ["eightball", "포켓볼", "8볼 당구를 같이 해요"],
   ["tic_tac_toe", "틱택토", "틱택토 대결을 받아요"],
   ["rock_paper_scissors", "가위바위보", "가위바위보를 같이 해요"],
+];
+
+const COMMAND_GROUPS = [
+  ["일상", ["schedule_update", "selfie", "video", "react", "memory", "cross_post"]],
+  ["장면·음악·연결", ["scene", "music", "haptic", "influence", "note"]],
+  ["게임", ["uno", "chess", "poker", "eightball", "tic_tac_toe", "rock_paper_scissors"]],
 ];
 
 export function chatSettingsScreen({ mount, args, go, back }) {
@@ -187,7 +193,7 @@ export function chatSettingsScreen({ mount, args, go, back }) {
     };
     const input = meta.translationInputTargetLang || legacy;
     const output = meta.translationOutputTargetLang || legacy;
-    return h(
+    const how = h(
       "div",
       { class: "list" },
       selectRow(
@@ -213,10 +219,15 @@ export function chatSettingsScreen({ mount, args, go, back }) {
         : null,
       selectRow(I.translate, "보낼 말을", input, langs(input), (v) => patchMeta({ translationInputTargetLang: v })),
       selectRow(I.translate, "받은 말을", output, langs(output), (v) => patchMeta({ translationOutputTargetLang: v })),
-      switchRow(I.translate, "답장 자동 번역", meta.autoTranslate === true, () =>
+    );
+    // Two groups: how it translates, and when (the owner found the old single list hard to scan).
+    const when = h(
+      "div",
+      { class: "list" },
+      switchRow(I.translate, "받은 말 자동 번역", meta.autoTranslate === true, () =>
         patchMeta({ autoTranslate: meta.autoTranslate !== true }),
       ),
-      switchRow(I.translate, "내 메시지 번역해서 보내기", meta.translateInput === true, () =>
+      switchRow(I.translate, "내 말 번역해서 보내기", meta.translateInput === true, () =>
         patchMeta({ translateInput: meta.translateInput !== true }),
       ),
       switchRow(I.translate, "보내기 옆 번역 버튼", meta.showInputTranslateButton === true, () =>
@@ -230,6 +241,7 @@ export function chatSettingsScreen({ mount, args, go, back }) {
         "번역된 메시지는 번역문만 보여요",
       ),
     );
+    return [sec("번역 방식"), how, sec("언제 번역할까"), when];
   }
 
   /**
@@ -332,14 +344,6 @@ export function chatSettingsScreen({ mount, args, go, back }) {
       toast(error.message);
     }
   }
-  async function setFeature(id, on) {
-    try {
-      await api.patch("/mari-kit/settings", { features: { [id]: on } });
-      await load();
-    } catch (error) {
-      toast(error.message);
-    }
-  }
 
   // ── Views ──────────────────────────────────
 
@@ -369,12 +373,22 @@ export function chatSettingsScreen({ mount, args, go, back }) {
     return n ? `${n}개 고름` : "고르기";
   }
 
+  // The first page, in labelled groups (owner: the old list mixed unlike rows): what drives this chat's AI, who and
+  // what it is about, its features, tools; settings for every room are in 설정 (one row links there); delete last.
+  const sec = (label, side = "") =>
+    h(
+      "div",
+      { class: "gsec", style: { margin: "24px 20px 8px" } },
+      h("span", null, label),
+      side ? h("span", null, side) : null,
+    );
   function homeView() {
     const { chat, conns, presets, personas, index } = state;
     const meta = chatMeta(chat);
     const cast = (chat.characterIds || []).map((id) => index.get(id)?.name).filter(Boolean);
+    const convo = chat.mode === "conversation";
     return [
-      gap(),
+      sec("이 채팅의 AI"),
       h(
         "div",
         { class: "list" },
@@ -401,7 +415,6 @@ export function chatSettingsScreen({ mount, args, go, back }) {
         chat.mode === "roleplay" && chat.promptPresetId
           ? linkRow(I.list, "프리셋 선택지", choiceSummary(meta), () => presetChoices(chat))
           : null,
-        linkRow(I.sliders, "채팅 프로필", "", () => profileSheet({ chat: state.chat, changed: () => load() })),
         linkRow(I.person, "페르소나", personas.find((p) => p.id === chat.personaId)?.name || "없음", () =>
           pickPerson({
             title: "페르소나",
@@ -412,20 +425,12 @@ export function chatSettingsScreen({ mount, args, go, back }) {
             onPick: (v) => patchChat({ personaId: v }),
           }),
         ),
+        linkRow(I.sliders, "채팅 프로필", "", () => profileSheet({ chat: state.chat, changed: () => load() })),
       ),
-      gap(),
+      sec("등장과 세계"),
       h(
         "div",
         { class: "list" },
-        linkRow(I.square, "표지", coverOf(chat) ? "있음" : "캐릭터 사진", () => go(here("cover"))),
-        linkRow(I.search, "메시지 검색", "", () => go(`search/${encodeURIComponent(chatId)}`)),
-        linkRow(I.list, "내보내기", "jsonl · 글 · 마크다운 · HTML", exportSheet),
-        linkRow(
-          I.list,
-          "폴더",
-          (state.groups.chats || []).find((f) => f.id === chat.folderId)?.name || "폴더 없음",
-          folderSheet,
-        ),
         linkRow(I.person, "등장 캐릭터", cast.join(", ") || "없음", () => go(here("cast"))),
         linkRow(I.lore, "로어북", lorebookSummary(), () => go(here("lorebooks"))),
         chat.mode === "roleplay"
@@ -438,8 +443,13 @@ export function chatSettingsScreen({ mount, args, go, back }) {
               () => go(here("author")),
             )
           : null,
-        linkRow(I.translate, "번역", meta.autoTranslate === true ? "자동 번역 켬" : "", () => go(here("translation"))),
-        chat.mode === "conversation"
+        linkRow(I.square, "표지", coverOf(chat) ? "있음" : "캐릭터 사진", () => go(here("cover"))),
+      ),
+      sec("기능"),
+      h(
+        "div",
+        { class: "list" },
+        convo
           ? linkRow(
               I.chat,
               "대화 기능",
@@ -448,18 +458,34 @@ export function chatSettingsScreen({ mount, args, go, back }) {
                 meta.conversationCallsEnabled === true ? "통화" : "",
               ]
                 .filter(Boolean)
-                .join(" · ") || "자율 메시지 · 일정 · 통화",
+                .join(" · ") || "먼저 말 걸기 · 일정 · 통화",
               () => go(here("convo")),
             )
           : null,
-        linkRow(I.square, "Mari Kit · 기능", "", () => go(here("kit"))),
-        linkRow(I.contrast, "화면", "", () => go(here("view"))),
+        linkRow(I.translate, "번역", meta.autoTranslate === true ? "받은 말 자동 번역" : "", () =>
+          go(here("translation")),
+        ),
+        linkRow(I.square, convo ? "음성·날씨·내 일정 (Mari Kit)" : "음성·기억 (Mari Kit)", "", () => go(here("kit"))),
       ),
-      gap(),
+      sec("도구"),
       h(
         "div",
         { class: "list" },
-        linkRow(I.list, "모든 채팅 설정", "채팅 · 컨텍스트 · 기억 · 기타", () => go(here("all"))),
+        linkRow(I.search, "메시지 검색", "", () => go(`search/${encodeURIComponent(chatId)}`)),
+        linkRow(I.list, "내보내기", "jsonl · 글 · 마크다운 · HTML", exportSheet),
+        linkRow(
+          I.list,
+          "폴더로 옮기기",
+          (state.groups.chats || []).find((f) => f.id === chat.folderId)?.name || "폴더 없음",
+          folderSheet,
+        ),
+        linkRow(I.list, "모든 채팅 설정 (엔진 포함)", "채팅 · 컨텍스트 · 기억 · 기타", () => go(here("all"))),
+      ),
+      sec("모든 방 공통", "설정에서 바꿔요"),
+      h(
+        "div",
+        { class: "list" },
+        linkRow(I.gear, "대사 음성 · 번역 · 기억 · 날씨 · 화면", "", () => go("settings/shared")),
       ),
       gap(),
       h(
@@ -676,7 +702,7 @@ export function chatSettingsScreen({ mount, args, go, back }) {
         rows.map(([label, ids, , v]) =>
           v === null
             ? engineRow(label, ids[0], chat)
-            : linkRow(I.list, label, "", () => (v ? go(here(v)) : go(here()))),
+            : linkRow(I.list, label, "", () => (v.startsWith("@") ? go(v.slice(1)) : v ? go(here(v)) : go(here()))),
         ),
       ),
       anyEngine
@@ -1061,101 +1087,80 @@ export function chatSettingsScreen({ mount, args, go, back }) {
     ];
   }
 
+  // Mari Kit in this room: only this room's switches and pages. The switches for every room (대사 음성, 번역,
+  // 기억, 날씨, 통화 음성) live in 설정 › 모든 방 공통 기능; one row here says how they are and links there.
   function kitView() {
     const { chat, settings } = state;
     const meta = chatMeta(chat);
     const kitOn = meta.enableAgents === true && (meta.activeAgentIds || []).includes("mari-kit");
     const features = settings?.features || {};
     const ids = meta.activeAgentIds || [];
+    const convo = chat.mode === "conversation";
+    const onOff = (on) => (on ? "켜짐" : "꺼짐");
     return [
-      gap(),
+      sec("이 방"),
       h(
         "div",
         { class: "list" },
-        switchRow(
-          I.square,
-          "Mari Kit",
-          kitOn,
-          () =>
-            patchMeta(
-              kitOn
-                ? { activeAgentIds: ids.filter((x) => x !== "mari-kit") }
-                : { enableAgents: true, activeAgentIds: [...new Set([...ids, "mari-kit"])] },
+        convo
+          ? null
+          : switchRow(
+              I.square,
+              "이 방에서 Mari Kit 쓰기",
+              kitOn,
+              () =>
+                patchMeta(
+                  kitOn
+                    ? { activeAgentIds: ids.filter((x) => x !== "mari-kit") }
+                    : { enableAgents: true, activeAgentIds: [...new Set([...ids, "mari-kit"])] },
+                ),
+              "롤플에서 번역·기억을 쓰려면 켜요 (대사 음성은 켜지 않아도 돼요)",
             ),
-          "이 방에서 대사 음성·번역·기억을 씀",
+        features.tts && state.voice
+          ? switchRow(
+              I.voice,
+              "음성 지침 · 이 방",
+              state.voice.rooms?.[chatId] !== false,
+              async () => {
+                try {
+                  await api.put(`/mari-kit/tts/room/${encodeURIComponent(chatId)}`, {
+                    guidance: state.voice.rooms?.[chatId] === false,
+                  });
+                  await load();
+                } catch (error) {
+                  toast(error.message);
+                }
+              },
+              "끄면 이 방 답장에 목소리 표시를 넣지 않아요",
+            )
+          : null,
+        (kitOn || convo) && features.translation
+          ? linkRow(I.glossary, "번역 프리셋 · 단어장", "", () => go(`translation/${encodeURIComponent(chatId)}`))
+          : null,
+        kitOn && features.memory && !convo
+          ? linkRow(I.memory, "기억 서재", "", () => go(`memory/${encodeURIComponent(chatId)}`))
+          : null,
+        convo
+          ? linkRow(I.sun, "날씨", features.weather ? "" : "꺼짐", () => go(`weather/${encodeURIComponent(chatId)}`))
+          : null,
+        convo
+          ? linkRow(I.calendar, "내 일정", "", async () => {
+              const me = await api.get(`/mari-kit/schedule/chat/${encodeURIComponent(chatId)}`).catch(() => null);
+              go(`schedule/${encodeURIComponent(me?.key || "default")}/now/${encodeURIComponent(chatId)}`);
+            })
+          : null,
+      ),
+      sec("모든 방 공통", "설정에서 바꿔요"),
+      h(
+        "div",
+        { class: "list" },
+        linkRow(
+          I.gear,
+          "대사 음성 · 번역 · 기억 · 날씨",
+          [features.tts, features.translation, features.memory, features.weather].map(onOff).join(" · "),
+          () => go("settings/shared"),
         ),
       ),
-      // Convo turns read voice cues and the user's schedule without the agent (Convo has no agent list).
-      // Voice works in every chat (no agent needed); 번역 and 기억 still follow the agent in RP.
-      true
-        ? [
-            gap(),
-            h(
-              "div",
-              { class: "list" },
-              switchRow(I.voice, "대사 음성", !!features.tts, () => setFeature("tts", !features.tts), "모든 방 공통"),
-              features.tts && state.voice
-                ? switchRow(
-                    I.voice,
-                    "음성 지침 · 이 방",
-                    state.voice.rooms?.[chatId] !== false,
-                    async () => {
-                      try {
-                        await api.put(`/mari-kit/tts/room/${encodeURIComponent(chatId)}`, {
-                          guidance: state.voice.rooms?.[chatId] === false,
-                        });
-                        await load();
-                      } catch (error) {
-                        toast(error.message);
-                      }
-                    },
-                    "끄면 이 방 답장에 목소리 표시를 넣지 않아요",
-                  )
-                : null,
-              !(kitOn || chat.mode === "conversation")
-                ? null
-                : switchRow(
-                    I.translate,
-                    "번역 (Mari Kit)",
-                    !!features.translation,
-                    () => setFeature("translation", !features.translation),
-                    "모든 방 공통 · 번역 프리셋과 단어장",
-                  ),
-              (kitOn || chat.mode === "conversation") && features.translation
-                ? linkRow(I.glossary, "번역 프리셋 · 단어장", "", () => go(`translation/${encodeURIComponent(chatId)}`))
-                : null,
-              !(kitOn || chat.mode === "conversation")
-                ? null
-                : switchRow(
-                    I.memory,
-                    "기억",
-                    !!features.memory,
-                    () => setFeature("memory", !features.memory),
-                    "모든 방 공통",
-                  ),
-              kitOn && features.memory && chat.mode === "roleplay"
-                ? linkRow(I.memory, "기억 서재", "", () => go(`memory/${encodeURIComponent(chatId)}`))
-                : null,
-              chat.mode === "conversation"
-                ? linkRow(I.calendar, "내 일정", "", async () => {
-                    const me = await api.get(`/mari-kit/schedule/chat/${encodeURIComponent(chatId)}`).catch(() => null);
-                    go(`schedule/${encodeURIComponent(me?.key || "default")}/now/${encodeURIComponent(chatId)}`);
-                  })
-                : null,
-              chat.mode === "conversation"
-                ? linkRow(I.phone, "통화 설정", "", () => go(`call-settings/${encodeURIComponent(chatId)}`))
-                : null,
-              chat.mode === "conversation"
-                ? linkRow(I.sun, "날씨", features.weather ? "" : "꺼짐", () =>
-                    go(`weather/${encodeURIComponent(chatId)}`),
-                  )
-                : null,
-              chat.mode === "conversation"
-                ? linkRow(I.chat, "대화 기능", "자율 메시지 · 일정 · 통화", () => go(here("convo")))
-                : null,
-            ),
-          ]
-        : null,
       gap(),
       h("div", { class: "list" }, engineRow("에이전트 (엔진)", "agents", chat)),
     ];
@@ -1323,21 +1328,9 @@ export function chatSettingsScreen({ mount, args, go, back }) {
         switchRow(I.phone, "이 방에서 통화", meta.conversationCallsEnabled === true, () =>
           patchMeta({ conversationCallsEnabled: meta.conversationCallsEnabled !== true }),
         ),
-        meta.conversationCallsEnabled === true
-          ? switchRow(I.phone, "캐릭터가 전화 걸기", meta.conversationCharactersCanCall !== false, () =>
-              patchMeta({ conversationCharactersCanCall: meta.conversationCharactersCanCall === false }),
-            )
-          : null,
-        meta.conversationCallsEnabled === true
-          ? switchRow(
-              I.voice,
-              "통화 대사에 감정 표시",
-              meta.conversationCallVoiceCues !== false,
-              () => patchMeta({ conversationCallVoiceCues: meta.conversationCallVoiceCues === false }),
-              "음성이 [속삭임] 같은 표시를 읽어요",
-            )
-          : null,
-        linkRow(I.phone, "통화 설정 더보기", "", () => go(`call-settings/${encodeURIComponent(chatId)}`)),
+        linkRow(I.phone, "통화 설정", "먼저 걸기 · 감정 표시 · 번역 · 기록", () =>
+          go(`call-settings/${encodeURIComponent(chatId)}`),
+        ),
       ),
       h("div", { class: "gsec", style: { margin: "24px 20px 8px" } }, h("span", null, "이모지·스티커")),
       h(
@@ -1371,18 +1364,32 @@ export function chatSettingsScreen({ mount, args, go, back }) {
           () => patchMeta({ characterCommands: !commandsOn }),
           "끄면 아래 모두 꺼져요",
         ),
-        commandsOn
-          ? CONVO_COMMANDS.map(([id, label, about]) =>
-              switchRow(
-                I.square,
-                label,
-                toggles[id] !== false,
-                () => patchMeta({ conversationCommandToggles: { ...toggles, [id]: toggles[id] === false } }),
-                about,
-              ),
-            )
-          : null,
       ),
+      commandsOn
+        ? COMMAND_GROUPS.map(([group, ids]) => {
+            const rows = CONVO_COMMANDS.filter(([id]) => ids.includes(id));
+            const on = rows.filter(([id]) => toggles[id] !== false).length;
+            return foldGroup(
+              h,
+              "convo-commands",
+              group,
+              `${on}/${rows.length} 켜짐`,
+              h(
+                "div",
+                { class: "list" },
+                rows.map(([id, label, about]) =>
+                  switchRow(
+                    I.square,
+                    label,
+                    toggles[id] !== false,
+                    () => patchMeta({ conversationCommandToggles: { ...toggles, [id]: toggles[id] === false } }),
+                    about,
+                  ),
+                ),
+              ),
+            );
+          })
+        : null,
     ];
   }
 
@@ -1399,7 +1406,7 @@ export function chatSettingsScreen({ mount, args, go, back }) {
       author: authorView,
       cover: coverView,
       lorebooks: lorebooksView,
-      translation: () => [gap(), translationList(chat, conns)],
+      translation: () => translationList(chat, conns),
       kit: kitView,
       view: viewView,
       convo: convoView,

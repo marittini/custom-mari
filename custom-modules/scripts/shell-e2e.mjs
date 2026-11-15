@@ -600,6 +600,48 @@ const flows = {
     await snap(page, "safety-week");
   },
 
+  // Menus (0.25): chat settings in labelled groups; switches for every room live in 설정 › 모든 방 공통 기능 (linked
+  // from chat settings); one "can a character call me" switch in 통화 설정 that writes both Engine keys; the
+  // commands folded in groups.
+  async menus({ page }) {
+    await open(page);
+    await goIn(page, `#/chat-settings/${encodeURIComponent(convo.id)}`);
+    for (const g of ["이 채팅의 AI", "등장과 세계", "기능", "도구", "모든 방 공통"])
+      await page.locator(".gsec").filter({ hasText: g }).first().waitFor({ timeout: 5000 });
+    await page.getByRole("button", { name: /대사 음성 · 번역 · 기억 · 날씨/ }).click();
+    await until(async () => (await hash(page)) === "#/settings/shared", 5000, "settings/shared");
+    const weather = page.locator("#shared").getByRole("switch", { name: /날씨/ });
+    await weather.waitFor({ timeout: 8000 });
+    const was = (await api("GET", "/mari-kit/settings")).features?.weather === true;
+    await weather.click();
+    await until(
+      async () => (await api("GET", "/mari-kit/settings")).features?.weather === !was,
+      5000,
+      "weather switched",
+    );
+    await page.locator("#shared").getByRole("switch", { name: /날씨/ }).click();
+    await until(async () => (await api("GET", "/mari-kit/settings")).features?.weather === was, 5000, "weather back");
+    await goIn(page, `#/chat-settings/${encodeURIComponent(convo.id)}/convo`);
+    await page.getByRole("switch", { name: /명령 쓰기/ }).waitFor();
+    if ((await page.locator("details.fgroup").count()) !== 3) throw new Error("commands should fold into 3 groups");
+    if (await page.getByText("캐릭터가 전화 걸기", { exact: true }).count()) throw new Error("duplicate call switch");
+    await goIn(page, `#/call-settings/${encodeURIComponent(convo.id)}`);
+    const call = page.getByRole("switch", { name: /캐릭터가 먼저 전화 걸기/ });
+    await call.waitFor();
+    const before = await meta(convo.id);
+    const on = before.conversationCommandToggles?.call !== false;
+    await call.click();
+    await until(
+      async () => {
+        const m = await meta(convo.id);
+        return (m.conversationCommandToggles?.call !== false) === !on && m.conversationCharactersCanCall === !on;
+      },
+      5000,
+      "both call keys written",
+    );
+    await snap(page, "menus-call");
+  },
+
   // Reactions and replies (the Engine's data): react from the quick row and take it back, see a character's
   // reaction, reply to a message (sent as replyTo) and see its quote.
   async "convo-react"({ page }) {

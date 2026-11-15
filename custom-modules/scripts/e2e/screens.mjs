@@ -93,6 +93,7 @@ export const FLOW_SCREENS = {
   "convo-scene": ["convo", "rp"],
   "convo-media": ["convo", "chat-settings"],
   safety: ["convo", "chat-settings", "schedule"],
+  menus: ["chat-settings", "settings", "call-settings"],
 };
 
 /** Runs the tour (only screens drawn by `mods`, if given). Returns { rows, failed }. app: the shell URL. */
