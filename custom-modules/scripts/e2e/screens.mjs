@@ -6,7 +6,7 @@
 import { join } from "node:path";
 import { mkdir } from "node:fs/promises";
 
-/** The screens to visit, from the seeded ids: { convo, group, rp, a, persona }. */
+/** The screens to visit, from the seeded ids: { convo, group, rp, a, persona, lore, loreEntry }. */
 export function tourScreens(ids) {
   const e = encodeURIComponent;
   return [
@@ -25,6 +25,9 @@ export function tourScreens(ids) {
     ["캐릭터 프로필", `character/${e(ids.a)}`],
     ["캐릭터 편집", `edit/character/${e(ids.a)}`],
     ["페르소나 편집", `edit/persona/${e(ids.persona)}`],
+    ["로어북", "settings/lorebooks"],
+    ["로어북 편집", `edit/lorebook/${e(ids.lore)}`],
+    ["로어북 항목", `edit/lorebook/${e(ids.lore)}/${e(ids.loreEntry)}`],
     ["내 일정", `schedule/default/now/${e(ids.convo)}`],
     ["캐릭터 일정", `char-schedule/${e(ids.convo)}/${e(ids.a)}`],
     ["기억 서재", `memory/${e(ids.rp)}`],
@@ -100,6 +103,7 @@ export const FLOW_SCREENS = {
   "call-missed": ["convo"],
   "call-group": ["convo"],
   "call-translation-kept": ["convo"],
+  "lorebook-edit": ["settings", "edit"],
 };
 
 /** Runs the tour (only screens drawn by `mods`, if given). Returns { rows, failed }. app: the shell URL. */

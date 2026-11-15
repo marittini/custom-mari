@@ -1,18 +1,23 @@
 // Editors in Mari (no Engine screen):
 //   #/edit/character/<id>   #/edit/persona/<id>
+//   #/edit/lorebook/<id>    #/edit/lorebook/<id>/<entry id>
 // Each editor module loads only when opened.
 
 import { h } from "../lib/h.js";
 
 export function editScreen({ mount, args, go, back }) {
-  const kind = args[0] === "persona" ? "persona" : "character";
+  const kind = ["persona", "lorebook"].includes(args[0]) ? args[0] : "character";
   const id = args[1] || "";
   let editor = null;
   let gone = false;
   const load =
     kind === "persona"
       ? import("../lib/edit-persona.js").then((m) => m.personaEditor)
-      : import("../lib/edit-character.js").then((m) => m.characterEditor);
+      : kind === "lorebook" && args[2]
+        ? import("../lib/edit-lore-entry.js").then((m) => (o) => m.loreEntryEditor({ ...o, bookId: id, id: args[2] }))
+        : kind === "lorebook"
+          ? import("../lib/edit-lorebook.js").then((m) => m.lorebookEditor)
+          : import("../lib/edit-character.js").then((m) => m.characterEditor);
   load
     .then((open) => {
       if (!gone) editor = open({ mount, id, go, back });

@@ -154,6 +154,11 @@
     "POST /custom-emojis/import",
     "POST /custom-emojis/upload",
     "PATCH /custom-emojis/:id",
-    "DELETE /custom-emojis/:id"
+    "DELETE /custom-emojis/:id",
+    "GET /lorebooks/:id/folders",
+    "GET /lorebooks/:id/entries/:id",
+    "PATCH /lorebooks/:id/entries/:id",
+    "DELETE /lorebooks/:id/entries/:id",
+    "DELETE /lorebooks/:id"
   ]
 }

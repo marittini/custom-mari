@@ -4266,3 +4266,80 @@ button.cx-line {
 .callx.typing .cx-ppl {
   display: none;
 }
+/* The lorebook library and editor (screens/lorebooks.js, lib/edit-lorebook.js): rows of a name (tap to open) and
+   its own switch, search and chips above, actions below. A switched-off book or entry is dimmed. */
+.lore-tools {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 4px 20px 12px;
+}
+.lore-tools .ed-chiprow,
+.lore-cats {
+  flex-wrap: wrap;
+}
+.lore-tools .ed-hint {
+  margin: 0;
+}
+.r.lore-row {
+  grid-template-columns: minmax(0, 1fr) auto;
+  cursor: default;
+}
+.lore-open {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+  min-height: 44px;
+  justify-content: center;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.lore-name {
+  font-size: 15px;
+  overflow-wrap: anywhere;
+}
+.lore-name.off {
+  color: var(--ink-3);
+}
+.lore-open small {
+  font-size: 12px;
+  color: var(--ink-3);
+  overflow-wrap: anywhere;
+}
+.lore-open .lore-prev {
+  display: -webkit-box;
+  -webkit-line-clamp: 1;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+.lore-sw {
+  width: 52px;
+  height: 44px;
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  cursor: pointer;
+}
+.lore-more {
+  display: block;
+  margin: 12px auto 0;
+}
+.lore-acts {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 8px;
+  padding: 20px 20px 8px;
+}
+.ed-num {
+  max-width: 160px;
+}

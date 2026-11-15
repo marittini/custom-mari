@@ -3,6 +3,15 @@
 // of the chat's characters or to its persona, or made for this chat. A pinned book is unpinned; an automatic one is
 // switched off for this chat through excludedLorebookIds.
 
+/** The Engine's lorebook categories (shared/src/schemas/lorebook.schema.ts), in its order. */
+export const CATEGORIES = [
+  ["world", "세계"],
+  ["character", "캐릭터"],
+  ["npc", "NPC"],
+  ["spellbook", "주문서"],
+  ["uncategorized", "분류 없음"],
+];
+
 const strings = (v) => (Array.isArray(v) ? v.filter((x) => typeof x === "string") : []);
 
 export function scopeCovers(scope, chatId) {

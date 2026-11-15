@@ -326,6 +326,31 @@ export function createEditor({ mount, title, label, back, record, save, more = n
     return frame(path, labelText, input, { hint, side: val });
   }
 
+  /** A whole number typed in (depth, budget, order): kept within min..max; empty is `def` (null = not set). */
+  function count(path, labelText, { min = 0, max = 1e9, hint, def = null, placeholder = "" } = {}) {
+    bind(path);
+    const shown = (v) => (v === null || v === undefined ? "" : String(v));
+    const input = h("input", {
+      id: fieldId(path),
+      class: "inp ed-inp ed-num",
+      type: "number",
+      inputmode: "numeric",
+      min,
+      max,
+      step: 1,
+      placeholder,
+      value: shown(getPath(draft, path)),
+      onInput: (e) => {
+        const raw = e.target.value.trim();
+        const n = Math.trunc(Number(raw));
+        put(path, raw === "" || !Number.isFinite(n) ? def : Math.min(max, Math.max(min, n)));
+      },
+      onBlur: (e) => (e.target.value = shown(getPath(draft, path))),
+    });
+    syncers.push(() => document.activeElement !== input && (input.value = shown(getPath(draft, path))));
+    return frame(path, labelText, input, { hint });
+  }
+
   /** Tags as chips, added with Enter or a comma. */
   function tags(path, labelText, { hint } = {}) {
     bind(path, (v) => v);
@@ -583,6 +608,7 @@ export function createEditor({ mount, title, label, back, record, save, more = n
     toggle,
     choice,
     number,
+    count,
     tags,
     list,
     color,

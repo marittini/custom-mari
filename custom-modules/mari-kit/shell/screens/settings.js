@@ -31,6 +31,7 @@ export function settingsScreen({ mount, args, go, back }) {
     preset: "프리셋",
     voice: "엔진 TTS 연결",
     personas: "페르소나",
+    lorebooks: "로어북",
     shared: "모든 방 공통 기능",
   };
   const parent =
@@ -45,6 +46,7 @@ export function settingsScreen({ mount, args, go, back }) {
     preset: () => presetPage(body, go, args[1]),
     voice: () => voicePage(body),
     personas: () => personasPage(body, go),
+    lorebooks: () => import("./lorebooks.js").then((m) => m.lorebooksPage(body, go)),
     kit: () => kitUpdatePage(body),
   };
   const draw = () => {
@@ -210,7 +212,7 @@ export function settingsScreen({ mount, args, go, back }) {
         { class: "list" },
         row(I.person, "캐릭터", val("서재"), () => go("library/chars")),
         row(I.person, "페르소나", val(""), () => go("settings/personas")),
-        row(I.lore, "로어북", val("엔진"), () => openEngine(null, { panel: "lorebooks" })),
+        row(I.lore, "로어북", val(""), () => go("settings/lorebooks")),
       ),
       sec("모든 방 공통 기능"),
       h("div", { class: "list", id: "shared" }, sharedRows()),
@@ -262,6 +264,7 @@ export function settingsScreen({ mount, args, go, back }) {
   // The shell's own settings, a few per-chat ones (they open in the newest chat's settings), and the Engine's
   // settings sections (read once from the Engine's shared module through Mari Kit, ~6KB, only when searching).
   const SHELL_ITEMS = [
+    ["로어북", "설정 › 사람과 세계", "lorebook 세계관 world info 항목 키", () => go("settings/lorebooks")],
     ["다크 모드", "설정 › 화면", "dark theme 테마 어둡게", () => setPrefs({ theme: isDark() ? "light" : "dark" })],
     ["대사 음성 켜기", "설정 › 모든 방 공통 기능", "tts 음성 목소리 읽기 켜기 끄기", () => jumpShared()],
     ["번역 (Mari Kit) 켜기", "설정 › 모든 방 공통 기능", "translation 번역 프리셋 단어장 켜기", () => jumpShared()],
