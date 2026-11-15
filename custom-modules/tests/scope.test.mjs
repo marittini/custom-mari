@@ -1,6 +1,7 @@
 // verify.mjs picks only the checks a change reaches (scripts/e2e/scope.mjs). Pure, no Engine.
 import assert from "node:assert/strict";
-import { importsOf, planChecks } from "../scripts/e2e/scope.mjs";
+import { flowBlocks, importsOf, planChecks } from "../scripts/e2e/scope.mjs";
+import { cssSelectors, hunkLines, ranLines, shellPath } from "../scripts/e2e/coverage.mjs";
 
 const S = "custom-modules/mari-kit/shell/";
 const files = {
@@ -52,5 +53,46 @@ assert.equal(p.package || p.api || p.sections || p.flows.length || p.screens.len
 p = planChecks(["custom-modules/scripts/shell-e2e.mjs"], files);
 assert.equal(p.screens.length, 4);
 assert.ok(p.flows.length >= 9);
+
+// ── Flows by coverage (what each flow ran last time) ──
+assert.equal(shellPath("http://x/api/mari-kit/app/v/0123456789ab/lib/h.js?x"), `${S}lib/h.js`);
+assert.deepEqual(hunkLines("@@ -3,2 +3,0 @@\n@@ -10,0 +9,2 @@"), {
+  old: [3, 4, 10, 11],
+  new: [3, 4, 9, 10],
+  cssOld: [3, 4],
+});
+const fnFiles = { f: { fns: ["2-20", "5-8", "10-12"], ran: ["2-20", "5-8"] } };
+assert.equal(ranLines(fnFiles, "f", [6]), true); // inside a function that ran
+assert.equal(ranLines(fnFiles, "f", [11]), false); // inside one that never ran
+assert.equal(ranLines(fnFiles, "f", [30]), true); // top-level code of a loaded file
+assert.equal(ranLines(fnFiles, "g", [1]), false); // a file the flow never loaded
+const css = ".a,\n.b span {\n  color: red;\n}\n:root {\n  --x: 1;\n}\n.c .d {\n  gap: 0;\n}";
+assert.deepEqual(
+  cssSelectors(css, [3]).map((c) => [...c]),
+  [["a"], ["b"]],
+);
+assert.equal(cssSelectors(css, [6]), "all");
+assert.deepEqual(
+  cssSelectors(css, [9]).map((c) => [...c]),
+  [["c", "d"]],
+);
+const e2e =
+  'const flows = {\n  // one\n  async one({ page }) {\n    a();\n  },\n  async "two-x"({ page }) {\n    b();\n  },\n};';
+assert.deepEqual(
+  flowBlocks(e2e).map((b) => [b.name, b.start, b.end]),
+  [
+    ["one", 2, 5],
+    ["two-x", 6, 8],
+  ],
+);
+// A covered flow runs only when it ran the changed lines; an uncovered one falls back to its screens.
+const coverage = {
+  "convo-send": { tree: "T", files: { [`${S}lib/reactions.js`]: { fns: ["1-9"], ran: [] } }, routes: [] },
+  "convo-react": { tree: "T", files: { [`${S}lib/reactions.js`]: { fns: ["1-9"], ran: ["1-9"] } }, routes: [] },
+};
+const ctx = { coverage, diff: () => ({ old: [4], new: [4], cssOld: [4] }), show: () => "", base: "T", text: () => "" };
+p = planChecks([`${S}lib/reactions.js`], files, ctx);
+assert.ok(p.flows.includes("convo-react") && !p.flows.includes("convo-send"));
+assert.ok(p.flows.includes("back")); // no coverage yet: by its screens
 
 console.log("verify scope: picks only the checks a change reaches");

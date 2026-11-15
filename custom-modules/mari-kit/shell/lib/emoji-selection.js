@@ -112,7 +112,12 @@ export function emojiSelectionSheet(chat, changed) {
               ),
             )
           : null,
-        h("div", { class: "r static", style: { padding: "0" } }, h("span", null, "한 번에 보여 줄 최대 개수"), count),
+        h(
+          "div",
+          { class: "r two static", style: { padding: "0" } },
+          h("span", null, "한 번에 보여 줄 최대 개수"),
+          count,
+        ),
         h(
           "button",
           { type: "button", class: "pill main", style: { minHeight: "48px" }, onClick: () => s.close() },

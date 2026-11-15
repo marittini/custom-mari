@@ -95,6 +95,7 @@ export const FLOW_SCREENS = {
   safety: ["convo", "chat-settings", "schedule"],
   menus: ["chat-settings", "settings", "call-settings"],
   "call-subtitles": ["convo"],
+  "memory-jobs": ["memory", "convo"],
 };
 
 /** Runs the tour (only screens drawn by `mods`, if given). Returns { rows, failed }. app: the shell URL. */
@@ -127,6 +128,51 @@ export function offscreenText(root = document.body) {
     }
   }
   return [...new Set(out)].slice(0, 4);
+}
+
+/**
+ * Runs in the page: layout faults a screenshot hides from a quick look (custom-modules/WORKFLOW.md, 화면 규칙).
+ *  - squeezed: text forced into a column one or two characters wide (a cell with no room, so it breaks every letter)
+ *  - invisible: an icon button whose icon draws nothing (no stroke, no fill) and has no text
+ *  - cells: a .r row with fewer children than its grid has columns, so a label lands in the 24px icon column
+ * Returns ["kind: what", …] (up to 6).
+ */
+export function layoutFaults(root = document.body) {
+  const out = new Set();
+  const visible = (el) => el.getClientRects().length > 0 && getComputedStyle(el).visibility !== "hidden";
+  const walk = document.createTreeWalker(root, NodeFilter.SHOW_TEXT);
+  for (let n = walk.nextNode(); n; n = walk.nextNode()) {
+    const text = n.textContent.replace(/\s+/g, "");
+    const el = n.parentElement;
+    if (text.length < 4 || !el || !visible(el)) continue;
+    const range = document.createRange();
+    range.selectNodeContents(n);
+    const lines = new Set([...range.getClientRects()].filter((r) => r.width > 0).map((r) => Math.round(r.top)));
+    if (lines.size >= 3 && text.length / lines.size <= 2.2) out.add(`squeezed: ${n.textContent.trim().slice(0, 16)}`);
+  }
+  for (const b of root.querySelectorAll("button, [role=button], a")) {
+    if (!visible(b) || b.textContent.trim() || b.querySelector("img")) continue;
+    const svg = b.querySelector("svg");
+    if (!svg) continue;
+    const drawn = [...svg.querySelectorAll("path, circle, rect, line, polyline, polygon")].some((p) => {
+      const cs = getComputedStyle(p);
+      return (
+        (cs.fill !== "none" && cs.fill !== "transparent") || (cs.stroke !== "none" && parseFloat(cs.strokeWidth) > 0)
+      );
+    });
+    if (!drawn) out.add(`invisible: ${b.getAttribute("aria-label") || b.className || "button"}`);
+  }
+  for (const r of root.querySelectorAll(".r")) {
+    if (!visible(r)) continue;
+    const cs = getComputedStyle(r);
+    if (cs.display !== "grid") continue;
+    const tracks = cs.gridTemplateColumns.split(" ").filter(Boolean).length;
+    const kids = [...r.children].filter(visible);
+    const first = kids[0];
+    if (kids.length < tracks && first && !first.querySelector("svg, img") && first.textContent.trim().length > 1)
+      out.add(`cells: ${first.textContent.trim().slice(0, 16)} (${kids.length} of ${tracks})`);
+  }
+  return [...out].slice(0, 6);
 }
 
 export async function screenTour({ browser, app, ids, mods = null, shots = null, log = console.log }) {
@@ -177,7 +223,8 @@ export async function screenTour({ browser, app, ids, mods = null, shots = null,
       return { wide, sideways: [...new Set(sideways)].slice(0, 4) };
     });
     check.offscreen = await page.evaluate(offscreenText);
-    const bad = check.wide > 1 || check.offscreen.length > 0 || errors.length > 0;
+    check.faults = await page.evaluate(layoutFaults);
+    const bad = check.wide > 1 || check.offscreen.length > 0 || check.faults.length > 0 || errors.length > 0;
     if (bad) failed += 1;
     rows.push({ name, hash, kb: bytes / 1024, ...check, errors: [...errors] });
     if (shots)
@@ -190,13 +237,14 @@ export async function screenTour({ browser, app, ids, mods = null, shots = null,
     const notes = [
       r.wide > 1 ? `PAGE SCROLLS SIDEWAYS +${r.wide}px` : "",
       r.offscreen.length ? `TEXT RUNS OFF THE SCREEN: ${r.offscreen.join(" | ")}` : "",
+      r.faults.length ? `LAYOUT: ${r.faults.join(" | ")}` : "",
       r.errors.length ? `ERROR ${r.errors[0].slice(0, 120)}` : "",
       r.sideways.length ? `sideways: ${r.sideways.join(", ")}` : "",
     ]
       .filter(Boolean)
       .join(" · ");
     log(
-      `  ${r.wide > 1 || r.offscreen.length || r.errors.length ? "FAIL" : "ok  "} ${r.name.padEnd(14)} ${r.kb.toFixed(1).padStart(7)}KB  ${notes}`,
+      `  ${r.wide > 1 || r.offscreen.length || r.faults.length || r.errors.length ? "FAIL" : "ok  "} ${r.name.padEnd(14)} ${r.kb.toFixed(1).padStart(7)}KB  ${notes}`,
     );
   }
   if (shots) log(`  screenshots: ${shots}`);

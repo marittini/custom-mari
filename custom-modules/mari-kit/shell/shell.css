@@ -2684,6 +2684,23 @@ button.toast {
   background: var(--paper);
   flex-shrink: 0;
 }
+/* A room's running work on screens without a strip (기억 서재, 채팅 설정): above the dock, only in that room */
+.jobnote {
+  position: absolute;
+  left: 12px;
+  right: 12px;
+  bottom: calc(76px + env(safe-area-inset-bottom, 0px));
+  z-index: 39;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 48px;
+  padding: 6px 6px 6px 14px;
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  background: var(--paper);
+  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.12);
+}
 .act-row {
   display: flex;
   align-items: center;
@@ -2864,23 +2881,6 @@ button.toast {
   font-size: 12px;
   font-variant-numeric: tabular-nums;
 }
-/* "＋ 새 답": a labelled button of its own, apart from the arrows (a new reply is a generation) */
-.sw-new {
-  margin-left: 10px;
-  min-height: 32px;
-  padding: 0 12px;
-  border: 1px solid var(--line-2);
-  border-radius: 999px;
-  background: transparent;
-  color: var(--ink-2);
-  font: inherit;
-  font-size: 12px;
-  cursor: pointer;
-}
-.sw-new:disabled {
-  opacity: 0.4;
-  cursor: default;
-}
 
 /* Conversation stickers share the shell's existing bottom sheet and surface tokens. */
 .sticker-body {
@@ -3054,9 +3054,6 @@ button.toast {
 .pwait-t {
   flex: 1 1 160px;
   min-width: 0;
-}
-.pwait .pill {
-  min-height: 36px;
 }
 .tdots {
   display: inline-flex;
@@ -3309,11 +3306,13 @@ button.toast {
   border-radius: 50%;
   background: currentColor;
 }
+/* The time keeps its one line; a long activity wraps instead of squeezing the time into a column. */
 .wblocks .r {
+  grid-template-columns: auto minmax(0, 1fr);
   align-items: flex-start;
 }
 .wb-t {
-  flex-shrink: 0;
+  white-space: nowrap;
   color: var(--ink-3);
   font-size: 13px;
   font-variant-numeric: tabular-nums;
@@ -3441,10 +3440,14 @@ button.toast {
   flex-wrap: wrap;
   gap: 4px;
   max-width: 75%;
-  margin-top: -6px;
+  margin-top: 4px;
   padding: 0 6px;
   position: relative;
   z-index: 1;
+}
+/* Tucked onto the bubble's edge only right under the bubble; under a translation or a picture it keeps its gap. */
+.bub + .rxrow {
+  margin-top: -6px;
 }
 .rxrow.me {
   justify-content: flex-end;

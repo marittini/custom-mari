@@ -34,9 +34,10 @@ export function icon(d, size = 20, stroke = 1.5) {
       width: size,
       height: size,
       viewBox: "0 0 24 24",
-      fill: "none",
-      stroke: "currentColor",
-      "stroke-width": stroke,
+      // stroke 0: a filled shape (▶), drawn with fill; a 0-wide line would draw nothing.
+      fill: stroke === 0 ? "currentColor" : "none",
+      stroke: stroke === 0 ? "none" : "currentColor",
+      "stroke-width": stroke || null,
       "aria-hidden": "true",
     },
     ...[].concat(d).map((p) => h("path", { d: p })),

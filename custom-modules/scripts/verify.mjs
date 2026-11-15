@@ -1,28 +1,32 @@
 #!/usr/bin/env node
 // Mari Kit checks (custom-modules/WORKFLOW.md, section 7). By default only what the change can affect.
 //
-//   node custom-modules/scripts/verify.mjs            checks for the files changed since origin/main (commits, staged,
-//                                                     unstaged, new): formatting and parsing of those files, the
-//                                                     package build if Mari Kit changed, and, on a throwaway Engine
-//                                                     with a fake model, only the Engine checks, tests, shell flows
-//                                                     and 360px screens those files reach (scripts/e2e/scope.mjs)
+//   node custom-modules/scripts/verify.mjs            checks for what changed since the last passing run on this
+//                                                     branch (first run: since origin/main), commits and working tree:
+//                                                     formatting and parsing of those files, the package build if Mari
+//                                                     Kit changed, and, on a throwaway Engine with a fake model, only
+//                                                     the Engine checks, tests, shell flows and 360px screens those
+//                                                     changes reach (scripts/e2e/scope.mjs; flows by what each one
+//                                                     ran last time, scripts/e2e/coverage.mjs)
 //   node custom-modules/scripts/verify.mjs --quick    the same, without the Engine (formatting, parsing, package)
 //   node custom-modules/scripts/verify.mjs --all      everything (before a release-sized merge; CI runs this)
 //
-//   options: --base <ref> (compare with another ref) · --shots <dir> (keep a screenshot per toured screen) ·
-//            --url <engine> (use a running Engine whose data can be thrown away) · --verbose (full output)
+//   options: --base <ref> (compare with another ref, e.g. origin/main for the whole branch) · --shots <dir> (keep a screenshot per toured screen) ·
+//            --url <engine> (use a running Engine whose data can be thrown away) · --verbose (full output) ·
+//            --plan (only print what would run, and why)
 //
 // Output is short on purpose: one line per check, the transfer of each toured screen, and the tail of a failure.
 
 import { execFileSync, spawn } from "node:child_process";
-import { existsSync } from "node:fs";
-import { mkdtemp, readdir, readFile, rm } from "node:fs/promises";
+import { existsSync, readFileSync } from "node:fs";
+import { mkdir, mkdtemp, readdir, readFile, rm, writeFile } from "node:fs/promises";
 import { createServer } from "node:net";
 import { tmpdir } from "node:os";
 import { dirname, join, relative, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { createRequire } from "node:module";
 import { planChecks } from "./e2e/scope.mjs";
+import { hunkLines } from "./e2e/coverage.mjs";
 import { FLOW_SCREENS } from "./e2e/screens.mjs";
 import { undefinedNames } from "./e2e/undefined-names.mjs";
 
@@ -37,6 +41,63 @@ const verbose = args.includes("--verbose");
 const results = [];
 const bin = (name) => join(root, "node_modules", ".bin", name);
 const git = (...a) => execFileSync("git", a, { cwd: root, encoding: "utf8" }).split("\n").filter(Boolean);
+const gitText = (a, env = {}) =>
+  execFileSync("git", a, {
+    cwd: root,
+    encoding: "utf8",
+    env: { ...process.env, ...env },
+    maxBuffer: 1 << 26,
+    stdio: ["ignore", "pipe", "pipe"],
+  });
+
+// ── Where we start from: the last passing run on this branch (its working tree, written as a git tree object with a
+// private index, so nothing in the real index changes), else the merge base with origin/main. Coverage of the flows
+// (which code each one ran) is kept next to it. Both live in .git/mari-verify and never leave this clone.
+const store = resolve(root, gitText(["rev-parse", "--git-path", "mari-verify"]).trim());
+await mkdir(store, { recursive: true });
+const readJson = async (f, d) => JSON.parse(await readFile(join(store, f), "utf8").catch(() => JSON.stringify(d)));
+function snapshot() {
+  const env = { GIT_INDEX_FILE: join(store, "index") };
+  gitText(["read-tree", "HEAD"], env);
+  gitText(["add", "-A"], env);
+  return gitText(["write-tree"], env).trim();
+}
+const exists = (tree) => {
+  try {
+    gitText(["cat-file", "-e", tree]);
+    return true;
+  } catch {
+    return false;
+  }
+};
+const branch = gitText(["rev-parse", "--abbrev-ref", "HEAD"]).trim();
+const mainBase = (ref) => gitText(["rev-parse", `${gitText(["merge-base", ref, "HEAD"]).trim()}^{tree}`]).trim();
+const nowTree = snapshot();
+const diffs = new Map();
+const diffSince = (tree, path) => {
+  const key = `${tree} ${path}`;
+  if (!diffs.has(key)) {
+    const out = exists(tree) ? gitText(["diff", "-U0", tree, nowTree, "--", path]) : null;
+    diffs.set(key, out === null ? undefined : out.trim() ? hunkLines(out) : null);
+  }
+  const d = diffs.get(key);
+  if (d === undefined) throw new Error(`tree ${tree} is gone`);
+  return d;
+};
+const shown = new Map();
+const showAt = (tree, path) => {
+  const key = `${tree}:${path}`;
+  if (!shown.has(key))
+    try {
+      shown.set(key, gitText(["show", key]));
+    } catch {
+      shown.set(key, null);
+    }
+  return shown.get(key);
+};
+await rm(join(store, "coverage-run.json"), { force: true }); // left by a run that was cut short
+const state = await readJson("state.json", {});
+const coverage = await readJson("coverage.json", {});
 
 function run(cmd, cmdArgs, { cwd = root, env = {} } = {}) {
   return new Promise((done) => {
@@ -93,17 +154,21 @@ if (all) {
   };
   console.log("Everything (--all)");
 } else {
-  const base = opt("--base") || "origin/main";
-  const changed = [
-    ...new Set([
-      ...git("diff", "--name-only", `${base}...HEAD`),
-      ...git("diff", "--name-only", "HEAD"),
-      ...git("ls-files", "--others", "--exclude-standard"),
-    ]),
-  ].filter((p) => existsSync(join(root, p)));
-  plan = planChecks(changed, files);
+  const main = mainBase("origin/main");
+  const last = state[branch];
+  const useLast = !opt("--base") && last?.main === main && exists(last.tree);
+  const fromTree = opt("--base") ? mainBase(opt("--base")) : useLast ? last.tree : main;
+  const since = opt("--base") || (useLast ? "the last passing run" : "origin/main");
+  const changed = git("diff", "--name-only", fromTree, nowTree).filter((p) => existsSync(join(root, p)));
+  plan = planChecks(changed, files, {
+    coverage,
+    diff: diffSince,
+    show: showAt,
+    base: fromTree,
+    text: (p) => readFileSync(join(root, p), "utf8"),
+  });
   if (quick) Object.assign(plan, { api: false, sections: false, tests: [], flows: [], screens: [] });
-  console.log(`${changed.length} changed file(s) since ${base}`);
+  console.log(`${changed.length} changed file(s) since ${since}`);
   const parts = [
     plan.format.length && `format ${plan.format.length}`,
     plan.parse.length && `parse ${plan.parse.length}`,
@@ -115,7 +180,8 @@ if (all) {
     plan.screens.length && `screens ${plan.screens.join(",")}`,
   ].filter(Boolean);
   console.log(`Checks: ${parts.join(" · ") || "nothing to check"}`);
-  if (verbose) for (const [k, v] of Object.entries(plan.why)) console.log(`  ${k}: ${v}`);
+  if (verbose || args.includes("--plan")) for (const [k, v] of Object.entries(plan.why)) console.log(`  ${k}: ${v}`);
+  if (args.includes("--plan")) process.exit(0);
 }
 
 // ── Static ──
@@ -259,6 +325,7 @@ if (plan.flows.length || screens.length)
       // --all runs shell-e2e as the daily check does (every flow, first-visit transfer, every screen).
       const extra = all ? [] : ["--only", plan.flows.join(",") || "-", "--screens", screens.join(",") || "-"];
       if (opt("--shots")) extra.push("--shots", resolve(opt("--shots")));
+      if (plan.flows.length) extra.push("--coverage", join(store, "coverage-run.json"));
       const r = await run("node", [join(kit, "scripts", "shell-e2e.mjs"), base, ...extra]);
       const keep = r.out
         .split("\n")
@@ -267,10 +334,23 @@ if (plan.flows.length || screens.length)
     }),
   );
 
+// Coverage of the flows that just passed, on the tree they ran (the next scoped run diffs from there).
+const ran = await readJson("coverage-run.json", null);
+if (ran) {
+  for (const [flow, rec] of Object.entries(ran)) coverage[flow] = { tree: nowTree, ...rec };
+  await writeFile(join(store, "coverage.json"), JSON.stringify(coverage));
+  await rm(join(store, "coverage-run.json"), { force: true });
+}
 if (engine) engine.kill();
 if (dataDir) await rm(dataDir, { recursive: true, force: true }).catch(() => {});
 
 const failed = results.filter((r) => !r.ok).length;
+// A full pass is the next run's starting point (--quick skips the Engine, so it does not count).
+if (!failed && !quick && !opt("--base") && !opt("--url"))
+  await writeFile(
+    join(store, "state.json"),
+    JSON.stringify({ ...state, [branch]: { tree: nowTree, main: mainBase("origin/main") } }),
+  );
 console.log(
   `\n${failed ? `${failed} check(s) failed` : `All ${results.length} check(s) passed`}. Not covered: the owner's phone and Termux, real models, real accounts, Android WebView.`,
 );

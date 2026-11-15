@@ -145,22 +145,6 @@ export function toast(text, onClick = null) {
   toastTimer = setTimeout(() => el.remove(), 2600);
 }
 
-/** A notice that stays while something runs (번역 중…), with a stop button when given one; returns close(). */
-export function busyNote(text, stop = null) {
-  const frame = document.querySelector(".app");
-  if (!frame) return () => {};
-  frame.querySelector(".toast")?.remove();
-  clearTimeout(toastTimer);
-  const el = h(
-    "div",
-    { class: stop ? "toast busy act-toast" : "toast busy", role: "status", "aria-live": "polite" },
-    h("span", null, text),
-    stop ? h("button", { type: "button", class: "toast-btn", onClick: () => stop.fn() }, stop.label || "멈추기") : null,
-  );
-  frame.append(el);
-  return () => el.remove();
-}
-
 /** The notice after an overwrite: what changed and 되돌리기 for `ms` (10 s). */
 export function undoToast(text, undo, ms = 10000) {
   const frame = document.querySelector(".app");

@@ -32,9 +32,9 @@ export function saveOverride(characterId, override) {
 
 /**
  * chat, index (id → { name, avatar }), fresh: GET /conversation/status/:chatId's statuses (or null), me: Mari Kit's
- * schedule state for the user, waiting: character ids whose reply waits (지금 답하게), replyNow(id), go, changed().
+ * schedule state for the user, go, changed().
  */
-export function presenceSheet({ chat, index, fresh, me, waiting = [], replyNow, go, changed }) {
+export function presenceSheet({ chat, index, fresh, me, go, changed }) {
   const chatId = chat.id;
   const box = h("div", { class: "psheet" });
   const s = sheet(box, { label: "상태와 일정" });
@@ -126,9 +126,6 @@ export function presenceSheet({ chat, index, fresh, me, waiting = [], replyNow, 
         f?.lastContact ? h("span", { class: "hint pcard-ago" }, `마지막 연락 ${agoLabel(f.lastContact, now)}`) : null,
       ),
       h("div", { class: "pcard-now" }, dot(p.status), h("span", null, presenceLine(p))),
-      waiting.includes(id) && replyNow
-        ? h("button", { type: "button", class: "pill main", onClick: () => (s.close(), replyNow(id)) }, "지금 답하게")
-        : null,
       // 상태 바꾸기: the Engine's manual status menu and activity box.
       editing === id
         ? h(

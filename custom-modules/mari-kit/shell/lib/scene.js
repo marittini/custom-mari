@@ -286,7 +286,7 @@ export async function startScene({ chat, index, request, go }) {
   }
   if (!prefs) return;
   let stopped = false;
-  let done = startJob("장면 짜는 중…", { label: "멈추기", fn: () => ((stopped = true), done()) });
+  let done = startJob("장면 짜는 중…", { label: "멈추기", fn: () => ((stopped = true), done()) }, { chat: chat.id });
   try {
     const res = await api.post("/scene/plan", {
       chatId: chat.id,
@@ -300,7 +300,7 @@ export async function startScene({ chat, index, request, go }) {
     if (!plan) return toast(res?.error || "장면을 짜지 못했어요. 다시 해 주세요.");
     if (request.background) plan.background = request.background;
     done();
-    done = startJob("장면 만드는 중…", { label: "멈추기", fn: () => ((stopped = true), done()) });
+    done = startJob("장면 만드는 중…", { label: "멈추기", fn: () => ((stopped = true), done()) }, { chat: chat.id });
     const made = await api.post(
       "/scene/create",
       createBody({

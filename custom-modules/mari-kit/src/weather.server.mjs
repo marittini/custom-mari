@@ -50,10 +50,12 @@ function forecastUrl(location) {
 }
 
 const cache = new Map();
-export async function getWeather(location, fetchImpl = fetch) {
+// A failed place is not asked again for 2 minutes, so a phone without a way out does not wait 5 s on every reply.
+const RETRY_MS = 120_000;
+export async function getWeather(location, fetchImpl = fetch, { fresh = false } = {}) {
   const key = `${location.latitude},${location.longitude}`;
   const hit = cache.get(key);
-  if (hit && hit.until > Date.now()) return hit.value;
+  if (hit && hit.until > Date.now() && !(fresh && hit.failed)) return hit.value;
   const value = (async () => {
     const response = await fetchImpl(forecastUrl(location), { signal: AbortSignal.timeout(FETCH_TIMEOUT_MS) });
     if (!response.ok) throw new Error(`Weather response ${response.status}`);
@@ -62,9 +64,17 @@ export async function getWeather(location, fetchImpl = fetch) {
   cache.set(key, { until: Date.now() + weatherCore.CACHE_TTL_MS, value });
   if (cache.size > 100) cache.delete(cache.keys().next().value);
   value.catch(() => {
-    if (cache.get(key)?.value === value) cache.delete(key);
+    if (cache.get(key)?.value === value) cache.set(key, { until: Date.now() + RETRY_MS, value, failed: true });
   });
   return value;
+}
+
+/** Why a request failed, in a few words the owner can act on (no answer, no network, the service said no). */
+export function failureReason(error) {
+  if (error?.name === "TimeoutError" || /timeout|aborted/i.test(String(error?.message))) return "응답이 없어요 (5초)";
+  const code = error?.cause?.code || error?.code;
+  if (code) return `연결하지 못했어요 (${code})`;
+  return String(error?.message ?? error);
 }
 
 function weatherLine(snapshot) {
@@ -144,19 +154,28 @@ async function writeState(runtime, update) {
   throw Object.assign(new Error("Weather settings changed while saving. Try again."), { statusCode: 409 });
 }
 
-async function summaries(state, chatId) {
+// now: false → the settings only, at once (the screen draws them and asks for the weather after). fresh: ask again
+// even for a place that failed a moment ago (다시 불러오기).
+async function summaries(state, chatId, { now = true, fresh = false } = {}) {
   const room = state.rooms[chatId] ?? { enabled: false, characterLocation: null };
-  const summary = async (location) => {
+  if (!now) return { userLocation: state.userLocation, room, summaries: null };
+  const failed = {};
+  const summary = async (who, location) => {
     if (!location) return null;
     try {
-      return weatherCore.formatSummary(await getWeather(location));
+      return weatherCore.formatSummary(await getWeather(location, fetch, { fresh }));
     } catch (error) {
-      return `날씨를 불러오지 못했습니다: ${error?.message ?? error}`;
+      failed[who] = true;
+      return `날씨를 불러오지 못했어요 · ${failureReason(error)}`;
     }
   };
-  const [user, character] = await Promise.all([summary(state.userLocation), summary(room.characterLocation)]);
-  return { userLocation: state.userLocation, room, summaries: { user, character } };
+  const [user, character] = await Promise.all([
+    summary("user", state.userLocation),
+    summary("character", room.characterLocation),
+  ]);
+  return { userLocation: state.userLocation, room, summaries: { user, character, failed } };
 }
+const nowOf = (request) => ({ now: request.query?.now !== "0", fresh: request.query?.fresh === "1" });
 
 export const weatherFeature = {
   id: "weather",
@@ -196,7 +215,7 @@ export const weatherFeature = {
     app.get("/weather/:chatId", async (request) => {
       const chatId = str(request.params.chatId, 200);
       if (!chatId) throw httpError(400, "Chat ID is required.");
-      return summaries((await readState(runtime)).state, chatId);
+      return summaries((await readState(runtime)).state, chatId, nowOf(request));
     });
 
     app.put("/weather/user", async (request) => {
@@ -230,7 +249,7 @@ export const weatherFeature = {
           },
         };
       });
-      return summaries(state, chatId);
+      return summaries(state, chatId, nowOf(request));
     });
   },
 };

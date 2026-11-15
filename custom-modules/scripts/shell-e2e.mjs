@@ -6,9 +6,11 @@
 // (transfer per screen, sideways page scroll, page errors; e2e/screens.mjs). Needs Playwright's Chromium.
 //
 //   node custom-modules/scripts/shell-e2e.mjs [http://127.0.0.1:7860] [--only flow,flow] [--screens mod,mod]
-//                                             [--shots <dir>]
+//                                             [--shots <dir>] [--coverage <file>]
 //   --only: just these flows (none: "--only -"). --screens: tour only the screens drawn by these screen modules
 //   (shell/screens/<mod>.js; "-" for none). Without either, everything runs, with the first-visit transfer.
+//   --coverage: write which shell functions and Engine routes each passing flow used (e2e/coverage.mjs), so the
+//   scoped verify.mjs later runs only the flows a change reaches.
 
 import { chromium, devices } from "./e2e/playwright.mjs";
 import { dirname, join, resolve } from "node:path";
@@ -16,7 +18,9 @@ import { mkdir } from "node:fs/promises";
 import { fileURLToPath } from "node:url";
 import { tmpdir } from "node:os";
 import { startFakeLlm } from "./e2e/fake-llm.mjs";
-import { offscreenText, screenTour } from "./e2e/screens.mjs";
+import { layoutFaults, offscreenText, screenTour } from "./e2e/screens.mjs";
+import { routeOf, summarize } from "./e2e/coverage.mjs";
+import { writeFile } from "node:fs/promises";
 
 const here = dirname(fileURLToPath(import.meta.url));
 const args = process.argv.slice(2);
@@ -24,6 +28,7 @@ const list = (name) =>
   args.includes(name) ? args[args.indexOf(name) + 1].split(",").filter((x) => x && x !== "-") : null;
 const only = list("--only");
 const tourMods = list("--screens");
+const coverageOut = args.includes("--coverage") ? resolve(args[args.indexOf("--coverage") + 1]) : null;
 const shots = args.includes("--shots") ? resolve(args[args.indexOf("--shots") + 1]) : null;
 const base = (args.find((a) => a.startsWith("http")) || process.env.ENGINE_URL || "http://127.0.0.1:7860").replace(
   /\/$/,
@@ -155,7 +160,33 @@ async function phone() {
   const page = await ctx.newPage();
   const errors = [];
   page.on("pageerror", (e) => errors.push(e.message));
+  // Every screen and sheet a flow shows is checked for layout faults as it appears (e2e/screens.mjs layoutFaults).
+  await page.addInitScript(`(() => {
+    const layoutFaults = ${layoutFaults.toString()};
+    window.__faults = new Set();
+    let t = 0;
+    new MutationObserver(() => {
+      clearTimeout(t);
+      t = setTimeout(() => layoutFaults().forEach((f) => window.__faults.add(location.hash + " " + f)), 250);
+    }).observe(document, { childList: true, subtree: true });
+  })()`);
+  if (coverageOut) {
+    await page.coverage.startJSCoverage({ resetOnNavigation: false });
+    page.on("request", (r) => {
+      const route = routeOf(r.url());
+      if (route) recording.routes.add(route);
+    });
+    recording.pages.push(page);
+  }
   return { ctx, page, errors };
+}
+// What the running flow used (with --coverage): its pages' coverage and the Engine routes they called.
+let recording = { pages: [], routes: new Set() };
+const coverage = {};
+async function keepCoverage(name) {
+  const files = {};
+  for (const p of recording.pages) summarize(await p.coverage.stopJSCoverage().catch(() => []), files);
+  coverage[name] = { files, routes: [...recording.routes].sort() };
 }
 const hash = (page) => page.evaluate(() => location.hash);
 // With --shots, flows keep a screenshot of the states worth a look (an edit form, a sheet) next to the tour's.
@@ -293,7 +324,8 @@ const flows = {
   },
 
   // The Engine's presence: an offline character does not answer (and Mari says why); an away one answers later,
-  // with 지금 답하게 to ask again without the wait. Pictures on messages; day separator and times.
+  // with nothing extra in the chat (no "곧 답해요" row, no 지금 답하게); 멈추기 in the strip ends the wait.
+  // Pictures on messages; day separator and times.
   async "convo-presence"({ page }) {
     // The status override lives on the character card (extensions.conversationStatusOverride).
     const status = async (st) => {
@@ -323,15 +355,14 @@ const flows = {
     await status("idle");
     const before = await messageCount(presence.id);
     await say("@Yui 일어났어?");
-    await until(
-      () => page.locator(".pwait.delayed").filter({ hasText: "자리를 비웠어요" }).isVisible(),
-      15000,
-      "away note",
-    );
+    await page.locator(".act").getByText("답장 쓰는 중…").waitFor();
+    await page.waitForTimeout(1500);
+    if (await page.locator(".pwait").count()) throw new Error("a waiting row shows for an away character");
+    if (await page.getByRole("button", { name: "지금 답하게" }).count()) throw new Error("지금 답하게 is back");
     if (await page.locator(".pnote").count()) throw new Error("the offline note stayed after sending again");
-    await page.getByRole("button", { name: "지금 답하게" }).click();
-    await until(async () => (await messageCount(presence.id)) > before + 1, 10000, "reply now answered");
-    await until(async () => !(await page.locator(".pwait").count()), 5000, "notice gone after the answer");
+    await until(async () => (await messageCount(presence.id)) > before, 5000, "my message saved");
+    await page.locator(".act").getByRole("button", { name: "멈추기" }).click();
+    await until(async () => !(await page.locator(".act").getByText("답장 쓰는 중…").count()), 10000, "stopped");
     await status("online");
     // A picture on a message (a user upload: data URL) and the message tools from its viewer.
     const msgs = await api("GET", `/chats/${presence.id}/messages`);
@@ -579,10 +610,9 @@ const flows = {
     page.on("request", (r) => r.url().includes("/conversation/schedule/generate") && generated.push(r.url()));
     await open(page);
     await goIn(page, `#/convo/${encodeURIComponent(convo.id)}`);
-    await page.locator(".sw-row").last().waitFor();
-    if (!(await page.locator(".sw-row").last().getByRole("button", { name: "다음 답" }).isDisabled()))
-      throw new Error("다음 답 should be disabled on the newest reply");
-    await page.locator(".sw-row").last().getByRole("button", { name: "새 답 만들기" }).waitFor();
+    await page.getByRole("textbox", { name: "메시지" }).waitFor();
+    // A new reply is 다시 생성 in the message tools; there is no separate 새 답 button.
+    if (await page.getByRole("button", { name: "새 답 만들기" }).count()) throw new Error("새 답 is back");
     // 대화 기능: the regeneration is in its own box below the people, and asks.
     await goIn(page, `#/chat-settings/${encodeURIComponent(scheduled.id)}/convo`);
     const box = page.locator(".workbox").first();
@@ -655,6 +685,36 @@ const flows = {
   // The call screen's subtitles and records (0.26), against the Calls package's API answered in the browser (the
   // package is not installed in the test Engine): the subtitle window with every line, the waiting line while a
   // reply is written, 자막 (subtitles first, larger text), and the call card in the Convo opening the full record.
+  // Running work belongs to its room: memory organizing started in room A shows in A (its strip, or the note on
+  // 기억 서재), never in room B. 기억: 묶음 can be 1, and the counts behind "정리 대기" are shown.
+  async "memory-jobs"({ page }) {
+    await open(page);
+    await goIn(page, `#/convo/${encodeURIComponent(convo.id)}`);
+    await page.getByRole("textbox", { name: "메시지" }).waitFor();
+    await page.evaluate(async (chat) => {
+      // The same module instance the shell loaded (its versioned address), so the strip sees the job.
+      const url = performance
+        .getEntriesByType("resource")
+        .map((e) => e.name)
+        .find((n) => n.endsWith("/lib/activity.js"));
+      const { startJob } = await import(url);
+      window.__stopJob = startJob("기억 정리 중…", null, { chat });
+    }, convo.id);
+    await page.locator(".act").getByText("기억 정리 중…").waitFor();
+    await goIn(page, `#/convo/${encodeURIComponent(group.id)}`);
+    await page.getByRole("textbox", { name: "메시지" }).waitFor();
+    if (await page.getByText("기억 정리 중…").count()) throw new Error("room A's job shows in room B");
+    await goIn(page, `#/memory/${encodeURIComponent(convo.id)}`);
+    await page.locator(".jobnote").getByText("기억 정리 중…").waitFor();
+    await page.evaluate(() => window.__stopJob());
+    if (await page.locator(".jobnote").count()) throw new Error("the note stays after the job ended");
+    await api("PATCH", `/mari-kit/memory/${convo.id}/settings`, { chunkMessages: 1 });
+    const { status } = await api("GET", `/mari-kit/memory/${convo.id}`);
+    if (status.chunkMessages !== 1) throw new Error(`묶음 1 not kept: ${status.chunkMessages}`);
+    await page.reload();
+    await page.getByText(/전체 \d+ · 정리됨 \d+/).waitFor();
+    await api("PATCH", `/mari-kit/memory/${convo.id}/settings`, { chunkMessages: 24 });
+  },
   async "call-subtitles"({ page }) {
     const sid = "e2e-call";
     const lines = [
@@ -954,11 +1014,16 @@ async function firstVisit() {
 let failed = 0;
 for (const [name, run] of Object.entries(flows)) {
   if (only && !only.includes(name)) continue;
+  recording = { pages: [], routes: new Set() };
   const s = await phone();
   const t = Date.now();
   try {
     await run(s);
+    await s.page.waitForTimeout(300);
+    const faults = await s.page.evaluate(() => [...(window.__faults || [])]).catch(() => []);
+    if (faults.length) throw new Error(`layout: ${faults.slice(0, 4).join(" | ")}`);
     console.log(`PASS ${name} (${((Date.now() - t) / 1000).toFixed(1)}s)`);
+    if (coverageOut) await keepCoverage(name);
   } catch (error) {
     failed += 1;
     console.log(`FAIL ${name}: ${error.message.split("\n")[0]}`);
@@ -981,6 +1046,7 @@ if (tourMods ? tourMods.length : !only) {
   });
   failed += tour.failed;
 }
+if (coverageOut) await writeFile(coverageOut, JSON.stringify(coverage));
 await browser.close();
 llm.close();
 if (failed) {

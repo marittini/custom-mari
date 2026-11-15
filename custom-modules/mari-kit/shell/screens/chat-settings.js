@@ -1400,6 +1400,10 @@ export function chatSettingsScreen({ mount, args, go, back }) {
       rename(chat);
       return;
     }
+    if (view === "context") {
+      contextLimit(chat);
+      return;
+    }
     const views = {
       all: allView,
       cast: castView,
@@ -1450,6 +1454,61 @@ export function chatSettingsScreen({ mount, args, go, back }) {
     );
     const s = sheet(box, { label: "채팅 이름", onClose: () => back(here()) });
     setTimeout(() => input.focus(), 50);
+  }
+
+  /**
+   * AI가 읽을 최근 메시지 (the Engine's contextMessageLimit): older messages are not sent; memory tells what happened
+   * in them. A sheet over the list, like 채팅 이름.
+   */
+  function contextLimit(chat) {
+    setChildren(body, homeView());
+    const cur = Number(chatMeta(chat).contextMessageLimit) || 0;
+    const set = async (v) => {
+      s.close();
+      await patchMeta({ contextMessageLimit: v > 0 ? Math.min(2000, v) : null });
+    };
+    const input = h("input", {
+      class: "inp",
+      type: "number",
+      inputmode: "numeric",
+      min: 0,
+      max: 2000,
+      value: cur,
+      "aria-label": "AI가 읽을 최근 메시지 수",
+      style: { width: "100%" },
+    });
+    const box = h(
+      "div",
+      { style: { padding: "8px 20px 20px", display: "flex", flexDirection: "column", gap: "12px" } },
+      h("div", { style: { fontSize: "15px", fontWeight: "600" } }, "AI가 읽을 최근 메시지"),
+      h(
+        "p",
+        { class: "hint", style: { margin: "0" } },
+        "이보다 오래된 메시지는 AI에게 보내지 않아요. 0은 전부 보내요.",
+      ),
+      h(
+        "div",
+        { class: "chips" },
+        [0, 40, 80, 150].map((v) =>
+          h(
+            "button",
+            { type: "button", class: cur === v ? "chip on" : "chip", onClick: () => set(v) },
+            v ? String(v) : "전부",
+          ),
+        ),
+      ),
+      input,
+      h(
+        "div",
+        { style: { display: "flex", justifyContent: "flex-end" } },
+        h(
+          "button",
+          { type: "button", class: "pill main", onClick: () => set(Math.round(Number(input.value)) || 0) },
+          "저장",
+        ),
+      ),
+    );
+    const s = sheet(box, { label: "AI가 읽을 최근 메시지", onClose: () => back(here()) });
   }
 
   load();

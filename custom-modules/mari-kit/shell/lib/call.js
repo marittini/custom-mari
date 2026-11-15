@@ -132,7 +132,8 @@ export function callScreen(ctx) {
     }
   }
 
-  async function speakTurns(list, force = false) {
+  // force: even while muted (a tap on 다시 듣기). fresh: make the clip again (다시 만들기) instead of the kept one.
+  async function speakTurns(list, force = false, fresh = false) {
     const items = list
       .filter((m) => m.participantKind === "character" && m.kind === "speech" && m.content)
       .map((m) => {
@@ -149,7 +150,9 @@ export function callScreen(ctx) {
           },
         };
       });
-    if (ctx.ttsConfig && items.length && (!muted || force)) await tts.speakSequence(items);
+    if (!ctx.ttsConfig || !items.length || (muted && !force)) return;
+    if (fresh) await Promise.all(items.map((i) => tts.forget(i.key)));
+    await tts.speakSequence(items);
   }
 
   async function sendText(text, inputMode = "typed") {
@@ -348,9 +351,28 @@ export function callScreen(ctx) {
                 ),
                 m.participantKind === "character" && m.kind === "speech" && ctx.ttsConfig
                   ? h(
-                      "button",
-                      { type: "button", class: "ib", "aria-label": "다시 듣기", onClick: () => speakTurns([m], true) },
-                      icon("M8 5v14l11-7z", 13, 0),
+                      "span",
+                      { style: { display: "flex", flexShrink: "0" } },
+                      h(
+                        "button",
+                        {
+                          type: "button",
+                          class: "ib",
+                          "aria-label": "다시 듣기",
+                          onClick: () => speakTurns([m], true),
+                        },
+                        icon("M8 5v14l11-7z", 13, 0),
+                      ),
+                      h(
+                        "button",
+                        {
+                          type: "button",
+                          class: "ib",
+                          "aria-label": "음성 다시 만들기",
+                          onClick: () => speakTurns([m], true, true),
+                        },
+                        icon(["M20 12a8 8 0 1 1-2.3-5.7", "M20 4v5h-5"], 14, 1.8),
+                      ),
                     )
                   : null,
               ),

@@ -24,6 +24,7 @@ export const ENGINE_SECTIONS = {
     ["작가 노트", ["author-notes"], ["roleplay"], "author"],
     ["채팅 요약", ["chat-summary"], ["roleplay"], null],
     ["활성 컨텍스트", ["active-context"], BOTH, null],
+    ["AI가 읽을 최근 메시지", [], BOTH, "context"],
   ],
   기억: [
     ["기억 회상", ["memory-recall"], BOTH, null],

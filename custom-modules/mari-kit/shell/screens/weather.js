@@ -56,7 +56,7 @@ export function pickPlace(title) {
             ? places.map((p) =>
                 h(
                   "button",
-                  { type: "button", class: "r", onClick: () => finish(p) },
+                  { type: "button", class: "r two", onClick: () => finish(p) },
                   h("span", null, p.label || p.name),
                   h("span", { class: "val" }, "›"),
                 ),
@@ -105,7 +105,7 @@ export function weatherScreen({ mount, args, back }) {
     try {
       const [c, w, settings] = await Promise.all([
         data.chat(chatId),
-        api.get(`/mari-kit/weather/${enc(chatId)}`),
+        api.get(`/mari-kit/weather/${enc(chatId)}?now=0`),
         api.get("/mari-kit/settings").catch(() => null),
       ]);
       if (!alive) return;
@@ -114,8 +114,25 @@ export function weatherScreen({ mount, args, back }) {
       features = settings?.features || {};
       mount.querySelector(".phead .label").textContent = `${chat.name || "이 방"} · Convo`;
       draw();
+      fillNow();
     } catch (error) {
       if (alive) setChildren(body, errorBox(error));
+    }
+  }
+  // The weather itself comes after the screen is drawn (Open-Meteo can take seconds, or not answer on a phone).
+  let nowLoading = false;
+  async function fillNow(fresh = false) {
+    if (!wx || (!wx.userLocation && !wx.room?.characterLocation)) return;
+    nowLoading = true;
+    draw();
+    try {
+      const w = await api.get(`/mari-kit/weather/${enc(chatId)}${fresh ? "?fresh=1" : ""}`);
+      if (alive) wx = { ...wx, summaries: w.summaries };
+    } catch (error) {
+      if (alive) wx = { ...wx, summaries: { failed: { user: true, character: true }, error: error.message } };
+    } finally {
+      nowLoading = false;
+      if (alive) draw();
     }
   }
   async function act(fn, done) {
@@ -124,8 +141,10 @@ export function weatherScreen({ mount, args, back }) {
     draw();
     try {
       const res = await fn();
-      if (res && "room" in res) wx = res;
-      else await load();
+      if (res && "room" in res) {
+        wx = res;
+        fillNow();
+      } else await load();
       if (done) toast(done);
     } catch (error) {
       toast(`바꾸지 못했어요: ${error.message}`);
@@ -138,11 +157,11 @@ export function weatherScreen({ mount, args, back }) {
     act(
       async () => {
         await api.put("/mari-kit/weather/user", { location: place });
-        return api.get(`/mari-kit/weather/${enc(chatId)}`);
+        return api.get(`/mari-kit/weather/${enc(chatId)}?now=0`);
       },
       place ? `내 위치: ${place.label || place.name}` : "내 위치를 지웠어요",
     );
-  const setRoom = (patch, done) => act(() => api.put(`/mari-kit/weather/${enc(chatId)}`, patch), done);
+  const setRoom = (patch, done) => act(() => api.put(`/mari-kit/weather/${enc(chatId)}?now=0`, patch), done);
 
   const row = (label, sub, on, onClick, disabled = false) =>
     h(
@@ -177,11 +196,23 @@ export function weatherScreen({ mount, args, back }) {
         ),
       ),
     );
-  const summary = (text) => (text ? h("p", { class: "wx-sum" }, text) : null);
+  // One place's weather: loading, the line the screen shows, or why it failed with 다시 불러오기.
+  const summary = (who, located) => {
+    if (!located) return null;
+    const text = wx.summaries?.[who] || (wx.summaries?.error ? `날씨를 불러오지 못했어요 · ${wx.summaries.error}` : "");
+    if (nowLoading || !wx.summaries) return h("p", { class: "wx-sum hint" }, "날씨 불러오는 중…");
+    if (!wx.summaries.failed?.[who]) return text ? h("p", { class: "wx-sum" }, text) : null;
+    return h(
+      "div",
+      { class: "wx-sum", style: { display: "flex", alignItems: "center", gap: "10px", flexWrap: "wrap" } },
+      h("span", { style: { flex: "1 1 180px", minWidth: "0" } }, text),
+      h("button", { type: "button", class: "chip", onClick: () => fillNow(true) }, "다시 불러오기"),
+    );
+  };
 
   function draw() {
     if (!wx) return;
-    const { userLocation, room, summaries } = wx;
+    const { userLocation, room } = wx;
     const on = features.weather === true;
     const convo = chat?.mode === "conversation";
     setChildren(
@@ -200,7 +231,7 @@ export function weatherScreen({ mount, args, back }) {
         "div",
         { class: "gcard" },
         place("내가 있는 곳", "정하지 않음", userLocation, setMine, "내 위치 고르기"),
-        summary(summaries?.user),
+        summary("user", userLocation),
       ),
       h("div", { class: "gsec" }, h("span", null, "이 방")),
       h(
@@ -225,7 +256,7 @@ export function weatherScreen({ mount, args, back }) {
           (p) => setRoom({ characterLocation: p }, p ? `캐릭터 위치: ${p.label || p.name}` : "캐릭터 위치를 지웠어요"),
           "캐릭터 위치 고르기",
         ),
-        summary(summaries?.character),
+        summary("character", room?.characterLocation),
       ),
       h(
         "p",
