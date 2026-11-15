@@ -2905,6 +2905,13 @@ button.toast {
   justify-content: space-between;
   gap: 8px;
 }
+.sticker-toolbar {
+  flex-wrap: wrap;
+  justify-content: flex-start;
+}
+.sticker-import {
+  cursor: pointer;
+}
 .sticker-head b {
   font-size: 17px;
 }
@@ -3800,4 +3807,179 @@ button.toast {
 .scn-acts .pill {
   flex: 1;
   min-height: 48px;
+}
+
+/* The Convo media panel (☺): where the keyboard was, tabs on top, a scrolling grid below */
+.mpanel {
+  display: flex;
+  flex-direction: column;
+  height: min(300px, 42vh);
+  border-top: 1px solid var(--line);
+  background: var(--surface);
+  padding-bottom: env(safe-area-inset-bottom);
+}
+.mpanel[hidden] {
+  display: none;
+}
+.mp-tabs {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 6px;
+  padding: 8px 12px 6px;
+}
+.mp-tabs button {
+  min-height: 36px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: transparent;
+  color: var(--ink-2);
+  font: inherit;
+  font-size: 13px;
+  cursor: pointer;
+}
+.mp-tabs button.on {
+  background: var(--ink);
+  border-color: var(--ink);
+  color: var(--surface);
+}
+.mp-body {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 2px 12px 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.mp-search {
+  min-height: 36px;
+  font-size: 14px;
+}
+.mp-cap {
+  font-size: 12px;
+  color: var(--ink-3);
+}
+.mp-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(42px, 1fr));
+}
+.mp-e {
+  height: 44px;
+  border: 0;
+  border-radius: 10px;
+  background: transparent;
+  font-size: 24px;
+  line-height: 1;
+  cursor: pointer;
+}
+.mp-e:active {
+  background: var(--fill);
+}
+.mp-e img {
+  width: 28px;
+  height: 28px;
+  object-fit: contain;
+}
+.mp-cats {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(34px, 1fr));
+  gap: 2px;
+  border-bottom: 1px solid var(--line);
+  padding-bottom: 4px;
+}
+.mp-cats button {
+  height: 40px;
+  border: 0;
+  border-radius: 10px;
+  background: transparent;
+  color: var(--ink-2);
+  font-size: 18px;
+  cursor: pointer;
+  filter: grayscale(1);
+  opacity: 0.55;
+}
+.mp-cats button.on {
+  background: var(--fill);
+  filter: none;
+  opacity: 1;
+}
+.mp-kcats {
+  flex-wrap: wrap;
+}
+.mp-kgrid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(120px, 1fr));
+  gap: 6px;
+}
+.mp-k {
+  min-height: 44px;
+  padding: 4px 6px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: transparent;
+  color: var(--ink);
+  font: inherit;
+  font-size: 14px;
+  overflow-wrap: anywhere;
+  cursor: pointer;
+}
+.mp-sgrid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(72px, 1fr));
+  gap: 6px;
+}
+.mp-s {
+  aspect-ratio: 1;
+  max-width: 100%;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: transparent;
+  padding: 6px;
+  cursor: pointer;
+}
+.mp-s img {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+}
+.mp-foot {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 8px;
+}
+.mp-manage {
+  min-height: 40px;
+}
+.mp-stk-pre {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+}
+.mp-stk-pre img {
+  width: 140px;
+  height: 140px;
+  object-fit: contain;
+}
+/* A custom emoji in a message (the Engine's 1.4em, 2.5em when the text is only emojis) and in the completion list */
+.cemoji {
+  display: inline-block;
+  height: 1.4em;
+  width: auto;
+  vertical-align: -0.3em;
+  margin: 0 0.05em;
+  object-fit: contain;
+}
+.cemoji.big {
+  height: 2.5em;
+  vertical-align: -0.45em;
+}
+.mbox .cemoji,
+.mbox .mb-emoji {
+  width: 28px;
+  height: 28px;
+  font-size: 22px;
+  text-align: center;
+  vertical-align: middle;
 }

@@ -151,7 +151,11 @@ export async function upload(path, form) {
 export async function download(path, filename) {
   const res = await fetch(`/api${path}`, { headers: { ...CSRF }, credentials: "same-origin" });
   if (!res.ok) throw new ApiError(res.status, `${res.status}`);
-  const blob = await res.blob();
+  saveBlob(await res.blob(), filename);
+}
+
+/** Hands a file the shell made (an export) to the phone's downloads. */
+export function saveBlob(blob, filename) {
   const url = URL.createObjectURL(blob);
   const a = Object.assign(document.createElement("a"), { href: url, download: filename });
   document.body.append(a);

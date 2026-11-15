@@ -84,7 +84,7 @@ export async function runSlash(text, ctx) {
       return "";
     }
     case "help":
-      return "쓸 수 있는 명령: /guided /continue /impersonate /send /sys /as /roll · Convo에서 /scene";
+      return "쓸 수 있는 명령: /guided /continue /impersonate /send /sys /as /roll · Convo에서 /scene /games";
     default:
       return { engine: true, text: `/${name}은 엔진에서 쓸 수 있어요 · 열기 ›` };
   }

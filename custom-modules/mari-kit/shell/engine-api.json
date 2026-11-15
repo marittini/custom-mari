@@ -143,6 +143,14 @@
     "POST /scene/create",
     "POST /scene/conclude",
     "POST /scene/abandon",
-    "POST /scene/fork"
+    "POST /scene/fork",
+    "GET /turn-games/:id/state",
+    "POST /custom-stickers/export",
+    "POST /custom-stickers/import",
+    "POST /custom-emojis/export",
+    "POST /custom-emojis/import",
+    "POST /custom-emojis/upload",
+    "PATCH /custom-emojis/:id",
+    "DELETE /custom-emojis/:id"
   ]
 }

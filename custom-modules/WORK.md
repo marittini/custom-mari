@@ -9,26 +9,19 @@ needs the owner, a real account or a phone.
 
 ## Doing
 
-### M-6 Convo 2단계 — claude ccr-b4485093-p6ybfu
+### M-11 Convo 3단계 — claude ccr-b4485093-p6ybfu
 
-Agreed with mockups: https://claude.ai/artifact/NxUBMQxF6BBgG8xbpByJXh.
-
-- 0.20.0 (PR #51, merged): send pictures (WebP made in the browser), @mentions (`mentionedCharacterNames`), my own
-  status and activity (synced to the Engine's `userStatusManual` / `userActivity`), status dots in colour (the owner
-  asked; the one exception to monotone).
-- 0.22.0 (one PR with what was planned as 0.21): edit schedule blocks in Mari (add, delete, copy a day), remove a
-  character's reaction (long-press), weather (Mari Kit's weather routes, never shown in the shell before), scene
-  invitations (`extra.sceneRequest`, the Engine's scene plan/create flow, banner, replies-here switch, end / discard /
-  convert, clone from a message). Also: `verify.mjs` now catches undefined names (a missing import), which found a
-  broken error path in memory.
+Agreed with the mockup https://claude.ai/artifact/DEEdRVmDH7LouB2nSGGj7r and the owner's answers (panel kept, voice
+input and GIF left out, games built for when one is installed). Mari Kit 0.23.0: the ☺ media panel (the Engine's
+emoji lists bundled at build, kaomoji, stickers with send-now, ★ custom emojis with manage / export / import, recents
+shared with the Engine), ":name" completion and ":name:" shown in messages, the chat's emoji selection setting, games
+(/games, the panel's 게임 tab when installed, the Engine opened with the command typed, a board strip).
 
 ## Ready
 
 ## Plan (waiting for the owner)
 
-### M-11 Convo 3단계 — plan §4, stage 3
-
-Emoji/kaomoji tab and GIFs, mini-games when their packages are installed (link to the Engine first), voice input.
+_(none)_
 
 ## Blocked
 
@@ -36,6 +29,8 @@ _(none)_
 
 ## Done
 
+- M-6 Convo 2단계 — Mari Kit 0.20.0 (PR #51) and 0.22.0 (PR #52): pictures, @mentions, my status, coloured
+  dots, schedule block editing, reaction removal, weather, scene invitations.
 - M-4 Convo 이모지 반응·답장, M-8 화면 못 불러올 때 다시 시도, M-9 내 일정 페르소나 고르기, M-10 생성 중인 요청 화면
   — Mari Kit 0.19.0 (PR #49).
 - M-3 Convo 캐릭터 일정 보기 (머리줄 상태, 상태 시트, 주간 일정, 목록 상태 점) — Mari Kit 0.18.0 (PR #48).
