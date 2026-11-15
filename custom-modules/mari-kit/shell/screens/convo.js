@@ -771,22 +771,21 @@ export function convoScreen({ mount, args, go, back }) {
       if (typeof extra === "string") extra = JSON.parse(extra);
     } catch {}
     const ev = extra?.conversationCallEvent;
-    return ev?.callId ? { ...ev, endedBy: extra.mariEndedBy || null } : null;
+    return ev?.callId ? { ...ev, endedBy: extra.mariEndedBy || null, missed: extra.mariMissed === true } : null;
   }
-  // Who hung up, learnt when the call screen closes; written onto the ended note so it survives a reload.
-  const endedBy = new Map(); // callId → "user" | character id
-  async function markEndedBy() {
+  // What the package's note does not say, learnt when the call screen closes and written onto the note so it
+  // survives a reload: who hung up (on the ended note) and that nobody answered (on the declined note).
+  const callNotes = new Map(); // callId → { status, patch }
+  async function markCallNotes() {
     for (const m of win.list) {
       const ev = callEvent(m);
-      const by = ev && ev.status === "ended" && !ev.endedBy ? endedBy.get(ev.callId) : null;
-      if (!by) continue;
-      endedBy.delete(ev.callId);
+      const note = ev && callNotes.get(ev.callId);
+      if (!note || note.status !== ev.status) continue;
+      callNotes.delete(ev.callId);
       try {
-        await api.patch(`/chats/${encodeURIComponent(chatId)}/messages/${encodeURIComponent(m.id)}/extra`, {
-          mariEndedBy: by,
-        });
+        await api.patch(`/chats/${encodeURIComponent(chatId)}/messages/${encodeURIComponent(m.id)}/extra`, note.patch);
         const extra = typeof m.extra === "string" ? JSON.parse(m.extra || "{}") : m.extra || {};
-        m.extra = { ...extra, mariEndedBy: by };
+        m.extra = { ...extra, ...note.patch };
       } catch {}
     }
   }
@@ -810,12 +809,17 @@ export function convoScreen({ mount, args, go, back }) {
         : ev.status === "ringing"
           ? `${cast.length === 1 ? `${cast[0].name}에게서 ` : ""}전화가 왔어요 · ${at}`
           : ev.status === "declined"
-            ? `받지 않은 전화 · ${at}`
+            ? ev.missed
+              ? `부재중 전화${cast.length > 1 && index.get(m.characterId) ? ` · ${index.get(m.characterId).name}` : ""} · ${at}`
+              : `거절한 전화 · ${at}`
             : `통화 시작 · ${at}`;
     return h(
       "div",
       { class: "daysep callsep", role: "note", title: messageText(m) },
       h("span", null, icon(I.phone, 12, 1.8), text),
+      ev.missed && call && chatMeta(chat).conversationCallsEnabled === true && callAudio
+        ? h("button", { type: "button", class: "chip", onClick: () => dial(false) }, "다시 걸기")
+        : null,
     );
   }
   // An ended call as a card: how long, the Engine's call summary when it has made one, the first two lines (read
@@ -826,13 +830,16 @@ export function convoScreen({ mount, args, go, back }) {
     const lines = callLines.get(ev.callId);
     if (!lines) {
       callLines.set(ev.callId, "loading");
-      api
-        .get(`/conversation-calls/${encodeURIComponent(ev.callId)}/messages`)
-        .then((rows) => {
+      Promise.all([
+        api.get(`/conversation-calls/${encodeURIComponent(ev.callId)}/messages`),
+        data.personaName(chat?.personaId),
+      ])
+        .then(([rows, personaName]) => {
+          const myName = personaName || "나";
           const said = (Array.isArray(rows) ? rows : []).filter(
             (r) => r.extra?.hiddenFromUser !== true && !["command", "system"].includes(r.kind) && r.content,
           );
-          const who = (r) => (r.participantKind === "user" ? "나" : index.get(r.characterId)?.name || "상대");
+          const who = (r) => (r.participantKind === "user" ? myName : index.get(r.characterId)?.name || "상대");
           callLines.set(ev.callId, {
             count: said.length,
             first: said.slice(0, 2).map((r) => `${who(r)}: ${r.content}`),
@@ -878,20 +885,26 @@ export function convoScreen({ mount, args, go, back }) {
     if (!alive) return;
     call = callScreen({
       chatId,
-      chat,
+      // (read each time: the Convo reloads the chat after each reply)
+      get chat() {
+        return chat;
+      },
       index,
       ttsConfig,
       mount,
       go,
       onEnded: async (info) => {
-        if (info?.by) endedBy.set(info.callId, info.by);
+        if (info?.by) callNotes.set(info.callId, { status: "ended", patch: { mariEndedBy: info.by } });
+        if (info?.missed) callNotes.set(info.callId, { status: "declined", patch: { mariMissed: true } });
         await load();
-        await markEndedBy();
+        await markCallNotes();
         draw();
         scroller.scrollTop = scroller.scrollHeight;
       },
     });
     phoneBtn.hidden = false;
+    // Someone set offline for a call that ended while the app was closed gets their status back.
+    if (!first.activeCall) call.restoreLeft();
     const ring = (st) => {
       const s = st?.activeCall || st?.ringingCall;
       if (s && alive && !call.session) call.open(s);
@@ -916,7 +929,7 @@ export function convoScreen({ mount, args, go, back }) {
     document.addEventListener("visibilitychange", check);
     offVisible = () => document.removeEventListener("visibilitychange", check);
   }
-  async function dial() {
+  async function dial(confirm = true) {
     if (!call) return;
     if (chatMeta(chat).conversationCallsEnabled !== true || !callAudio) {
       toast(
@@ -928,7 +941,7 @@ export function convoScreen({ mount, args, go, back }) {
     }
     // A call starts the character talking (AI and voice), so a stray tap on the phone icon asks first.
     const names = (chat.characterIds || []).map((id) => index.get(id)?.name).filter(Boolean);
-    if (!(await ask(`${names.join(", ") || "캐릭터"}에게 전화를 걸까요?`, { ok: "전화 걸기" }))) return;
+    if (confirm && !(await ask(`${names.join(", ") || "캐릭터"}에게 전화를 걸까요?`, { ok: "전화 걸기" }))) return;
     try {
       call.open(await api.post("/conversation-calls/start", { chatId, mode: "audio", initiator: "user" }));
     } catch (error) {
@@ -958,9 +971,17 @@ export function convoScreen({ mount, args, go, back }) {
     // Like the Engine's Convo, a blank line starts a new bubble.
     const meta = chatMeta(chat);
     const bubbles = [];
+    const later = new Set(
+      messages
+        .map((m) => callEvent(m))
+        .filter((ev) => ev && ev.status !== "ringing")
+        .map((ev) => ev.callId),
+    );
     for (const m of messages) {
       const ev = callEvent(m);
       if (ev) {
+        // 전화가 왔어요 stays only while that call has no later note (started, declined, missed).
+        if (ev.status === "ringing" && later.has(ev.callId)) continue;
         bubbles.push({ m, ev, me: null, first: true, last: true });
         continue;
       }

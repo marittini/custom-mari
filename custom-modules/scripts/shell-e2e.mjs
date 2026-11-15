@@ -980,6 +980,234 @@ const flows = {
     await page.unroute("**/api/tts/config");
   },
 
+  // A character's call nobody answered: a ring older than 통화 설정 › 전화 울리는 시간 (the app was closed) is not rung
+  // again but declined at once and kept as 부재중 전화 with 다시 걸기; its 전화가 왔어요 line goes.
+  async "call-missed"({ page }) {
+    const sid = "e2e-missed";
+    const ringing = {
+      id: sid,
+      chatId: convo.id,
+      status: "ringing",
+      initiator: "character",
+      initiatorCharacterId: a.id,
+      createdAt: new Date(Date.now() - 45000).toISOString(),
+    };
+    const ring = await api("POST", `/chats/${convo.id}/messages`, { role: "system", content: "Incoming call" });
+    await api("PATCH", `/chats/${convo.id}/messages/${ring.id}/extra`, {
+      conversationCallEvent: { callId: sid, status: "ringing", mode: "audio", initiator: "character" },
+    });
+    let declined = 0;
+    await page.route("**/api/conversation-calls/**", async (route) => {
+      const url = route.request().url();
+      const json = (body) =>
+        route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify(body) });
+      if (url.includes("/status")) return json({ activeCall: null, ringingCall: declined ? null : ringing });
+      if (url.endsWith(`/${sid}/decline`)) {
+        declined += 1;
+        // The package's own note, as the real /decline writes it.
+        const ev = await api("POST", `/chats/${convo.id}/messages`, {
+          role: "system",
+          content: "Call declined",
+          characterId: a.id,
+        });
+        await api("PATCH", `/chats/${convo.id}/messages/${ev.id}/extra`, {
+          conversationCallEvent: { callId: sid, status: "declined", mode: "audio", initiator: "character" },
+        });
+        return json({ ...ringing, status: "declined" });
+      }
+      return json({});
+    });
+    await page.route("**/api/tts/config", (route) =>
+      route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({ enabled: false, callAudioEnabled: true }),
+      }),
+    );
+    await api("PATCH", `/chats/${convo.id}/metadata`, { conversationCallsEnabled: true });
+    await open(page);
+    await goIn(page, `#/convo/${encodeURIComponent(convo.id)}`);
+    const line = page.locator(".callsep").filter({ hasText: "부재중 전화" });
+    await line.last().waitFor({ timeout: 10000 });
+    if (await page.locator(".callx:not([hidden]).ringing").count()) throw new Error("a stale ring should not ring");
+    if (declined !== 1) throw new Error(`a missed call is declined once, got ${declined}`);
+    await line.last().getByRole("button", { name: "다시 걸기" }).waitFor();
+    if (await page.locator(".callsep").filter({ hasText: "전화가 왔어요" }).count())
+      throw new Error("전화가 왔어요 should go once the call has a later note");
+    await until(
+      async () =>
+        (await api("GET", `/chats/${convo.id}/messages`)).some(
+          (m) => m.content === "Call declined" && JSON.stringify(m.extra || "").includes("mariMissed"),
+        ),
+      8000,
+      "the declined note is marked missed (kept after a reload)",
+    );
+    await snap(page, "call-missed");
+    await api("PATCH", `/chats/${convo.id}/metadata`, { conversationCallsEnabled: false });
+    await page.unroute("**/api/conversation-calls/**");
+    await page.unroute("**/api/tts/config");
+  },
+
+  // A group call: a character who leaves ([leave_call]) is dimmed in the people row and set offline for this call
+  // only (the Engine's status, which the package reads to pick who speaks); 다시 부르기 sets them back, and so does
+  // the end of the call.
+  async "call-group"({ page }) {
+    const sid = "e2e-group-call";
+    const session = { id: sid, chatId: group.id, status: "active", startedAt: new Date().toISOString() };
+    const lines = [
+      { id: "g1", participantKind: "character", characterId: a.id, kind: "speech", content: "다 모였네", extra: {} },
+    ];
+    await page.route("**/api/conversation-calls/**", async (route) => {
+      const url = route.request().url();
+      const method = route.request().method();
+      const json = (body) =>
+        route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify(body) });
+      if (url.includes("/status")) return json({ activeCall: null, ringingCall: null });
+      if (url.endsWith("/start")) return json(session);
+      if (url.endsWith(`/${sid}/messages`) && method === "GET") return json(lines);
+      if (url.endsWith(`/${sid}/messages`) && method === "POST") {
+        lines.push({ id: `g${lines.length + 1}`, participantKind: "user", kind: "speech", content: "응", extra: {} });
+        return json({
+          userMessage: { id: `g${lines.length}` },
+          assistantMessages: [],
+          turns: [
+            { speakerName: "Bea", mode: "voice", content: "난 먼저 갈게", characterId: b.id },
+            { speakerName: "Bea", mode: "command", content: "[leave_call]", characterId: b.id },
+          ],
+          session,
+        });
+      }
+      if (url.endsWith(`/${sid}/end`)) return json({ ...session, status: "ended" });
+      return json({});
+    });
+    await page.route("**/api/tts/config", (route) =>
+      route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({ enabled: false, callAudioEnabled: true }),
+      }),
+    );
+    await api("PATCH", `/chats/${group.id}/metadata`, { conversationCallsEnabled: true });
+    // The status is the Engine's own, on the character card (it reaches every room until the call ends).
+    const leftMark = async () => {
+      const row = await api("GET", `/characters/${b.id}`);
+      const card = typeof row.data === "string" ? JSON.parse(row.data) : row.data;
+      const o = card?.extensions?.conversationStatusOverride;
+      return o?.status === "offline" ? o : null;
+    };
+    await open(page);
+    await goIn(page, `#/convo/${encodeURIComponent(group.id)}`);
+    await page.getByRole("button", { name: "전화 걸기" }).first().click();
+    await page.locator(".sheet").getByRole("button", { name: "전화 걸기" }).click();
+    await page.locator(".cx-ppl .cx-p").nth(1).waitFor({ timeout: 10000 });
+    const send = async () => {
+      await page.locator(".cx-in").fill("응");
+      await page.locator(".cx-send").click();
+      await page.locator(".cx-p.off").filter({ hasText: "나감" }).waitFor({ timeout: 10000 });
+      await page.locator(".cx-in").blur();
+    };
+    await send();
+    await until(async () => !!(await leftMark()), 8000, "the one who left is offline for this call");
+    const cached = (await meta(group.id)).conversationStatusOverrides?.[b.id];
+    if (cached?.status !== "offline") throw new Error("the chat's copy (which the package reads) is not refreshed");
+    if ((await page.locator(".cx-name").innerText()).includes(b.name)) throw new Error("the name line keeps who left");
+    await snap(page, "call-group-left");
+    await page.locator(".cx-p.off").filter({ hasText: "나감" }).click();
+    await page
+      .locator(".sheet")
+      .getByRole("button", { name: /다시 부르기/ })
+      .click();
+    await until(async () => !(await leftMark()), 8000, "다시 부르기 sets the status back");
+    await until(async () => !(await page.locator(".cx-p.off").count()), 5000, "the one called back is not dimmed");
+    await send();
+    await until(async () => !!(await leftMark()), 8000, "left again");
+    await page.locator(".cx-endrow").getByRole("button").click();
+    await until(async () => !(await leftMark()), 8000, "the end of the call sets the status back");
+    await api("PATCH", `/chats/${group.id}/metadata`, { conversationCallsEnabled: false });
+    await page.unroute("**/api/conversation-calls/**");
+    await page.unroute("**/api/tts/config");
+  },
+
+  // Call translations are kept with Mari Kit: the call log opened again (even after a reload) asks for none.
+  async "call-translation-kept"({ page }) {
+    const sid = "e2e-call-tr";
+    const lines = [
+      { id: "t0", callId: sid, participantKind: "user", kind: "text", content: "Hi", extra: {} },
+      {
+        id: "t1",
+        callId: sid,
+        participantKind: "character",
+        characterId: a.id,
+        kind: "speech",
+        content: "Hello there",
+        extra: {},
+      },
+      {
+        id: "t2",
+        callId: sid,
+        participantKind: "character",
+        characterId: a.id,
+        kind: "speech",
+        content: "See you",
+        extra: {},
+      },
+    ];
+    let translated = 0;
+    await page.route("**/api/conversation-calls/**", async (route) => {
+      const url = route.request().url();
+      const json = (body) =>
+        route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify(body) });
+      if (url.includes("/status")) return json({ activeCall: null, ringingCall: null });
+      if (url.endsWith(`/${sid}/messages`)) return json(lines);
+      return json({});
+    });
+    await page.route("**/api/translate", async (route) => {
+      translated += 1;
+      const body = JSON.parse(route.request().postData() || "{}");
+      await route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({ translatedText: `번역: ${body.text || ""}` }),
+      });
+    });
+    const ev = await api("POST", `/chats/${convo.id}/messages`, { role: "system", content: "Call ended after 1m" });
+    await api("PATCH", `/chats/${convo.id}/messages/${ev.id}/extra`, {
+      conversationCallEvent: { callId: sid, status: "ended", durationMs: 60000, summary: null },
+    });
+    await api("PATCH", `/chats/${convo.id}/metadata`, { autoTranslate: true });
+    // My lines carry the persona's name and can be voiced too.
+    await api("PATCH", `/chats/${convo.id}`, { personaId: persona.id });
+    await page.route("**/api/tts/config", (route) =>
+      route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({ enabled: true, callAudioEnabled: true, voice: "e2e" }),
+      }),
+    );
+    const openLog = async () => {
+      await goIn(page, `#/convo/${encodeURIComponent(convo.id)}`);
+      await page.locator(".callcard").last().click();
+      await page.locator(".tlog .tline2").nth(1).waitFor({ timeout: 10000 });
+      await page.locator(".tlog").getByText("번역: ").first().waitFor({ timeout: 10000 });
+    };
+    await open(page);
+    await openLog();
+    const first = translated;
+    if (first < 2) throw new Error(`the first open translates each line, got ${first}`);
+    const mine = page.locator(".tlog .tline2").first();
+    if (!(await mine.innerText()).includes("Mari")) throw new Error("my call lines should carry the persona name");
+    await mine.getByRole("button", { name: "다시 듣기" }).waitFor({ timeout: 3000 });
+    await page.waitForTimeout(1200); // (saved after a short pause)
+    await page.reload();
+    await openLog();
+    if (translated !== first) throw new Error(`reopened call log asked for ${translated - first} translations`);
+    await api("PATCH", `/chats/${convo.id}/metadata`, { autoTranslate: false });
+    await api("PATCH", `/chats/${convo.id}`, { personaId: null });
+    await page.unroute("**/api/conversation-calls/**");
+    await page.unroute("**/api/translate");
+    await page.unroute("**/api/tts/config");
+  },
+
   // Reactions and replies (the Engine's data): react from the quick row and take it back, see a character's
   // reaction, reply to a message (sent as replyTo) and see its quote.
   async "convo-react"({ page }) {

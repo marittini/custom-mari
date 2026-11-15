@@ -10,13 +10,14 @@
 
 import { h, icon, I, setChildren, dots } from "./h.js";
 import { api } from "./api.js";
-import { chatMeta } from "./data.js";
+import { chatMeta, data } from "./data.js";
 import { translate } from "./translate.js";
 import { pickVoice } from "./render.js";
 import { prefs, setPrefs } from "./prefs.js";
 import { toast, sheet, popMenu, avatar, thumb } from "./ui.js";
 import * as tts from "./tts.js";
 import { subject } from "./convo-bits.js";
+import { presenceOf } from "./presence.js";
 
 const BASE = "/conversation-calls";
 
@@ -50,10 +51,125 @@ export function callScreen(ctx) {
   const callName = () =>
     session?.status === "ringing"
       ? ctx.index.get(session.initiatorCharacterId)?.name || cast()[0]?.name || "통화"
-      : cast()
+      : inCall()
           .map((c) => c.name)
-          .join(", ") || "통화";
-  const speakerName = (m) => (m.participantKind === "user" ? "나" : ctx.index.get(m.characterId)?.name || "상대");
+          .join(", ") ||
+        cast()
+          .map((c) => c.name)
+          .join(", ") ||
+        "통화";
+
+  // A group call: who is on it. The package does not remember who left ([leave_call] is only a note), so a
+  // character who leaves is set "offline" for the rest of the call — the Engine's own status, which the package
+  // reads on every turn to choose who may speak. The status lives on the character card, so they show offline in
+  // every room until the call ends; then their earlier status is put back (on the next open, if the app closed
+  // first; it also expires by itself after 3 hours). This device remembers what it changed (prefs().callLeft).
+  const leftList = () => ({ ...(prefs().callLeft || {}) }); // character id → { callId, chatId, prev }
+  const leftHere = (id) => !!session && leftList()[id]?.callId === session.id;
+  let statuses = null; // the Engine's fresh reading, once this screen has asked (after a leave or a call back)
+  const away = (c) =>
+    !leftHere(c.id) && presenceOf(chatMeta(ctx.chat), c.id, new Date(), statuses?.[c.id])?.status === "offline";
+  const inCall = () => cast().filter((c) => !leftHere(c.id) && !away(c));
+  const saveOverride = (characterId, override) =>
+    api.patch(`/characters/${encodeURIComponent(characterId)}`, {
+      data: { extensions: { conversationStatusOverride: override } },
+      skipVersionSnapshot: true,
+    });
+  // The package reads the chat's copy of the statuses, which the Engine refreshes from the cards here.
+  const syncStatuses = () =>
+    api
+      .get(`/conversation/status/${encodeURIComponent(ctx.chatId)}`)
+      .then((st) => ((statuses = st?.statuses || statuses), st))
+      .catch(() => null);
+  async function leave(characterId) {
+    if (leftHere(characterId)) return;
+    try {
+      const st = await syncStatuses();
+      const prev = st?.statuses?.[characterId]?.override || null;
+      setPrefs({ callLeft: { ...leftList(), [characterId]: { callId: session.id, chatId: ctx.chatId, prev } } });
+      await saveOverride(characterId, {
+        status: "offline",
+        activity: "left the call",
+        createdAt: new Date().toISOString(),
+        expiresAt: new Date(Date.now() + 3 * 3600_000).toISOString(),
+      });
+      await syncStatuses();
+    } catch {}
+  }
+  async function putBack(characterId) {
+    const mark = leftList()[characterId];
+    if (!mark) return;
+    await saveOverride(characterId, mark.prev || null);
+    const rest = leftList();
+    delete rest[characterId];
+    setPrefs({ callLeft: rest });
+  }
+  async function rejoin(characterId) {
+    try {
+      await putBack(characterId);
+      await syncStatuses();
+      notice = `${subject(ctx.index.get(characterId)?.name || "상대")} 다시 들어왔어요`;
+      const shownNotice = notice;
+      setTimeout(() => notice === shownNotice && ((notice = ""), draw()), 4000);
+    } catch (error) {
+      toast(error.message);
+    }
+    draw(true);
+  }
+  /** Puts back everyone this device set offline for a call (all calls but `keep`). */
+  async function restoreLeft(keep = null) {
+    const ids = Object.entries(leftList())
+      .filter(([, m]) => m.callId !== keep)
+      .map(([id]) => id);
+    if (!ids.length) return;
+    for (const id of ids) await putBack(id).catch(() => {});
+    await syncStatuses();
+  }
+  function peopleRow() {
+    const list = cast();
+    if (list.length < 2 || session?.status !== "active") return null;
+    return list.map((c) => {
+      const left = leftHere(c.id);
+      const off = !left && away(c);
+      return h(
+        "button",
+        {
+          type: "button",
+          class: left || off ? "cx-p off" : "cx-p",
+          "aria-label": left ? `${c.name} · 나감` : off ? `${c.name} · 자리 없음` : c.name,
+          onClick: () => personMenu(c, left),
+        },
+        avatar(c.avatar, c.name?.[0] || "·", 36),
+        h("span", { class: "cx-pn" }, c.name),
+        left || off ? h("small", null, left ? "나감" : "자리 없음") : null,
+      );
+    });
+  }
+  function personMenu(c, left) {
+    const box = h("div", { class: "psheet" });
+    const s = sheet(box, { label: c.name });
+    setChildren(
+      box,
+      left
+        ? h(
+            "button",
+            { type: "button", class: "grow", onClick: () => (s.close(), rejoin(c.id)) },
+            h("span", null, `${c.name} 다시 부르기`, h("small", null, "다음 차례부터 다시 말해요")),
+          )
+        : null,
+      h(
+        "button",
+        { type: "button", class: "grow", onClick: () => (s.close(), ctx.go(`character/${encodeURIComponent(c.id)}`)) },
+        h("span", null, "프로필 보기"),
+      ),
+    );
+  }
+  // My lines carry the chat's persona name (and voice), read once when a call or its record opens.
+  let persona = null; // { id, name }
+  const loadPersona = async () =>
+    persona || (persona = { id: ctx.chat.personaId || null, name: await data.personaName(ctx.chat.personaId) });
+  const speakerName = (m) =>
+    m.participantKind === "user" ? persona?.name || "나" : ctx.index.get(m.characterId)?.name || "상대";
   const layer = h("div", { class: "callx", hidden: true });
   const pill = h("button", {
     type: "button",
@@ -93,8 +209,19 @@ export function callScreen(ctx) {
     }
   }
 
+  // A character's call rings for 통화 설정 › 전화 울리는 시간, then becomes a missed call (the package itself never
+  // stops ringing). A ring found later than that (the app was closed) is missed at once, without ringing.
+  let ringTimer = null;
   function open(s) {
+    clearTimeout(ringTimer);
+    if (s?.status === "ringing") {
+      const left = callPrefs().ringSec * 1000 - (Date.now() - (Date.parse(s.createdAt || "") || Date.now()));
+      if (left <= 0) return miss(s);
+      ringTimer = setTimeout(() => session?.id === s.id && session.status === "ringing" && miss(s), left);
+    }
     session = s;
+    restoreLeft(s.id);
+    loadPersona();
     // 캐릭터가 알아서 전화 끊기 (on unless turned off in 설정): made once, at the first call.
     if (!guideChecked) {
       guideChecked = true;
@@ -111,10 +238,42 @@ export function callScreen(ctx) {
     return refresh();
   }
 
+  // Translations made in a call are kept with Mari Kit (one record per call): the call log and a reopened call show
+  // them without asking the model again. Read once per call, only in rooms that translate.
+  const kept = new Map(); // call id → Promise<{ lines: { id: { source, text } }, mine: { id: typed } }>
+  const translates = () => meta().autoTranslate === true || meta().translateInput === true;
+  function keptFor(callId) {
+    if (!callId || !translates()) return Promise.resolve({ lines: {}, mine: {} });
+    if (!kept.has(callId))
+      kept.set(
+        callId,
+        api.get(`/mari-kit/translation/call/${encodeURIComponent(callId)}`).catch(() => ({ lines: {}, mine: {} })),
+      );
+    return kept.get(callId);
+  }
+  const unsaved = new Map(); // call id → { lines, mine } waiting to be saved
+  let saveTimer = null;
+  function keep(callId, part) {
+    if (!callId) return;
+    const add = unsaved.get(callId) || { lines: {}, mine: {} };
+    Object.assign(add.lines, part.lines);
+    Object.assign(add.mine, part.mine);
+    unsaved.set(callId, add);
+    keptFor(callId).then((k) => (Object.assign(k.lines, part.lines || {}), Object.assign(k.mine, part.mine || {})));
+    clearTimeout(saveTimer);
+    saveTimer = setTimeout(() => {
+      for (const [id, body] of unsaved) {
+        unsaved.delete(id);
+        api.put(`/mari-kit/translation/call/${encodeURIComponent(id)}`, body).catch(() => {});
+      }
+    }, 800);
+  }
+
   async function shown(m) {
     // My lines: what I typed; theirs: the translation when 받은 말 자동 번역 is on (translated once, kept).
+    const callId = m.callId || session?.id;
     if (m.participantKind === "user") {
-      const orig = originals.get(m.id);
+      const orig = originals.get(m.id) ?? (await keptFor(callId)).mine[m.id];
       return orig && orig !== m.content
         ? { top: showOriginal ? m.content : orig, bottom: showOriginal ? orig : m.content }
         : { top: m.content, bottom: "" };
@@ -122,7 +281,14 @@ export function callScreen(ctx) {
     if (meta().autoTranslate !== true) return { top: m.content, bottom: "" };
     try {
       const key = `${m.id}|${m.content}`;
-      if (!trCache.has(key)) trCache.set(key, await translate(m.content, "output", meta(), ctx.chatId));
+      if (!trCache.has(key)) {
+        const saved = (await keptFor(callId)).lines[m.id];
+        if (saved?.source === m.content) trCache.set(key, saved.text);
+        else {
+          trCache.set(key, await translate(m.content, "output", meta(), ctx.chatId));
+          keep(callId, { lines: { [m.id]: { source: m.content, text: trCache.get(key) } } });
+        }
+      }
       const tr = trCache.get(key);
       return showOriginal ? { top: m.content, bottom: tr } : { top: tr, bottom: m.content };
     } catch {
@@ -131,13 +297,16 @@ export function callScreen(ctx) {
   }
 
   // force: even while muted (a tap on 다시 듣기). fresh: make the clip again (다시 만들기) instead of the kept one.
+  // A character's spoken line, or any line of mine (in the persona's voice, from the call record).
+  const voiced = (m) => (m.participantKind === "character" ? m.kind === "speech" : m.participantKind === "user");
   async function speakTurns(list, force = false, fresh = false) {
     const items = list
-      .filter((m) => m.participantKind === "character" && m.kind === "speech" && m.content)
+      .filter((m) => voiced(m) && m.content)
       .map((m) => {
-        const voice = pickVoice(ctx.ttsConfig, m.characterId);
+        const mine = m.participantKind === "user";
+        const voice = pickVoice(ctx.ttsConfig, mine ? persona?.id : m.characterId);
         const tone = m.extra?.turn?.tone || undefined;
-        const speaker = ctx.index.get(m.characterId)?.name;
+        const speaker = mine ? persona?.name : ctx.index.get(m.characterId)?.name;
         return {
           key: tts.hashKey(["call", m.id, m.content, voice]),
           body: {
@@ -163,12 +332,17 @@ export function callScreen(ctx) {
     await speakTurns(res?.assistantMessages || []);
     const commands = (res?.turns || []).filter((t) => t?.mode === "command");
     for (const t of commands.filter((c) => LEAVE_CALL.test(c.content || c.command || ""))) {
+      if (t.characterId && session) await leave(t.characterId);
       const left =
         (notice = `${subject(ctx.index.get(t.characterId)?.name || t.speakerName || "상대")} 통화에서 나갔어요`);
-      draw();
+      draw(true);
       setTimeout(() => notice === left && ((notice = ""), draw()), 4000);
     }
-    const ender = commands.find((c) => END_CALL.test(c.content || c.command || ""));
+    // The last one on the line left: the call is over.
+    const leaver = commands.find((c) => LEAVE_CALL.test(c.content || c.command || ""));
+    const ender =
+      commands.find((c) => END_CALL.test(c.content || c.command || "")) ||
+      (leaver && session && !inCall().length ? leaver : null);
     if (!ender || !session) return;
     // Nobody is answering any more: the waiting line goes, the last words stay as the caption.
     phase = null;
@@ -192,7 +366,10 @@ export function callScreen(ctx) {
       if (inputMode === "typed" && meta().translateInput === true)
         content = await translate(content, "input", meta(), ctx.chatId);
       const res = await api.post(`${BASE}/${encodeURIComponent(session.id)}/messages`, { content, inputMode });
-      if (res?.userMessage) originals.set(res.userMessage.id, text.trim());
+      if (res?.userMessage) {
+        originals.set(res.userMessage.id, text.trim());
+        if (content !== text.trim()) keep(session?.id, { mine: { [res.userMessage.id]: text.trim() } });
+      }
       if (res?.session) session = res.session;
       await refresh();
       await afterTurns(res);
@@ -283,6 +460,20 @@ export function callScreen(ctx) {
     close();
     ctx.onEnded?.();
   }
+  // Nobody answered: the package's decline, marked as missed by the Convo (부재중 전화, not 거절한 전화).
+  const missed = new Set(); // (the package's decline writes a note each time: once per call)
+  async function miss(s) {
+    if (missed.has(s.id)) return;
+    missed.add(s.id);
+    try {
+      await api.post(`${BASE}/${encodeURIComponent(s.id)}/decline`);
+    } catch {
+      missed.delete(s.id);
+      return;
+    }
+    if (session?.id === s.id) close();
+    ctx.onEnded?.({ callId: s.id, missed: true });
+  }
   // by: who hung up — "user" (the hang-up button), a character id ([end_call]), or null (ended elsewhere).
   async function end(ask = true, by = ask ? "user" : null) {
     if (!session) return;
@@ -296,10 +487,12 @@ export function callScreen(ctx) {
       }
     }
     close();
+    await restoreLeft();
     ctx.onEnded?.({ callId, by });
   }
   function close() {
     clearInterval(timer);
+    clearTimeout(ringTimer);
     if (rec) {
       rec.discard = true;
       rec.recorder.stop();
@@ -316,7 +509,10 @@ export function callScreen(ctx) {
     if (!id) return;
     let rows = [];
     try {
-      rows = (await api.get(`${BASE}/${encodeURIComponent(id)}/messages`)).filter(visible);
+      [rows] = await Promise.all([
+        api.get(`${BASE}/${encodeURIComponent(id)}/messages`).then((r) => r.filter(visible)),
+        loadPersona(),
+      ]);
     } catch (error) {
       return toast(error.message);
     }
@@ -377,7 +573,7 @@ export function callScreen(ctx) {
                   h("span", { style: { fontFamily: "var(--font-read)", fontSize: "15px", lineHeight: "1.55" } }, top),
                   bottom ? h("span", { style: { fontSize: "12px", color: "var(--ink-3)" } }, bottom) : null,
                 ),
-                m.participantKind === "character" && m.kind === "speech" && ctx.ttsConfig
+                voiced(m) && ctx.ttsConfig
                   ? h(
                       "span",
                       { style: { display: "flex", flexShrink: "0" } },
@@ -481,6 +677,7 @@ export function callScreen(ctx) {
   const timeEl = h("span", { class: "cx-time" });
   const nameEl = h("b", { class: "cx-name" });
   const faceEl = h("span", { class: "cx-face" });
+  const pplEl = h("div", { class: "cx-ppl", role: "group", "aria-label": "통화 중인 사람", hidden: true });
   // The subtitle window: every line of the call so far, newest at the bottom; it follows new lines unless the user
   // scrolled up to read.
   const subsEl = h("div", { class: "cx-subs", "aria-live": "polite", "aria-label": "자막" });
@@ -624,7 +821,7 @@ export function callScreen(ctx) {
         dots(),
       ),
     ),
-    h("div", { class: "cx-who" }, faceEl, h("div", { class: "cx-whotext" }, nameEl, timeEl)),
+    h("div", { class: "cx-who" }, faceEl, h("div", { class: "cx-whotext" }, nameEl, timeEl), pplEl),
     subsEl,
     ringRow,
     keys,
@@ -667,6 +864,9 @@ export function callScreen(ctx) {
     layer.classList.toggle("subs-first", p.subMode === "subs");
     layer.dataset.size = p.subSize;
     nameEl.textContent = callName();
+    const people = peopleRow();
+    pplEl.hidden = !people;
+    if (people) setChildren(pplEl, people);
     if (faceFor !== who?.id) {
       faceFor = who?.id;
       setChildren(faceEl, avatar(who?.avatar, who?.name?.[0] || "·", 96));
@@ -733,7 +933,7 @@ export function callScreen(ctx) {
               ? h(
                   "div",
                   { class: `cx-line me${one ? " now" : ""}` },
-                  h("small", { class: "cx-who2" }, "나"),
+                  h("small", { class: "cx-who2" }, speakerName({ participantKind: "user" })),
                   h("span", { class: "cx-t" }, pendingText),
                 )
               : null,
@@ -753,11 +953,13 @@ export function callScreen(ctx) {
   return {
     open,
     logSheet,
+    restoreLeft,
     get session() {
       return session;
     },
     dispose() {
       clearInterval(timer);
+      clearTimeout(ringTimer);
       rec?.recorder.stop();
       layer.remove();
       pill.remove();
@@ -772,6 +974,7 @@ export function callPrefs() {
     log: p.callLog !== false,
     subMode: p.callSubMode === "subs" ? "subs" : "face",
     subSize: ["s", "m", "l"].includes(p.callSubSize) ? p.callSubSize : "m",
+    ringSec: [20, 30, 60].includes(p.callRingSec) ? p.callRingSec : 30,
   };
 }
 export function setCallPrefs(patch) {
@@ -779,5 +982,6 @@ export function setCallPrefs(patch) {
     ...(patch.log !== undefined ? { callLog: patch.log } : {}),
     ...(patch.subMode !== undefined ? { callSubMode: patch.subMode } : {}),
     ...(patch.subSize !== undefined ? { callSubSize: patch.subSize } : {}),
+    ...(patch.ringSec !== undefined ? { callRingSec: patch.ringSec } : {}),
   });
 }

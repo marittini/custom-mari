@@ -23,6 +23,14 @@ _(none)_
 
 ## Done
 
+- Calls — Mari Kit 0.30.0: a character's call rings for 통화 설정 › 전화 울리는 시간 (20/30/60s) and then stays as
+  부재중 전화 with 다시 걸기 (거절한 전화 when declined); call translations are kept per call, so the record opens
+  without translating again; my lines in call records carry the persona's name and voice; in a group call the
+  people row dims who left, who is offline on their card until the call ends (다시 부르기 brings them back).
+- Lighter screens and full sheet checks — Mari Kit 0.29.0 (PR #58): Convo 1:1 opens with 89.9KB (was 122.3KB;
+  the emoji list and call code load only when needed), 설정 43.8KB (was 51.2KB); `verify.mjs --crawl` presses every
+  safe button on every toured screen (179 on 26, no layout faults); the hang-up guide checked against the real
+  Calls package (reaches calls only, [end_call] comes back as a command turn).
 - Owner round of 13 + memory — Mari Kit 0.27.0 (PR #56) and 0.28.0 (PR #57): memory work per room, 묶음 from 1,
   최근 제외 hides organized messages, one organize flow; squeezed text, invisible ▶, reactions over translations
   fixed; 새 답 and 지금 답하게 removed; voice 다시 만들기; 선톡 marks without reload; weather draws at once; the

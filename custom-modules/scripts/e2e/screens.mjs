@@ -97,6 +97,9 @@ export const FLOW_SCREENS = {
   "call-subtitles": ["convo"],
   "memory-jobs": ["memory", "convo"],
   "call-hangup": ["convo"],
+  "call-missed": ["convo"],
+  "call-group": ["convo"],
+  "call-translation-kept": ["convo"],
 };
 
 /** Runs the tour (only screens drawn by `mods`, if given). Returns { rows, failed }. app: the shell URL. */
