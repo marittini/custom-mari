@@ -776,6 +776,46 @@ export function convoScreen({ mount, args, go, back }) {
     const ev = extra?.conversationCallEvent;
     return ev?.callId && ev.status === "ended" ? ev : null;
   }
+  // An ended call as a card: how long, the Engine's call summary when it has made one, the first two lines (read
+  // once per call, kept), and the whole record on a tap.
+  const callLines = new Map(); // callId → { count, first: [text] } | "loading"
+  function callCard(ev, m) {
+    const min = ev.durationMs ? Math.max(1, Math.round(ev.durationMs / 60000)) : null;
+    const lines = callLines.get(ev.callId);
+    if (!lines) {
+      callLines.set(ev.callId, "loading");
+      api
+        .get(`/conversation-calls/${encodeURIComponent(ev.callId)}/messages`)
+        .then((rows) => {
+          const said = (Array.isArray(rows) ? rows : []).filter(
+            (r) => r.extra?.hiddenFromUser !== true && !["command", "system"].includes(r.kind) && r.content,
+          );
+          const who = (r) => (r.participantKind === "user" ? "나" : index.get(r.characterId)?.name || "상대");
+          callLines.set(ev.callId, {
+            count: said.length,
+            first: said.slice(0, 2).map((r) => `${who(r)}: ${r.content}`),
+          });
+          if (alive) draw();
+        })
+        .catch(() => callLines.set(ev.callId, { count: 0, first: [] }));
+    }
+    const got = lines && lines !== "loading" ? lines : null;
+    return h(
+      "button",
+      { type: "button", class: "callcard", onClick: () => call?.logSheet(ev.callId, ev) },
+      h(
+        "span",
+        { class: "callcard-h" },
+        icon(I.phone, 14, 1.8),
+        `음성 통화${min ? ` · ${min}분` : ""}`,
+        h("span", { class: "hint", style: { fontWeight: "400" } }, shortTime(m.createdAt)),
+      ),
+      ev.summary ? h("span", { class: "callcard-q", style: { whiteSpace: "normal" } }, ev.summary) : null,
+      !ev.summary && got ? got.first.map((t) => h("span", { class: "callcard-q" }, t)) : null,
+      h("span", { class: "callcard-f" }, got ? `대사 ${got.count}줄 · 눌러서 전체 보기` : "눌러서 통화 기록 보기"),
+    );
+  }
+
   function shown() {
     const keepCalls = callPrefs().log;
     // System lines (dice, notices, other call states) show like the Engine's; an ended call only when kept.
@@ -920,15 +960,7 @@ export function convoScreen({ mount, args, go, back }) {
         items.push(h("div", { class: "daysep", role: "separator" }, h("span", null, dayLabel(m.createdAt))));
       }
       if (bub.ev) {
-        items.push(
-          h(
-            "button",
-            { type: "button", class: "callev", onClick: () => call?.logSheet(bub.ev.callId) },
-            icon(I.phone, 13, 1.8),
-            `음성 통화 · ${shortTime(m.createdAt)}`,
-            h("span", null, "대사 보기 ›"),
-          ),
-        );
+        items.push(callCard(bub.ev, m));
         return;
       }
       const prev = bubbles[i - 1];

@@ -15,9 +15,9 @@ The owner found the menus scattered and regenerated a character schedule by mist
 and call records. Agreed with the mockup https://claude.ai/artifact/MtDLAgQpp11Anr8og7ZUZk and the owner's answers
 (globals move to 설정, 되돌리기 yes, call screen face-first by default). Three releases:
 
-- 0.24.0 (M-13): the work rule (ask, 멈추기, 되돌리기) on every button that costs AI or overwrites; the new-reply
+- 0.24.0 (M-13, PR #54, merged): the work rule (ask, 멈추기, 되돌리기) on every button that costs AI or overwrites; the new-reply
   button apart; 종료 apart from 마이크.
-- 0.25.0 (M-14): chat settings in labelled groups, this-chat vs all-rooms (globals to 설정), 대화 기능 tidied (commands
+- 0.25.0 + 0.26.0 ship together (one PR): 0.25.0 (M-14) chat settings in labelled groups, this-chat vs all-rooms (globals to 설정), 대화 기능 tidied (commands
   folded), one name per setting.
 - 0.26.0 (M-15): the call's subtitle window and waiting states, subtitle mode and size, ☺ while calling, the call card
   and full record in the Convo.

@@ -1,7 +1,8 @@
 // Every section of the Engine's Chat Settings, as the shell groups them. Data only, so check-engine-sections.mjs can
 // compare it with the sections a running Engine shows (and report new or renamed ones after an Engine update).
 //   [label, section ids without the mode prefix (the first is what the Engine opens), modes, shell view or null]
-// A shell view of "" means the 자주 list; null means the row opens the Engine at that section.
+// A shell view of "" means the 자주 list; "@route" opens that shell route; null means the row opens the Engine at that
+// section.
 
 const BOTH = ["conversation", "roleplay"];
 export const ENGINE_SECTIONS = {
@@ -29,10 +30,10 @@ export const ENGINE_SECTIONS = {
     ["자동 요약", ["automatic-summarization"], ["conversation"], null],
   ],
   기타: [
-    ["Mari Kit · 음성 · 번역 · 기억", [], BOTH, "kit"],
-    ["화면", [], BOTH, "view"],
+    ["음성·기억·날씨 (Mari Kit)", [], BOTH, "kit"],
+    ["모든 방 공통 설정", [], BOTH, "@settings/shared"],
     ["에이전트", ["agents"], BOTH, null],
-    ["메시지 검색", ["message-search"], BOTH, null],
+    ["엔진 메시지 검색", ["message-search"], BOTH, null],
     ["채팅 분기", ["chat-branches"], BOTH, null],
     ["갤러리", ["gallery"], BOTH, null],
     ["에이전트 활동", ["agent-activity"], ["roleplay"], null],

@@ -24,8 +24,8 @@ export const QUICK_ITEMS = [
   { id: "preset", label: "프리셋", def: true },
   { id: "persona", label: "페르소나", def: true },
   { id: "profile", label: "채팅 프로필", def: true },
-  { id: "autoTranslate", label: "자동 번역", def: true },
-  { id: "inputTranslate", label: "보낼 말 번역 버튼", def: true },
+  { id: "autoTranslate", label: "받은 말 자동 번역", def: true },
+  { id: "inputTranslate", label: "보내기 옆 번역 버튼", def: true },
   { id: "voice", label: "음성 자동 재생", def: true },
   { id: "memoryOrganize", label: "기억 정리", def: true },
   { id: "reader", label: "읽기 설정", def: true },
@@ -182,11 +182,11 @@ function openQuick({ getChat, getMemory, organize, go, changed }) {
       persona: () => row(I.person, "페르소나", personaName, pickPersona),
       profile: () => row(I.sliders, "채팅 프로필", "", () => profileSheet({ chat: getChat(), changed: () => after() })),
       autoTranslate: () =>
-        sw(I.translate, "자동 번역", meta.autoTranslate === true, () =>
+        sw(I.translate, "받은 말 자동 번역", meta.autoTranslate === true, () =>
           patchMeta({ autoTranslate: meta.autoTranslate !== true }),
         ),
       inputTranslate: () =>
-        sw(I.translate, "보낼 말 번역 버튼", meta.showInputTranslateButton === true, () =>
+        sw(I.translate, "보내기 옆 번역 버튼", meta.showInputTranslateButton === true, () =>
           patchMeta({ showInputTranslateButton: meta.showInputTranslateButton !== true }),
         ),
       voice: () =>

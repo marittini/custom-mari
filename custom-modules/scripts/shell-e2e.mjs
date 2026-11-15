@@ -16,7 +16,7 @@ import { mkdir } from "node:fs/promises";
 import { fileURLToPath } from "node:url";
 import { tmpdir } from "node:os";
 import { startFakeLlm } from "./e2e/fake-llm.mjs";
-import { screenTour } from "./e2e/screens.mjs";
+import { offscreenText, screenTour } from "./e2e/screens.mjs";
 
 const here = dirname(fileURLToPath(import.meta.url));
 const args = process.argv.slice(2);
@@ -105,6 +105,16 @@ const convo = await newChat("e2e convo", "conversation", [a.id]);
 const group = await newChat("e2e group", "conversation", [a.id, b.id]);
 const rp = await newChat("e2e rp", "roleplay", [a.id]);
 const other = await newChat("e2e other", "conversation", [b.id]);
+// Text with no place to break (Japanese has no spaces; a long link) must still wrap at 360px on every screen that
+// shows messages: the screen tour fails on a sentence that runs off the screen.
+const LONG_JA = "大丈夫だよ、今日はどうだった？ずっと待ってたんだからね、もう少し早く電話してくれてもよかったのに。";
+const LONG_LINK = `https://example.com/${"e2e".repeat(30)}`;
+await api("POST", `/chats/${convo.id}/messages`, { role: "assistant", characterId: a.id, content: LONG_JA });
+await api("POST", `/chats/${rp.id}/messages`, {
+  role: "assistant",
+  characterId: a.id,
+  content: `「${LONG_JA}」\n\n${LONG_LINK}`,
+});
 // Its own character, because a status override lives on the character card (the Engine's presence).
 const yui = await api("POST", "/characters", { data: { name: "Yui", description: "e2e" } });
 const presence = await newChat("e2e presence", "conversation", [yui.id]);
@@ -598,6 +608,163 @@ const flows = {
     await page.locator(".act-toast").getByRole("button", { name: "되돌리기" }).click();
     await until(async () => (await blocksNow()) === original, 8000, "되돌리기 restored the day");
     await snap(page, "safety-week");
+  },
+
+  // Menus (0.25): chat settings in labelled groups; switches for every room live in 설정 › 모든 방 공통 기능 (linked
+  // from chat settings); one "can a character call me" switch in 통화 설정 that writes both Engine keys; the
+  // commands folded in groups.
+  async menus({ page }) {
+    await open(page);
+    await goIn(page, `#/chat-settings/${encodeURIComponent(convo.id)}`);
+    for (const g of ["이 채팅의 AI", "등장과 세계", "기능", "도구", "모든 방 공통"])
+      await page.locator(".gsec").filter({ hasText: g }).first().waitFor({ timeout: 5000 });
+    await page.getByRole("button", { name: /대사 음성 · 번역 · 기억 · 날씨/ }).click();
+    await until(async () => (await hash(page)) === "#/settings/shared", 5000, "settings/shared");
+    const weather = page.locator("#shared").getByRole("switch", { name: /날씨/ });
+    await weather.waitFor({ timeout: 8000 });
+    const was = (await api("GET", "/mari-kit/settings")).features?.weather === true;
+    await weather.click();
+    await until(
+      async () => (await api("GET", "/mari-kit/settings")).features?.weather === !was,
+      5000,
+      "weather switched",
+    );
+    await page.locator("#shared").getByRole("switch", { name: /날씨/ }).click();
+    await until(async () => (await api("GET", "/mari-kit/settings")).features?.weather === was, 5000, "weather back");
+    await goIn(page, `#/chat-settings/${encodeURIComponent(convo.id)}/convo`);
+    await page.getByRole("switch", { name: /명령 쓰기/ }).waitFor();
+    if ((await page.locator("details.fgroup").count()) !== 3) throw new Error("commands should fold into 3 groups");
+    if (await page.getByText("캐릭터가 전화 걸기", { exact: true }).count()) throw new Error("duplicate call switch");
+    await goIn(page, `#/call-settings/${encodeURIComponent(convo.id)}`);
+    const call = page.getByRole("switch", { name: /캐릭터가 먼저 전화 걸기/ });
+    await call.waitFor();
+    const before = await meta(convo.id);
+    const on = before.conversationCommandToggles?.call !== false;
+    await call.click();
+    await until(
+      async () => {
+        const m = await meta(convo.id);
+        return (m.conversationCommandToggles?.call !== false) === !on && m.conversationCharactersCanCall === !on;
+      },
+      5000,
+      "both call keys written",
+    );
+    await snap(page, "menus-call");
+  },
+
+  // The call screen's subtitles and records (0.26), against the Calls package's API answered in the browser (the
+  // package is not installed in the test Engine): the subtitle window with every line, the waiting line while a
+  // reply is written, 자막 (subtitles first, larger text), and the call card in the Convo opening the full record.
+  async "call-subtitles"({ page }) {
+    const sid = "e2e-call";
+    const lines = [
+      {
+        id: "c1",
+        participantKind: "character",
+        characterId: a.id,
+        kind: "speech",
+        content: `もしもし？遅かったね。${LONG_JA}`,
+        extra: {},
+      },
+      { id: "u1", participantKind: "user", kind: "speech", content: "응 미안", extra: {} },
+      {
+        id: "c2",
+        participantKind: "character",
+        characterId: a.id,
+        kind: "speech",
+        content: `괜찮아, 오늘 어땠어? ${LONG_JA}`,
+        extra: {},
+      },
+    ];
+    const session = { id: sid, chatId: convo.id, status: "active", startedAt: new Date().toISOString() };
+    await page.route("**/api/conversation-calls/**", async (route) => {
+      const url = route.request().url();
+      const method = route.request().method();
+      const json = (body) =>
+        route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify(body) });
+      if (url.includes("/status")) return json({ activeCall: null, ringingCall: null });
+      if (url.endsWith("/start")) return json(session);
+      if (url.endsWith(`/${sid}/messages`) && method === "GET") return json(lines);
+      if (url.endsWith(`/${sid}/messages`) && method === "POST") {
+        await new Promise((r) => setTimeout(r, 1500));
+        const body = JSON.parse(route.request().postData() || "{}");
+        lines.push({ id: "u2", participantKind: "user", kind: "speech", content: body.content, extra: {} });
+        lines.push({
+          id: "c3",
+          participantKind: "character",
+          characterId: a.id,
+          kind: "speech",
+          content: "좋네!",
+          extra: {},
+        });
+        return json({ userMessage: { id: "u2" }, assistantMessages: [], session });
+      }
+      if (url.endsWith(`/${sid}/end`)) return json({ ok: true });
+      return json({});
+    });
+    await page.route("**/api/tts/config", (route) =>
+      route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({ enabled: false, callAudioEnabled: true }),
+      }),
+    );
+    await api("PATCH", `/chats/${convo.id}/metadata`, { conversationCallsEnabled: true });
+    await open(page);
+    await goIn(page, `#/convo/${encodeURIComponent(convo.id)}`);
+    await page.getByRole("button", { name: "전화 걸기" }).first().click();
+    await page.locator(".sheet").getByRole("button", { name: "전화 걸기" }).click();
+    await page.locator(".cx-subs .cx-line").filter({ hasText: "오늘 어땠어" }).waitFor({ timeout: 10000 });
+    // Default: the line being said, large, with only the one before it.
+    if ((await page.locator(".cx-subs.one .cx-line").count()) > 2)
+      throw new Error("default caption should be one line");
+    await page.locator(".cx-subs.one .cx-line.now").filter({ hasText: "오늘 어땠어" }).waitFor({ timeout: 3000 });
+    const capPx = await page.locator(".cx-line.now .cx-t").evaluate((e) => parseFloat(getComputedStyle(e).fontSize));
+    if (capPx < 21) throw new Error(`caption should be large, got ${capPx}px`);
+    await snap(page, "call-caption");
+    const offCap = await page.evaluate(offscreenText);
+    if (offCap.length) throw new Error(`call caption runs off the screen: ${offCap.join(" | ")}`);
+    await page.locator(".cx-in").fill("좋았어");
+    await page.locator(".cx-send").click();
+    await page.locator(".cx-line.wait").filter({ hasText: "답하는 중" }).waitFor({ timeout: 3000 });
+    await page.locator(".cx-subs .cx-line").filter({ hasText: "좋네!" }).waitFor({ timeout: 10000 });
+    await page.locator(".cx-in").blur();
+    await page.getByRole("button", { name: "자막" }).click();
+    await page.getByRole("radio", { name: "지난 대사까지" }).click();
+    await page.getByRole("radio", { name: "크게", exact: true }).click();
+    if (!(await page.locator(".callx.subs-first[data-size='l']").count())) throw new Error("자막 choices not applied");
+    if ((await page.locator(".cx-subs:not(.one) .cx-line").count()) < 3)
+      throw new Error("지난 대사까지 should show every line");
+    const offList = await page.evaluate(offscreenText);
+    if (offList.length) throw new Error(`call subtitles run off the screen: ${offList.join(" | ")}`);
+    await page.keyboard.press("Escape");
+    await page
+      .locator(".scrim")
+      .last()
+      .click()
+      .catch(() => {});
+    await snap(page, "call-subtitles");
+    await page.evaluate(() => {
+      const p = JSON.parse(localStorage.getItem("mari-shell") || "{}");
+      p.callSubMode = "face";
+      p.callSubSize = "m";
+      localStorage.setItem("mari-shell", JSON.stringify(p));
+    });
+    // The call card in the Convo opens the full record.
+    const ev = await api("POST", `/chats/${convo.id}/messages`, { role: "system", content: "" });
+    await api("PATCH", `/chats/${convo.id}/messages/${ev.id}/extra`, {
+      conversationCallEvent: { callId: sid, status: "ended", durationMs: 125000, summary: null },
+    });
+    await page.locator(".cx-endrow").getByRole("button").click();
+    await page.locator(".callcard").filter({ hasText: "대사" }).first().waitFor({ timeout: 10000 });
+    await page.locator(".callcard").first().click();
+    await page.locator(".tlog").getByText("통화 기록").first().waitFor();
+    await page.locator(".tlog").getByRole("button", { name: "전체 복사" }).waitFor();
+    const offLog = await page.evaluate(offscreenText);
+    if (offLog.length) throw new Error(`call record runs off the screen: ${offLog.join(" | ")}`);
+    await api("PATCH", `/chats/${convo.id}/metadata`, { conversationCallsEnabled: false });
+    await page.unroute("**/api/conversation-calls/**");
+    await page.unroute("**/api/tts/config");
   },
 
   // Reactions and replies (the Engine's data): react from the quick row and take it back, see a character's

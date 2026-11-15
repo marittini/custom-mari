@@ -67,15 +67,19 @@ export function callSettingsScreen({ mount, args, go, back }) {
       h(
         "div",
         { class: "gcard" },
-        row("내 말 번역해서 말하기", "한국어로 말해도 캐릭터 말로 옮겨 전해요", meta.translateInput === true, () =>
+        row("내 말 번역해서 보내기", "한국어로 말해도 캐릭터 말로 옮겨 전해요", meta.translateInput === true, () =>
           patchMeta({ translateInput: meta.translateInput !== true }),
         ),
-        row("상대 말 번역해서 보기", "자막에 번역을 같이 보여요", meta.autoTranslate === true, () =>
+        row("받은 말 자동 번역", "자막에 번역을 같이 보여요", meta.autoTranslate === true, () =>
           patchMeta({ autoTranslate: meta.autoTranslate !== true }),
         ),
         h(
           "button",
-          { type: "button", class: "grow", onClick: () => go(`chat-settings/${encodeURIComponent(chatId)}`) },
+          {
+            type: "button",
+            class: "grow",
+            onClick: () => go(`chat-settings/${encodeURIComponent(chatId)}/translation`),
+          },
           h(
             "span",
             null,
@@ -140,17 +144,35 @@ export function callSettingsScreen({ mount, args, go, back }) {
         row("이 방에서 통화", "Calls 패키지 · 이 방 스위치", meta.conversationCallsEnabled === true, () =>
           patchMeta({ conversationCallsEnabled: meta.conversationCallsEnabled !== true }),
         ),
-        row("캐릭터가 먼저 걸기", null, meta.characterCommands !== false && toggles.call !== false, () =>
-          patchMeta({ conversationCommandToggles: { ...toggles, call: !(toggles.call !== false) } }),
+        // One switch for "can a character call me": the call command the Engine actually checks; the older
+        // conversationCharactersCanCall (read by nothing now) is written the same so the two never disagree.
+        row(
+          "캐릭터가 먼저 전화 걸기",
+          meta.characterCommands === false ? "캐릭터 명령이 꺼져 있어 지금은 걸지 않아요" : null,
+          meta.characterCommands !== false && toggles.call !== false,
+          () => {
+            const on = !(toggles.call !== false);
+            patchMeta({ conversationCommandToggles: { ...toggles, call: on }, conversationCharactersCanCall: on });
+          },
         ),
-        row("통화 음성 (모든 방)", "엔진 TTS 설정", tts?.callAudioEnabled === true, async () => {
-          try {
-            await api.put("/tts/config", { ...tts, callAudioEnabled: tts?.callAudioEnabled !== true });
-            await load();
-          } catch (error) {
-            toast(error.message);
-          }
-        }),
+        row(
+          "통화 대사에 감정 표시",
+          "음성이 [속삭임] 같은 표시를 읽어요",
+          meta.conversationCallVoiceCues !== false,
+          () => patchMeta({ conversationCallVoiceCues: meta.conversationCallVoiceCues === false }),
+        ),
+        // The call voice is for every room, so it is switched in 설정 › 모든 방 공통 기능; here it only says how it is.
+        h(
+          "button",
+          { type: "button", class: "grow", onClick: () => go("settings/shared") },
+          h(
+            "span",
+            null,
+            "통화 음성",
+            h("small", null, `모든 방 공통 · ${tts?.callAudioEnabled === true ? "켜짐" : "꺼짐"} · 설정에서 바꿔요`),
+          ),
+          h("span", { class: "val" }, "›"),
+        ),
       ),
     );
   }
