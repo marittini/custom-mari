@@ -9,6 +9,7 @@ import { execFileSync } from "node:child_process";
 import { copyFile, mkdir, readFile, readdir, rm, stat, writeFile } from "node:fs/promises";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
+import { createRequire } from "node:module";
 
 const here = dirname(fileURLToPath(import.meta.url));
 const modulesRoot = resolve(here, "..");
@@ -59,11 +60,38 @@ export async function buildPackage(id = packageId) {
     ...srcFiles.map((file) => ({ file, from: join(root, "src", file) })),
     ...shellFiles.map((rel) => ({ file: `shell/${rel}`, from: join(root, "shell", rel) })),
   ];
+  // The Engine's own emoji lists and search (its Convo media panel), bundled for the shell so Mari follows them on
+  // every upstream update: shell/vendor/emoji.js, loaded the first time the shell's panel or a :name: needs it.
+  if (shellFiles.length) {
+    const lib = join(repoRoot, "packages", "client", "src", "lib");
+    const esbuild = createRequire(join(repoRoot, "package.json"))("esbuild");
+    const vendor = join(outDir, "shell", "vendor", "emoji.js");
+    await esbuild.build({
+      stdin: {
+        contents: [
+          'export { EMOJI_CATEGORIES } from "./emoji-catalog.generated.ts";',
+          'export { matchesEmojiQuery } from "./emoji-search.ts";',
+          'export { searchStandardEmojiShortcodes, resolveStandardEmojiShortcode } from "./emoji-shortcodes.ts";',
+          'export { KAOMOJI_CATEGORIES, searchKaomoji } from "./kaomoji-catalog.ts";',
+        ].join("\n"),
+        resolveDir: lib,
+        loader: "ts",
+      },
+      bundle: true,
+      format: "esm",
+      minify: true,
+      charset: "utf8",
+      legalComments: "none",
+      outfile: vendor,
+      logLevel: "silent",
+    });
+    sources.push({ file: "shell/vendor/emoji.js", from: vendor });
+  }
   const files = [];
   for (const { file, from } of sources) {
     const to = join(outDir, file);
     await mkdir(dirname(to), { recursive: true });
-    await copyFile(from, to);
+    if (from !== to) await copyFile(from, to);
     const bytes = await readFile(to);
     files.push({ path: file, sha256: createHash("sha256").update(bytes).digest("hex"), bytes: (await stat(to)).size });
   }

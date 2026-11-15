@@ -15,6 +15,7 @@ import { pickPerson } from "../lib/picker.js";
 import { profileSheet } from "../lib/profiles.js";
 import { startJob } from "../lib/activity.js";
 import { pickPresetChoices, NO_CHOICES } from "../lib/preset-choices.js";
+import { emojiSelectionSheet, selectionLabel } from "../lib/emoji-selection.js";
 import { groupsOf, splitByGroup, groupedOptions, sectioned, forgetGroups } from "../lib/groups.js";
 
 const VIEW_TITLES = {
@@ -1329,6 +1330,15 @@ export function chatSettingsScreen({ mount, args, go, back }) {
             )
           : null,
         linkRow(I.phone, "통화 설정 더보기", "", () => go(`call-settings/${encodeURIComponent(chatId)}`)),
+      ),
+      h("div", { class: "gsec", style: { margin: "24px 20px 8px" } }, h("span", null, "이모지·스티커")),
+      h(
+        "div",
+        { class: "list" },
+        linkRow(I.sun, "캐릭터가 쓸 이모지 고르는 방식", selectionLabel(meta), async () => {
+          await emojiSelectionSheet(chat, load);
+          draw();
+        }),
       ),
       h("div", { class: "gsec", style: { margin: "24px 20px 8px" } }, h("span", null, "다른 채팅")),
       h(

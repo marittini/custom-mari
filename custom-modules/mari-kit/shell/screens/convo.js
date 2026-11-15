@@ -19,7 +19,18 @@ import {
   messageWindow,
 } from "../lib/data.js";
 import { TOOL_DEFS, toolPlace } from "../lib/prefs.js";
-import { toast, errorBox, avatar, avatarStack, olderButton, fitMenus, jumpTo, sheet, ask } from "../lib/ui.js";
+import {
+  toast,
+  errorBox,
+  avatar,
+  avatarStack,
+  olderButton,
+  fitMenus,
+  jumpTo,
+  sheet,
+  ask,
+  openEngine,
+} from "../lib/ui.js";
 import { pickVoice, stripCues, inline } from "../lib/render.js";
 import * as tts from "../lib/tts.js";
 import { syncVoiceSettings } from "../lib/voice.js";
@@ -96,6 +107,8 @@ export function convoScreen({ mount, args, go, back }) {
   let stickerAttempted = false;
   let stickerLoad = null;
   let stickerDialog = null;
+  let standardEmoji = null; // the Engine's shortcode → emoji, once its list is here
+  const emojiView = () => ({ map: stickers.emojis?.map || new Map(), resolve: standardEmoji });
 
   const who = h("span", {
     style: { display: "flex", flexDirection: "column", alignItems: "center", gap: "4px", minWidth: "0" },
@@ -153,8 +166,10 @@ export function convoScreen({ mount, args, go, back }) {
     "aria-label": "메시지",
     onInput: () => {
       grow();
-      if (input.value.includes("@") || !mentionBox.hidden) mentionCheck();
+      if (input.value.includes("@") || input.value.includes(":") || !mentionBox.hidden) mentionCheck();
     },
+    // Tapping the text box brings the keyboard back in place of the media panel.
+    onFocus: () => closePanel(false),
     onKeydown: (e) => {
       if (e.key === "Enter" && !e.shiftKey && !e.isComposing && matchMedia("(pointer: fine)").matches) {
         e.preventDefault();
@@ -210,35 +225,91 @@ export function convoScreen({ mount, args, go, back }) {
     { type: "button", class: "cb send", "aria-label": "보내기", onClick: () => (busy ? stopGenerating() : send()) },
     icon(I.send, 16, 2),
   );
-  const stickerBtn = h(
+  // ☺: the Engine's media panel (emoji, kaomoji, stickers) where the keyboard was; loaded the first time.
+  let panel = null;
+  const panelHost = h("div", { class: "mp-host" });
+  const mediaBtn = h(
     "button",
     {
       type: "button",
       class: "cb",
-      "aria-label": stickerLabel("open"),
-      title: stickerLabel("open"),
-      "aria-haspopup": "dialog",
+      "aria-label": "이모지·스티커",
+      title: "이모지·스티커",
+      "aria-expanded": "false",
       disabled: true,
-      onClick: () => {
-        if (!chat) return;
-        qrOpen = false;
-        drawQuick();
-        stickerDialog?.close();
-        stickerDialog = stickerPicker({
-          load: () => refreshStickers(),
-          onPick: insertSticker,
-          onClose: () => {
-            stickerDialog = null;
-          },
-        });
-      },
+      onClick: () => (panel?.open ? closePanel(true) : openPanel()),
     },
     icon(
-      ["M20 13c0 4.4-3.6 8-8 8H6a3 3 0 0 1-3-3V6a3 3 0 0 1 3-3h11a3 3 0 0 1 3 3z", "M20 13h-4a3 3 0 0 0-3 3v5"],
+      [
+        "M12 3a9 9 0 1 0 0 18 9 9 0 0 0 0-18z",
+        "M8.5 14.5c.9 1.2 2.1 1.8 3.5 1.8s2.6-.6 3.5-1.8",
+        "M9 9.5h.01M15 9.5h.01",
+      ],
       18,
       1.6,
     ),
   );
+  async function openPanel() {
+    if (!chat) return;
+    qrOpen = false;
+    drawQuick();
+    hideMentions();
+    input.blur(); // the panel takes the keyboard's place
+    if (!panel) {
+      const { mediaPanel } = await import("../lib/media-panel.js");
+      panel = mediaPanel({
+        media: async ({ refresh }) => {
+          if (refresh) stickerLoad = null;
+          const s = await refreshStickers();
+          return { stickers: s, emojis: s.emojis };
+        },
+        onInsert: (text) => insertText(text),
+        onSticker: (name, how) => {
+          if (how === "send") {
+            closePanel(false);
+            generate({ userMessage: `sticker:${name}:` });
+          } else insertSticker(name, false);
+        },
+        manage: (kind) => manageMedia(kind),
+        games: async () => (await import("../lib/games.js")).turnGames(),
+        onGame: (g) => openGame(g),
+      });
+      setChildren(panelHost, panel.el);
+    }
+    panel.show();
+    mediaBtn.setAttribute("aria-expanded", "true");
+  }
+  function closePanel(toKeyboard) {
+    if (!panel?.open) return;
+    panel.hide();
+    mediaBtn.setAttribute("aria-expanded", "false");
+    if (toKeyboard) input.focus();
+  }
+  /** Text at the caret without opening the keyboard (the panel stays open for more). */
+  function insertText(text) {
+    const start = input.selectionStart ?? input.value.length;
+    const end = input.selectionEnd ?? start;
+    input.setRangeText(text, start, end, "end");
+    grow();
+  }
+  async function manageMedia(kind) {
+    if (kind === "selection") {
+      const { emojiSelectionSheet } = await import("../lib/emoji-selection.js");
+      return emojiSelectionSheet(chat, () => load(false));
+    }
+    return new Promise((resolve) => {
+      stickerDialog?.close();
+      stickerDialog = stickerPicker({
+        kind,
+        load: () => ((stickerLoad = null), refreshStickers().then((s) => (kind === "emoji" ? s.emojis : s))),
+        onPick: kind === "emoji" ? (name) => insertText(`:${name}:`) : (name) => insertSticker(name, false),
+        onClose: () => {
+          stickerDialog = null;
+          resolve();
+        },
+      });
+    });
+  }
   const quickLayer = h("div");
   const replyBar = h("div", { class: "rbar", hidden: true });
   // Pictures to send (＋): picked, made small on the phone (lib/compose.js), shown above the composer until sent.
@@ -324,7 +395,7 @@ export function convoScreen({ mount, args, go, back }) {
             await loadMe();
           },
         }),
-        stickerBtn,
+        mediaBtn,
         picBtn,
       )),
       toolsMore,
@@ -334,6 +405,7 @@ export function convoScreen({ mount, args, go, back }) {
       qrBtn,
       sendBtn,
     ),
+    panelHost,
   );
 
   function grow() {
@@ -343,13 +415,13 @@ export function convoScreen({ mount, args, go, back }) {
     syncTools();
   }
 
-  function insertSticker(name) {
+  function insertSticker(name, focus = true) {
     const start = input.selectionStart ?? input.value.length;
     const end = input.selectionEnd ?? start;
     const before = input.value.slice(0, start);
     input.setRangeText(`${before && !before.endsWith("\n") ? "\n" : ""}sticker:${name}:\n`, start, end, "end");
     grow();
-    input.focus();
+    if (focus) input.focus();
   }
 
   // No polling or asset reads on each reply. History loads the map only when it contains a sticker;
@@ -373,6 +445,68 @@ export function convoScreen({ mount, args, go, back }) {
     stickerLoad = request;
     return request.promise;
   }
+
+  // Mini-games (lib/games.js): the Engine draws their boards, so a pick opens the Engine here with the command typed.
+  let gameBoard = false;
+  function openGame(g) {
+    openEngine(chatId, { draft: `${g.command} ` });
+  }
+  async function gamesSheet() {
+    const { turnGames } = await import("../lib/games.js");
+    const list = await turnGames();
+    const s = sheet(
+      h(
+        "div",
+        { class: "psheet pad" },
+        h("b", { class: "psheet-title" }, "게임"),
+        list.length
+          ? [
+              h(
+                "div",
+                { class: "list" },
+                list.map((g) =>
+                  h(
+                    "button",
+                    { type: "button", class: "r", onClick: () => (s.close(), openGame(g)) },
+                    h("span", null, g.name, h("small", { class: "hint", style: { display: "block" } }, g.command)),
+                    h("span", { class: "val" }, "엔진에서 ›"),
+                  ),
+                ),
+              ),
+              h(
+                "p",
+                { class: "hint", style: { margin: "0" } },
+                "게임판은 엔진 화면에서 열려요. 처음 열 때 몇 MB를 받아요. 엔진에서 보내기를 누르면 게임 준비 창이 떠요.",
+              ),
+            ]
+          : h(
+              "p",
+              { class: "hint", style: { margin: "0" } },
+              "설치한 게임이 없어요. 우노·체스 같은 게임은 엔진의 패키지 목록에서 설치하면 여기 나타나요.",
+            ),
+      ),
+      { label: "게임" },
+    );
+  }
+  async function loadGameBoard() {
+    const { turnGames, hasGameBoard } = await import("../lib/games.js");
+    gameBoard = (await turnGames()).length > 0 && (await hasGameBoard(chatId));
+    if (alive && gameBoard) draw();
+  }
+  const gameStrip = () =>
+    gameBoard
+      ? h(
+          "div",
+          { class: "scnbar", role: "status" },
+          h(
+            "div",
+            { class: "scnbar-t" },
+            h("b", null, "이 채팅에 게임판이 있어요"),
+            h("span", null, "게임판은 엔진 화면에 있어요"),
+          ),
+          h("button", { type: "button", class: "pill main", onClick: () => openEngine(chatId) }, "엔진에서 이어 하기"),
+        )
+      : null;
 
   // A scene running from this Convo (the Engine's SceneBanner): { id, name, repliesHere }, read when the chat says so.
   let scene = null;
@@ -467,12 +601,13 @@ export function convoScreen({ mount, args, go, back }) {
       chat = c;
       await loadScene();
       if (!alive) return;
-      stickerBtn.disabled = false;
+      mediaBtn.disabled = false;
       const context = JSON.stringify([chat.personaId, chat.characterIds || []]);
       if (context !== stickerContext) {
         stickerContext = context;
         stickerAttempted = false;
         stickers = { list: [], map: new Map(), globals: [] };
+        if (panel?.open) panel.reload();
       }
       trBtn.hidden = chatMeta(chat).showInputTranslateButton !== true;
       index = characterIndex(chars);
@@ -516,6 +651,7 @@ export function convoScreen({ mount, args, go, back }) {
             );
         loadMe();
         loadPresence();
+        loadGameBoard().catch(() => {});
         // The status line follows the schedule minute by minute, from data already here.
         tick = setInterval(() => document.visibilityState === "visible" && drawPresence(), 60000);
         setupCalls();
@@ -705,8 +841,17 @@ export function convoScreen({ mount, args, go, back }) {
 
   function draw() {
     if (!chat) return;
-    if (!stickerAttempted && messages.some((m) => /sticker:[a-z0-9_]+:/.test(messageText(m))))
+    if (!stickerAttempted && messages.some((m) => /:[a-z0-9_]+:/i.test(messageText(m))))
       refreshStickers().catch(() => {}); // A failed read leaves the token visible; the picker offers retry.
+    // ":name:" shortcodes need the Engine's emoji list (read once, only when a message has one).
+    if (!standardEmoji && messages.some((m) => /(^|[^a-z0-9_]):[a-z0-9_]+:/i.test(messageText(m))))
+      import("../lib/media.js")
+        .then((m) => m.emojiData())
+        .then((d) => {
+          standardEmoji = d.resolveStandardEmojiShortcode;
+          if (alive) draw();
+        })
+        .catch(() => {});
     const items = [];
     if (win.more) items.push(olderButton(win, scroller, () => ((messages = shown()), draw())));
     // Like the Engine's Convo, a blank line starts a new bubble.
@@ -834,9 +979,9 @@ export function convoScreen({ mount, args, go, back }) {
                   draw();
                 },
               },
-              bub.sys ? inline(bub.text) : stickerContent(bub.text, stickers.map),
+              bub.sys ? inline(bub.text) : stickerContent(bub.text, stickers.map, emojiView()),
             ),
-        bub.sub ? h("span", { class: "bub-tr" }, stickerContent(bub.sub, stickers.map)) : null,
+        bub.sub ? h("span", { class: "bub-tr" }, stickerContent(bub.sub, stickers.map, emojiView())) : null,
         bub.last && !bub.sys ? mediaOf(m, me) : null,
         bub.last && !bub.sys ? reactionRow(m, me) : null,
         bub.last && !me && !bub.sys ? sceneCard(m) : null,
@@ -943,13 +1088,17 @@ export function convoScreen({ mount, args, go, back }) {
           h(
             "div",
             { style: { display: "flex", marginTop: k === 0 ? "24px" : "10px" } },
-            h("span", { class: "bub them", style: { cursor: "default" } }, stickerContent(text, stickers.map)),
+            h(
+              "span",
+              { class: "bub them", style: { cursor: "default" } },
+              stickerContent(text, stickers.map, emojiView()),
+            ),
           ),
         ),
       );
     }
     if (offNote && !busy) items.push(h("div", { class: "pnote", role: "status" }, presenceText(offNote)));
-    items.push(sceneBanner());
+    items.push(sceneBanner(), gameStrip());
     if (!messages.length && !busy) items.push(h("div", { class: "empty" }, "첫 메시지를 보내 보세요."));
     setChildren(list, items);
     setChildren(sendBtn, icon(busy ? I.stop : I.send, busy ? 14 : 16, 2));
@@ -1320,7 +1469,47 @@ export function convoScreen({ mount, args, go, back }) {
   }
   async function mentionCheck() {
     const { mentionAt, mentionChoices, insertMention } = await compose();
-    const at = mentionAt(input.value, input.selectionStart ?? input.value.length);
+    const caret = input.selectionStart ?? input.value.length;
+    // ":smi" → the chat's custom emojis and standard shortcodes (the Engine's composer completion).
+    const { shortcodeAt, shortcodeChoices, completionText, insertAt, emojiData } = await import("../lib/media.js");
+    const sc = shortcodeAt(input.value, caret);
+    if (sc) {
+      const [data, s] = await Promise.all([emojiData(), stickerAttempted ? stickers : refreshStickers()]);
+      const choices = shortcodeChoices(sc.query, s?.emojis?.list || [], data.searchStandardEmojiShortcodes);
+      const still = shortcodeAt(input.value, input.selectionStart ?? input.value.length);
+      if (!choices.length || !still || still.query !== sc.query) return choices.length ? null : hideMentions();
+      mentionBox.hidden = false;
+      mentionBox.setAttribute("aria-label", "이모지");
+      return setChildren(
+        mentionBox,
+        choices.map((c) =>
+          h(
+            "button",
+            {
+              type: "button",
+              role: "option",
+              onPointerdown: (e) => e.preventDefault(), // keep the keyboard open
+              onClick: () => {
+                const now = input.selectionStart ?? input.value.length;
+                const next = insertAt(input.value, sc.start, now, completionText(c));
+                input.value = next.text;
+                input.setSelectionRange(next.caret, next.caret);
+                input.focus();
+                grow();
+                hideMentions();
+              },
+            },
+            c.kind === "custom"
+              ? h("img", { class: "cemoji", src: c.url, alt: "" })
+              : h("span", { class: "mb-emoji" }, c.emoji),
+            h("span", null, `:${c.name}:`),
+            c.kind === "custom" ? h("span", { class: "hint" }, "내 이모지") : null,
+          ),
+        ),
+      );
+    }
+    mentionBox.setAttribute("aria-label", "부를 캐릭터");
+    const at = mentionAt(input.value, caret);
     const cast = (chat?.characterIds || []).map((id) => index.get(id)).filter(Boolean);
     const choices = at
       ? mentionChoices(
@@ -1595,6 +1784,12 @@ export function convoScreen({ mount, args, go, back }) {
   async function slash(text) {
     // /scene (or /rp) [what kind of scene]: the Engine's scene start from this Convo; empty asks the planner to
     // build it from the conversation.
+    if (/^\/games?\s*$/i.test(text.trim())) return gamesSheet();
+    if (/^\/\S+/.test(text.trim())) {
+      const { turnGames, gameForCommand } = await import("../lib/games.js");
+      const g = gameForCommand(text, await turnGames());
+      if (g) return openGame(g);
+    }
     const sc = /^\/(scene|rp)(?:\s+([\s\S]*))?$/i.exec(text.trim());
     if (sc) {
       if (!sc[2]?.trim() && !messages.length)

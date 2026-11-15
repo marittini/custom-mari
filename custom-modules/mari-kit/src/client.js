@@ -645,6 +645,9 @@ async function openFromShell() {
   const ui = host.stores.ui.getState;
   const chat = host.stores.chat.getState;
   if (target.chatId) {
+    // A command typed for the visitor (a mini-game's "/uno"): the composer reads the draft when the chat opens.
+    if (typeof target.draft === "string" && target.draft)
+      chat().setInputDraft?.(target.chatId, target.draft.slice(0, 200));
     if (chat().activeChatId !== target.chatId) chat().setActiveChatId?.(target.chatId);
     await waitFor(() => chat().activeChatId === target.chatId);
   }

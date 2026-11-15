@@ -38,6 +38,20 @@ async function api(method, path, body) {
   return res.status === 204 ? null : res.json();
 }
 const ids = (v) => (typeof v === "string" ? JSON.parse(v) : v) || [];
+const PNG = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==";
+/** Uploads a tiny picture as a global sticker or custom emoji (the Engine's multipart route). */
+async function uploadPicture(route, name) {
+  const form = new FormData();
+  form.append("name", name);
+  form.append("file", new Blob([Buffer.from(PNG, "base64")], { type: "image/png" }), `${name}.png`);
+  const res = await fetch(`${base}/api${route}/upload`, {
+    method: "POST",
+    headers: { "x-marinara-csrf": "1" },
+    body: form,
+  });
+  if (!res.ok) throw new Error(`upload ${route}: ${res.status} ${await res.text()}`);
+  return res.json();
+}
 const meta = async (id) => {
   const c = await api("GET", `/chats/${id}`);
   return typeof c.metadata === "string" ? JSON.parse(c.metadata) : c.metadata || {};
@@ -458,6 +472,94 @@ const flows = {
     );
     if ((await meta(convo.id)).activeSceneChatId) throw new Error("the Convo still points at the scene");
     await until(async () => !(await page.locator(".scnbar").count()), 5000, "banner gone");
+  },
+
+  // The ☺ media panel (the Engine's): where the keyboard was, the text box as wide as before; an emoji and a kaomoji
+  // go in at the caret and into the recents the Engine reads; a custom emoji (★) as ":name:", shown as a picture in
+  // the sent message; ":smi" completes; a sticker sent at once; the chat's emoji selection; /games with none
+  // installed; the Engine opened with a command typed for the visitor.
+  async "convo-media"({ page }) {
+    await uploadPicture("/custom-stickers", "e2e_wave");
+    await uploadPicture("/custom-emojis", "e2e_blob");
+    await page.setViewportSize({ width: 360, height: 780 });
+    await open(page);
+    await goIn(page, `#/convo/${encodeURIComponent(convo.id)}`);
+    const box = page.locator(".cin");
+    await box.waitFor();
+    const before = (await box.boundingBox()).width;
+    await page.getByRole("button", { name: "이모지·스티커" }).click();
+    await page.locator(".mpanel").waitFor();
+    const during = (await box.boundingBox()).width;
+    if (Math.abs(during - before) > 1) throw new Error(`text box changed width with the panel: ${before} → ${during}`);
+    await page.locator(".mp-e").filter({ hasText: "😂" }).first().click();
+    await page.getByRole("tab", { name: "카오모지" }).click();
+    await page.locator(".mp-k").first().click();
+    const typed = await box.inputValue();
+    if (!typed.startsWith("😂")) throw new Error(`emoji not inserted: ${typed}`);
+    if (typed.length < 4) throw new Error(`kaomoji not inserted: ${typed}`);
+    const recents = await page.evaluate(() => JSON.parse(localStorage.getItem("marinara-recent-media-v1") || "{}"));
+    if (recents.emoji?.[0]?.value !== "😂" || !recents.kaomoji?.length)
+      throw new Error("recents not shared with the Engine");
+    await snap(page, "media-panel");
+    // ★ custom emoji → ":e2e_blob:", sent and drawn as a picture.
+    await page.getByRole("tab", { name: "이모지" }).click();
+    await page.getByRole("tab", { name: "내 이모지" }).click();
+    await page.getByRole("button", { name: ":e2e_blob:" }).click();
+    if (!(await box.inputValue()).includes(":e2e_blob:")) throw new Error("custom emoji not inserted");
+    await box.click(); // the keyboard comes back in place of the panel
+    if (await page.locator(".mpanel").isVisible()) throw new Error("panel stayed open over the keyboard");
+    const sent = await box.inputValue();
+    await page.getByRole("button", { name: "보내기" }).click();
+    await until(
+      async () => (await api("GET", `/chats/${convo.id}/messages`)).some((m) => m.content === sent),
+      10000,
+      "message with emojis sent",
+    );
+    await page.locator(".bub.me img.cemoji").first().waitFor({ timeout: 10000 });
+    // ":smi" completes from the Engine's shortcodes.
+    await box.click();
+    await box.pressSequentially(":smi");
+    await page
+      .locator(".mbox")
+      .getByRole("option", { name: /:smile:/ })
+      .click();
+    if (!(await box.inputValue()).includes("😄")) throw new Error(`shortcode not completed: ${await box.inputValue()}`);
+    await box.fill("");
+    // A sticker sent at once.
+    await page.getByRole("button", { name: "이모지·스티커" }).click();
+    await page.getByRole("tab", { name: "스티커" }).click();
+    await page.getByRole("button", { name: "e2e_wave" }).first().click();
+    await page.getByRole("button", { name: "바로 보내기" }).click();
+    await until(
+      async () => (await api("GET", `/chats/${convo.id}/messages`)).some((m) => m.content === "sticker:e2e_wave:"),
+      10000,
+      "sticker sent",
+    );
+    // How characters are offered emojis, from the panel.
+    await page.getByRole("button", { name: "이모지·스티커" }).click();
+    await page.getByRole("tab", { name: "스티커" }).click();
+    await page.getByRole("button", { name: "캐릭터 고르는 방식" }).click();
+    await page.getByRole("radio", { name: "무작위" }).click();
+    await until(async () => (await meta(convo.id)).customEmojiSelection?.mode === "random", 5000, "selection saved");
+    await page.locator(".psheet").getByRole("button", { name: "닫기", exact: true }).click();
+    // /games with nothing installed says so.
+    await box.click();
+    await box.fill("/games");
+    await page.getByRole("button", { name: "보내기" }).click();
+    await page.getByText("설치한 게임이 없어요").waitFor();
+    await page.keyboard.press("Escape");
+    // The Engine opens at this chat with a command typed (what a game pick does).
+    await page.evaluate((id) => {
+      sessionStorage.setItem("mari-kit:engine-tab", "1");
+      sessionStorage.setItem("mari-kit:open", JSON.stringify({ chatId: id, draft: "/help " }));
+      localStorage.setItem("marinara-active-chat-id", id);
+      location.href = "/";
+    }, convo.id);
+    await until(
+      async () => (await page.locator("textarea").evaluateAll((els) => els.map((e) => e.value))).includes("/help "),
+      45000,
+      "command typed in the Engine's composer",
+    );
   },
 
   // Reactions and replies (the Engine's data): react from the quick row and take it back, see a character's

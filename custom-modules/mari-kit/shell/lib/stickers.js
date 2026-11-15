@@ -1,6 +1,7 @@
-import { api, upload } from "./api.js";
+import { api, upload, saveBlob } from "./api.js";
 import { h, setChildren } from "./h.js";
-import { ask, sheet } from "./ui.js";
+import { ask, sheet, toast } from "./ui.js";
+import { emojiParts } from "./media.js";
 
 const STRINGS = {
   en: {
@@ -66,6 +67,36 @@ const STRINGS = {
   },
 };
 
+/** The custom emoji manager reuses the sticker one with these words, its route and its size limit (Engine: 256px). */
+const EMOJI_KO = {
+  title: "내 이모지",
+  search: "이모지 검색",
+  close: "이모지 관리 닫기",
+  loading: "이모지 불러오는 중…",
+  empty: "일치하는 이모지가 없어요.",
+  failed: "이모지를 불러오지 못했어요.",
+  add: "이모지 추가",
+  manage: "전체 이모지 관리",
+  save: "이모지 저장",
+  constraints:
+    "영문 소문자, 숫자, 밑줄로 1~32자. JPG, PNG, GIF, WebP, AVIF, 최대 256 × 256 픽셀. 메시지에는 :이름: 으로 들어가요.",
+  duplicate: "같은 이름의 이모지가 있어요.",
+  unnamed: "이모지",
+  nameRequired: "올바른 이모지 이름을 입력해 주세요.",
+  confirmDelete: (name) => `전체 이모지 “${name}”을(를) 삭제할까요?`,
+};
+const KINDS = {
+  sticker: { route: "/custom-stickers", file: "marinara-custom-stickers.json", key: "stickers", words: {} },
+  emoji: { route: "/custom-emojis", file: "marinara-custom-emojis.json", key: "emojis", words: EMOJI_KO },
+};
+const SHARED_KO = {
+  exportAll: "내보내기",
+  importFile: "가져오기",
+  exported: (n) => `${n}개를 내보냈어요`,
+  imported: (n, skipped) => `${n}개를 가져왔어요${skipped ? ` · 같은 이름 ${skipped}개는 건너뜀` : ""}`,
+  badFile: "가져올 수 없는 파일이에요",
+};
+
 export function stickerLabel(key) {
   const lang = String(document.documentElement.lang || "ko")
     .toLowerCase()
@@ -76,8 +107,8 @@ export function stickerLabel(key) {
 }
 
 const enc = (v) => encodeURIComponent(v);
-const stickerRows = (rows) =>
-  (Array.isArray(rows) ? rows : []).filter((r) => r?.customKind === "sticker" && r.customName && safeUrl(r.url));
+const galleryRows = (rows, kind) =>
+  (Array.isArray(rows) ? rows : []).filter((r) => r?.customKind === kind && r.customName && safeUrl(r.url));
 function safeUrl(value) {
   return (
     typeof value === "string" &&
@@ -92,8 +123,11 @@ function labelOf(character, index) {
   return typeof item === "string" ? item : item?.displayName || item?.name || item?.title || stickerLabel("character");
 }
 
-/** Resolve native global, persona, then character sticker galleries. Later sources shadow earlier names. */
-export function resolveStickers(globals = [], personaImages = [], characters = []) {
+/**
+ * Resolve the global pool, then the persona's and each character's gallery images tagged with this kind ("sticker"
+ * or "emoji", the Engine's customKind). Later sources shadow earlier names, like the Engine.
+ */
+export function resolveCustom(kind, globals = [], personaImages = [], characters = []) {
   const byName = new Map();
   for (const row of Array.isArray(globals) ? globals : []) {
     if (row?.name && safeUrl(row.url))
@@ -105,7 +139,7 @@ export function resolveStickers(globals = [], personaImages = [], characters = [
         id: row.id,
       });
   }
-  for (const row of stickerRows(personaImages)) {
+  for (const row of galleryRows(personaImages, kind)) {
     byName.set(row.customName, {
       name: row.customName,
       url: row.url,
@@ -115,7 +149,7 @@ export function resolveStickers(globals = [], personaImages = [], characters = [
   }
   for (const character of Array.isArray(characters) ? characters : []) {
     const source = character?.name || stickerLabel("character");
-    for (const row of stickerRows(character?.images)) {
+    for (const row of galleryRows(character?.images, kind)) {
       byName.set(row.customName, { name: row.customName, url: row.url, source, editable: false });
     }
   }
@@ -126,11 +160,16 @@ export function resolveStickers(globals = [], personaImages = [], characters = [
     globals: (Array.isArray(globals) ? globals : []).filter((r) => r?.id && r?.name && safeUrl(r.url)),
   };
 }
+export const resolveStickers = (globals, personaImages, characters) =>
+  resolveCustom("sticker", globals, personaImages, characters);
 
-/** Fetch the sticker sources needed by this chat. Gallery endpoints are optional; the global pool is required. */
+/**
+ * Fetch this chat's stickers and custom emojis (one read of each gallery serves both). The sticker pool is required;
+ * the emoji pool and galleries are optional. Returns the stickers with `.emojis` (same shape).
+ */
 export async function loadStickers(chat = {}, index = new Map()) {
   const chars = [...new Set(chat?.characterIds || [])].filter((id) => typeof id === "string" && id);
-  const jobs = [api.get("/custom-stickers")];
+  const jobs = [api.get("/custom-stickers"), api.get("/custom-emojis").catch(() => [])];
   const persona = chat?.personaId ? jobs.length : -1;
   if (persona >= 0) jobs.push(api.get(`/characters/personas/${enc(chat.personaId)}/gallery`).catch(() => []));
   const charStart = jobs.length;
@@ -138,11 +177,28 @@ export async function loadStickers(chat = {}, index = new Map()) {
   const result = await Promise.all(jobs);
   const personaImages = persona >= 0 ? result[persona] : [];
   const characters = chars.map((id, i) => ({ name: labelOf({ id }, index), images: result[charStart + i] }));
-  return resolveStickers(result[0], personaImages, characters);
+  return {
+    ...resolveCustom("sticker", result[0], personaImages, characters),
+    emojis: resolveCustom("emoji", result[1], personaImages, characters),
+  };
 }
 
-/** Convert only known sticker:name: tokens into images; all other content remains text nodes. */
-export function stickerContent(text, map) {
+/** Text with ":name:" custom emojis as small pictures and standard shortcodes as emojis (the Engine's Convo). */
+function withEmoji(text, emoji) {
+  if (!emoji || !text.includes(":")) return [document.createTextNode(text)];
+  const { parts, jumbo } = emojiParts(text, emoji.map, emoji.resolve);
+  return parts.map((p) =>
+    p.url && safeUrl(p.url)
+      ? h("img", { class: jumbo ? "cemoji big" : "cemoji", src: p.url, alt: p.alt, title: p.alt, loading: "lazy" })
+      : document.createTextNode(p.url ? p.alt : (p.emoji ?? p.text)),
+  );
+}
+
+/**
+ * Convert only known sticker:name: tokens into images; all other content remains text. With `emoji`
+ * ({ map, resolve }), ":name:" custom emojis and standard shortcodes in that text are shown too.
+ */
+export function stickerContent(text, map, emoji = null) {
   const source = String(text ?? "");
   const entries = map instanceof Map ? map : new Map(Object.entries(map || {}));
   const token = /\bsticker:([a-z0-9_]{1,32}):/g;
@@ -152,11 +208,11 @@ export function stickerContent(text, map) {
     const url = entries.get(match[1]);
     if (!url || !safeUrl(url)) continue;
     const at = match.index;
-    if (at > pos) out.push(document.createTextNode(source.slice(pos, at)));
+    if (at > pos) out.push(...withEmoji(source.slice(pos, at), emoji));
     out.push(h("img", { class: "sticker-image", src: url, loading: "lazy", decoding: "async", alt: match[0] }));
     pos = at + match[0].length;
   }
-  if (pos < source.length || !out.length) out.push(document.createTextNode(source.slice(pos)));
+  if (pos < source.length || !out.length) out.push(...withEmoji(source.slice(pos), emoji));
   return out;
 }
 
@@ -172,10 +228,15 @@ const cleanName = (value) =>
     .trim()
     .toLowerCase();
 const validName = (value) => /^[a-z0-9_]{1,32}$/.test(value);
-const errText = (error) => (error?.status === 409 ? stickerLabel("duplicate") : error?.message || String(error));
 
-/** Existing bottom-sheet picker with global sticker CRUD and read-only gallery entries. */
-export function stickerPicker({ load, onPick, onClose } = {}) {
+/**
+ * Bottom-sheet picker with global CRUD, export / import (the Engine's files) and read-only gallery entries. kind:
+ * "sticker" (default) or "emoji" (the chat's custom emojis: same sheet, their route, words and size limit).
+ */
+export function stickerPicker({ load, onPick, onClose, kind = "sticker" } = {}) {
+  const K = KINDS[kind] || KINDS.sticker;
+  const label = (key) => K.words[key] ?? SHARED_KO[key] ?? label(key);
+  const errText = (error) => (error?.status === 409 ? label("duplicate") : error?.message || String(error));
   let closed = false;
   let busy = false;
   let loading = true;
@@ -257,13 +318,13 @@ export function stickerPicker({ load, onPick, onClose } = {}) {
   const makeGrid = () => {
     const needle = query.trim().toLowerCase();
     const sourceList = manage
-      ? (resolved.globals || []).map((row) => ({ ...row, source: stickerLabel("global"), editable: true }))
+      ? (resolved.globals || []).map((row) => ({ ...row, source: label("global"), editable: true }))
       : resolved.list || [];
     const list = sourceList.filter(
       (row) => !needle || row.name.toLowerCase().includes(needle) || row.source.toLowerCase().includes(needle),
     );
-    if (loading) return h("div", { class: "sticker-state", role: "status" }, stickerLabel("loading"));
-    if (!list.length) return h("div", { class: "sticker-state" }, stickerLabel("empty"));
+    if (loading) return h("div", { class: "sticker-state", role: "status" }, label("loading"));
+    if (!list.length) return h("div", { class: "sticker-state" }, label("empty"));
     return h(
       "div",
       { class: "sticker-grid" },
@@ -288,7 +349,7 @@ export function stickerPicker({ load, onPick, onClose } = {}) {
             ? h(
                 "div",
                 { class: "sticker-manage" },
-                h("button", { type: "button", class: "pill", onClick: () => startEdit(row) }, stickerLabel("rename")),
+                h("button", { type: "button", class: "pill", onClick: () => startEdit(row) }, label("rename")),
                 h(
                   "button",
                   {
@@ -296,8 +357,8 @@ export function stickerPicker({ load, onPick, onClose } = {}) {
                     class: "pill",
                     onClick: (event) =>
                       mutate(event.currentTarget, async () => {
-                        if (!(await ask(stickerLabel("confirmDelete")(row.name))) || !alive()) return;
-                        await api.delete(`/custom-stickers/${enc(row.id)}`);
+                        if (!(await ask(label("confirmDelete")(row.name))) || !alive()) return;
+                        await api.delete(`${K.route}/${enc(row.id)}`);
                         if (!alive()) return;
                         await refresh();
                         if (!alive()) return;
@@ -305,7 +366,7 @@ export function stickerPicker({ load, onPick, onClose } = {}) {
                         draw();
                       }),
                   },
-                  stickerLabel("delete"),
+                  label("delete"),
                 ),
               )
             : null,
@@ -322,22 +383,22 @@ export function stickerPicker({ load, onPick, onClose } = {}) {
       mutate(button, async () => {
         const name = cleanName(formName?.value ?? (editing ? editName : draftName));
         if (!validName(name)) {
-          report(new Error(stickerLabel("nameRequired")));
+          report(new Error(label("nameRequired")));
           formName?.focus();
           return;
         }
         if (editing) {
-          await api.patch(`/custom-stickers/${enc(editId)}`, { name });
+          await api.patch(`${K.route}/${enc(editId)}`, { name });
         } else {
           const file = fileInput?.files?.[0] || draftFile;
           if (!file) {
-            report(new Error(stickerLabel("fileRequired")));
+            report(new Error(label("fileRequired")));
             return;
           }
           const form = new FormData();
           form.append("name", name);
           form.append("file", file);
-          await upload("/custom-stickers/upload", form);
+          await upload(`${K.route}/upload`, form);
         }
         if (!alive()) return;
         draftName = "";
@@ -354,7 +415,7 @@ export function stickerPicker({ load, onPick, onClose } = {}) {
       maxlength: "32",
       autocomplete: "off",
       value: editing ? editName : draftName,
-      "aria-label": stickerLabel("name"),
+      "aria-label": label("name"),
       onInput: (e) => {
         if (busy) return;
         if (editing) editName = e.target.value;
@@ -368,7 +429,7 @@ export function stickerPicker({ load, onPick, onClose } = {}) {
           class: "sticker-field",
           type: "file",
           accept: "image/jpeg,image/png,image/gif,image/webp,image/avif",
-          "aria-label": stickerLabel("file"),
+          "aria-label": label("file"),
           onChange: (e) => {
             if (busy) return;
             draftFile = e.target.files?.[0] || null;
@@ -378,7 +439,7 @@ export function stickerPicker({ load, onPick, onClose } = {}) {
     const saveBtn = h(
       "button",
       { type: "button", class: "pill main", onClick: (e) => save(e.currentTarget) },
-      stickerLabel("save"),
+      label("save"),
     );
     return h(
       "form",
@@ -389,9 +450,9 @@ export function stickerPicker({ load, onPick, onClose } = {}) {
           save(saveBtn);
         },
       },
-      h("label", null, stickerLabel("name"), nameField),
-      editing ? null : h("label", null, stickerLabel("file"), input),
-      editing ? null : h("small", { class: "sticker-constraints" }, stickerLabel("constraints")),
+      h("label", null, label("name"), nameField),
+      editing ? null : h("label", null, label("file"), input),
+      editing ? null : h("small", { class: "sticker-constraints" }, label("constraints")),
       h(
         "div",
         { class: "sticker-form-actions" },
@@ -407,7 +468,7 @@ export function stickerPicker({ load, onPick, onClose } = {}) {
               draw();
             },
           },
-          stickerLabel("cancel"),
+          label("cancel"),
         ),
         saveBtn,
       ),
@@ -422,20 +483,16 @@ export function stickerPicker({ load, onPick, onClose } = {}) {
       h(
         "div",
         { class: "sticker-head" },
-        h("b", null, stickerLabel("title")),
-        h(
-          "button",
-          { type: "button", class: "ib sticker-close", "aria-label": stickerLabel("close"), onClick: close },
-          "×",
-        ),
+        h("b", null, label("title")),
+        h("button", { type: "button", class: "ib sticker-close", "aria-label": label("close"), onClick: close }, "×"),
       ),
       h(
         "label",
         { class: "sticker-search" },
-        h("span", { class: "sr" }, stickerLabel("search")),
+        h("span", { class: "sr" }, label("search")),
         (searchInput = h("input", {
           type: "search",
-          placeholder: stickerLabel("search"),
+          placeholder: label("search"),
           value: query,
           onInput: (e) => {
             if (busy) return;
@@ -451,7 +508,7 @@ export function stickerPicker({ load, onPick, onClose } = {}) {
             "div",
             { class: "sticker-inline-error", role: "alert" },
             error,
-            h("button", { type: "button", class: "pill", onClick: refresh }, stickerLabel("retry")),
+            h("button", { type: "button", class: "pill", onClick: refresh }, label("retry")),
           )
         : null,
       makeGrid(),
@@ -476,7 +533,7 @@ export function stickerPicker({ load, onPick, onClose } = {}) {
               }
             },
           },
-          stickerLabel("add"),
+          label("add"),
         ),
         h(
           "button",
@@ -492,7 +549,50 @@ export function stickerPicker({ load, onPick, onClose } = {}) {
               draw();
             },
           },
-          stickerLabel("manage"),
+          label("manage"),
+        ),
+        // The Engine's export / import files (marinara-custom-stickers.json, marinara-custom-emojis.json).
+        h(
+          "button",
+          {
+            type: "button",
+            class: "pill",
+            disabled: busy,
+            onClick: (e) =>
+              mutate(e.currentTarget, async () => {
+                const out = await api.post(`${K.route}/export`, {});
+                saveBlob(new Blob([JSON.stringify(out)], { type: "application/json" }), K.file);
+                toast(label("exported")((out?.[K.key] || []).length));
+              }),
+          },
+          label("exportAll"),
+        ),
+        h(
+          "label",
+          { class: "pill sticker-import" },
+          label("importFile"),
+          h("input", {
+            type: "file",
+            accept: "application/json,.json",
+            hidden: true,
+            onChange: (e) => {
+              const file = e.target.files?.[0];
+              e.target.value = "";
+              if (!file) return;
+              mutate(null, async () => {
+                let parsed;
+                try {
+                  parsed = JSON.parse(await file.text());
+                } catch {
+                  throw new Error(label("badFile"));
+                }
+                if (!Array.isArray(parsed?.[K.key])) throw new Error(label("badFile"));
+                const res = await api.post(`${K.route}/import`, { [K.key]: parsed[K.key] });
+                await refresh();
+                toast(label("imported")(res?.imported ?? 0, res?.skipped ?? 0));
+              });
+            },
+          }),
         ),
       ),
     );
@@ -503,7 +603,7 @@ export function stickerPicker({ load, onPick, onClose } = {}) {
   let sheetEl;
   // sheet() owns the visible section; alive() uses the assigned element after construction.
   const handle = sheet(bodyNode, {
-    label: stickerLabel("title"),
+    label: label("title"),
     onClose: () => {
       closed = true;
       document.removeEventListener("keydown", onKey);
