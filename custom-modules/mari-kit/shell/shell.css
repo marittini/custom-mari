@@ -555,6 +555,11 @@ a {
 .r.two {
   grid-template-columns: minmax(0, 1fr) auto;
 }
+/* A row of only text and its value (no icon cell): two columns, so the text never lands in the 24px icon column
+   and breaks one letter per line. Covers every such row, not only the ones marked .two. */
+.r:has(> :nth-child(2):last-child):not(:has(> :first-child:is(.ic, svg, img))) {
+  grid-template-columns: minmax(0, 1fr) auto;
+}
 .row {
   display: grid;
   grid-template-columns: 40px minmax(0, 1fr) auto;

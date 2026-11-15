@@ -116,7 +116,8 @@ Each check prints one line; a toured screen prints its transfer; a failure print
 
 When you add a flow to `shell-e2e.mjs`, add it to `FLOW_SCREENS` too (its fallback before it has a record).
 
-Every flow and every toured screen is also checked for layout faults (`layoutFaults` in `scripts/e2e/screens.mjs`):
+Flows run at 360px (a phone's narrowest common width). Every flow and every toured screen is also checked for
+layout faults (`layoutFaults` in `scripts/e2e/screens.mjs`):
 text squeezed into a one- or two-letter column, an icon button that draws nothing, a `.r` row with fewer cells than
 its grid has columns, and text running off the screen. A fault fails the check; fix it, do not loosen the check.
 

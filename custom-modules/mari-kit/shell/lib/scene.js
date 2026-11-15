@@ -226,7 +226,7 @@ export async function sceneSetup({ chat, index, from }) {
               "button",
               {
                 type: "button",
-                class: "r",
+                class: "r two",
                 role: "switch",
                 "aria-checked": auto ? "true" : "false",
                 disabled: !cast.length,

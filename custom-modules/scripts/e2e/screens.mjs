@@ -147,8 +147,12 @@ export function layoutFaults(root = document.body) {
     if (text.length < 4 || !el || !visible(el)) continue;
     const range = document.createRange();
     range.selectNodeContents(n);
-    const lines = new Set([...range.getClientRects()].filter((r) => r.width > 0).map((r) => Math.round(r.top)));
-    if (lines.size >= 3 && text.length / lines.size <= 2.2) out.add(`squeezed: ${n.textContent.trim().slice(0, 16)}`);
+    const rects = [...range.getClientRects()].filter((r) => r.width > 0);
+    const lines = new Set(rects.map((r) => Math.round(r.top)));
+    // Three or more lines, none wider than about three characters: the box had no room, not a wrapped sentence.
+    const em = parseFloat(getComputedStyle(el).fontSize) || 14;
+    if (lines.size >= 3 && Math.max(...rects.map((r) => r.width)) < 3.5 * em)
+      out.add(`squeezed: ${n.textContent.trim().slice(0, 16)}`);
   }
   for (const b of root.querySelectorAll("button, [role=button], a")) {
     if (!visible(b) || b.textContent.trim() || b.querySelector("img")) continue;

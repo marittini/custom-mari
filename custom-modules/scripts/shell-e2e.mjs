@@ -156,18 +156,24 @@ await api("PATCH", `/chats/${scheduled.id}/metadata`, { conversationSchedulesEna
 
 const browser = await chromium.launch();
 async function phone() {
-  const ctx = await browser.newContext({ ...devices["Pixel 7"] });
+  // A phone, at the 360px width every screen must fit (a Pixel 7 is 412px: narrow-screen faults hid there).
+  const ctx = await browser.newContext({ ...devices["Pixel 7"], viewport: { width: 360, height: 780 } });
   const page = await ctx.newPage();
   const errors = [];
   page.on("pageerror", (e) => errors.push(e.message));
-  // Every screen and sheet a flow shows is checked for layout faults as it appears (e2e/screens.mjs layoutFaults).
+  // Every screen and sheet a flow shows is checked for layout faults as it appears (e2e/screens.mjs layoutFaults);
+  // they are kept here, outside the page, so a reload in the middle of a flow does not lose them.
+  const faults = new Set();
+  await page.exposeBinding("__mariFault", (_source, f) => faults.add(f));
+  // Right before the next frame after any change (once per frame: a screen that keeps changing is still checked,
+  // and a flow that moves on at once does not skip it), and once more when the flow ends.
   await page.addInitScript(`(() => {
     const layoutFaults = ${layoutFaults.toString()};
-    window.__faults = new Set();
+    const check = () => layoutFaults().forEach((f) => window.__mariFault(location.hash + " " + f));
+    window.__mariCheck = check;
     let t = 0;
     new MutationObserver(() => {
-      clearTimeout(t);
-      t = setTimeout(() => layoutFaults().forEach((f) => window.__faults.add(location.hash + " " + f)), 250);
+      if (!t) t = requestAnimationFrame(() => ((t = 0), check()));
     }).observe(document, { childList: true, subtree: true });
   })()`);
   if (coverageOut) {
@@ -178,7 +184,7 @@ async function phone() {
     });
     recording.pages.push(page);
   }
-  return { ctx, page, errors };
+  return { ctx, page, errors, faults };
 }
 // What the running flow used (with --coverage): its pages' coverage and the Engine routes they called.
 let recording = { pages: [], routes: new Set() };
@@ -412,7 +418,9 @@ const flows = {
     await page.getByRole("button", { name: "칸 고치기" }).click();
     await page.getByRole("button", { name: "＋ 칸 추가" }).click();
     const added = page.locator(".eblk").last();
-    await added.getByLabel(/하는 일$/).fill("e2e 산책");
+    // A long activity next to a time that crosses noon: the time keeps its line, the activity wraps (owner's
+    // screenshot: "오전 10:00 – 오후 1:00" broken one letter per line).
+    await added.getByLabel(/하는 일$/).fill("e2e 산책 겸 하트랜드 타워 원거리 감시 및 데이터 수집");
     await added.getByRole("radio", { name: "바쁨" }).click();
     await snap(page, "schedule-edit");
     await page.getByRole("button", { name: "다른 요일에 복사…" }).click();
@@ -420,11 +428,11 @@ const flows = {
     await snap(page, "schedule-copy");
     await page.getByRole("button", { name: "1개 요일에 복사" }).click();
     await page.getByRole("button", { name: "저장", exact: true }).click();
-    await page.locator(".wblocks").getByText("e2e 산책").waitFor({ timeout: 10000 });
+    await page.locator(".wblocks").getByText("e2e 산책 겸", { exact: false }).waitFor({ timeout: 10000 });
     const card = await api("GET", `/characters/${rin.id}`);
     const saved = (typeof card.data === "string" ? JSON.parse(card.data) : card.data).extensions.conversationSchedule;
     for (const d of ["Sunday", "Monday"]) {
-      const b = saved.days[d].find((x) => x.activity === "e2e 산책");
+      const b = saved.days[d].find((x) => x.activity.startsWith("e2e 산책"));
       if (!b || b.status !== "dnd" || saved.days[d].length !== 3)
         throw new Error(`${d} not saved: ${JSON.stringify(saved.days[d])}`);
     }
@@ -1019,9 +1027,9 @@ for (const [name, run] of Object.entries(flows)) {
   const t = Date.now();
   try {
     await run(s);
-    await s.page.waitForTimeout(300);
-    const faults = await s.page.evaluate(() => [...(window.__faults || [])]).catch(() => []);
-    if (faults.length) throw new Error(`layout: ${faults.slice(0, 4).join(" | ")}`);
+    await s.page.evaluate(() => window.__mariCheck?.()).catch(() => {});
+    await s.page.waitForTimeout(100);
+    if (s.faults.size) throw new Error(`layout: ${[...s.faults].slice(0, 4).join(" | ")}`);
     console.log(`PASS ${name} (${((Date.now() - t) / 1000).toFixed(1)}s)`);
     if (coverageOut) await keepCoverage(name);
   } catch (error) {
