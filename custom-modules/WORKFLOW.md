@@ -96,6 +96,8 @@ is not checked again; `--base origin/main` checks the whole branch. It picks (`s
   changed function, built an element a changed CSS rule styles, or called a changed server feature's routes. A
   change to one flow in `shell-e2e.mjs` runs that flow; a change to its shared setup runs all. A flow with no record
   yet falls back to the screens it opens (`FLOW_SCREENS`);
+- the old Mari Kit regressions in `scripts/regressions/mari-kit-*.mjs` that load a changed file through their
+  imports (they run outside a browser, so code that assumes `location` or `document` breaks them);
 - the tests in `custom-modules/tests/` that changed or name a changed file. A test that needs an Engine is named
   `*.engine.test.mjs`; the Engine starts only when something needs it.
 

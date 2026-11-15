@@ -14,7 +14,7 @@ let next = 0;
 let voiceChat = null;
 
 /** The chat the address is in (#/convo/<id>, #/rp/<id>, #/memory/<id>/…, #/chat-settings/<id>/…, …), or null. */
-export function routeChat(hash = location.hash) {
+export function routeChat(hash = globalThis.location?.hash ?? "") {
   const m = /^#\/(convo|rp|memory|chat-settings|weather|char-schedule|call-settings|reader)\/([^/?#]+)/.exec(hash);
   return m ? decodeURIComponent(m[2]) : null;
 }
@@ -22,6 +22,7 @@ const mine = (job, chat) => job.chat === null || job.chat === chat;
 
 let note = null;
 function drawNote() {
+  if (typeof document === "undefined") return; // (a test importing this outside a browser)
   const chat = routeChat();
   const shownInStrip = [...strips.values()].includes(chat);
   const rows = shownInStrip ? [] : [...jobs.values()].filter((j) => mine(j, chat));

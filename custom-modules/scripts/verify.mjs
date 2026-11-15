@@ -136,6 +136,9 @@ async function shellAndTests() {
   };
   await walk(join(kit, "mari-kit", "shell"));
   await walk(join(kit, "tests"));
+  for (const f of await readdir(join(root, "scripts", "regressions")).catch(() => []))
+    if (/^mari-kit-.*\.regression\.mjs$/.test(f))
+      files[`scripts/regressions/${f}`] = await readFile(join(root, "scripts", "regressions", f), "utf8");
   return files;
 }
 const files = await shellAndTests();
@@ -168,6 +171,7 @@ if (all) {
     text: (p) => readFileSync(join(root, p), "utf8"),
   });
   if (quick) Object.assign(plan, { api: false, sections: false, tests: [], flows: [], screens: [] });
+  // (regressions stay in --quick: they need no Engine and take a second each)
   console.log(`${changed.length} changed file(s) since ${since}`);
   const parts = [
     plan.format.length && `format ${plan.format.length}`,
@@ -176,6 +180,7 @@ if (all) {
     plan.api && "engine routes",
     plan.sections && "chat-settings sections",
     plan.tests.length && `tests ${plan.tests.join(",")}`,
+    plan.regressions.length && `regressions ${plan.regressions.join(",")}`,
     plan.flows.length && `flows ${plan.flows.join(",")}`,
     plan.screens.length && `screens ${plan.screens.join(",")}`,
   ].filter(Boolean);
@@ -304,6 +309,11 @@ for (const t of tests)
   await step(`Test ${t}`, async () => {
     const r = await run("node", [join(kit, "tests", t)], { env: base ? { ENGINE_URL: base } : {} });
     return { ok: r.ok, detail: r.ok ? "" : tail(r.out, 10) };
+  });
+for (const r of all ? [] : plan.regressions)
+  await step(`Regression ${r}`, async () => {
+    const res = await run("node", ["scripts/run-regressions.mjs", "--filter", r]);
+    return { ok: res.ok, detail: res.ok ? "" : tail(res.out) };
   });
 if (all)
   // Older Mari Kit tests that still live in the Engine's regression folder (WORK.md M-7 moves them).

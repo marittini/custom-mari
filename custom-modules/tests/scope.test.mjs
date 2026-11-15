@@ -54,6 +54,13 @@ p = planChecks(["custom-modules/scripts/shell-e2e.mjs"], files);
 assert.equal(p.screens.length, 4);
 assert.ok(p.flows.length >= 9);
 
+// An old regression that loads a changed file through its imports runs too (it runs outside a browser).
+p = planChecks([`${S}lib/h.js`], {
+  ...files,
+  "scripts/regressions/mari-kit-x.regression.mjs": 'import "../../custom-modules/mari-kit/shell/lib/reactions.js";',
+});
+assert.deepEqual(p.regressions, ["mari-kit-x.regression.mjs"]);
+
 // ── Flows by coverage (what each flow ran last time) ──
 assert.equal(shellPath("http://x/api/mari-kit/app/v/0123456789ab/lib/h.js?x"), `${S}lib/h.js`);
 assert.deepEqual(hunkLines("@@ -3,2 +3,0 @@\n@@ -10,0 +9,2 @@"), {

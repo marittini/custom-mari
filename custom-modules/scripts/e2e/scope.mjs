@@ -62,7 +62,7 @@ export function importsOf(path, text) {
  * (custom-modules/tests/*.test.mjs). ctx (optional, from verify.mjs): { coverage: { flow: { tree, files, routes } },
  * diff(tree, path) → { old, new } changed lines since that tree (null: unchanged), show(tree, path) → text | null,
  * base: the tree the change is measured from, text(path) → current text }.
- * Returns { format, parse, package, api, sections, tests, flows, screens, why }. flows / screens: arrays of names.
+ * Returns { format, parse, package, api, sections, tests, regressions, flows, screens, why }. flows / screens: arrays of names.
  */
 export function planChecks(changed, files, ctx = {}) {
   const why = {};
@@ -78,6 +78,7 @@ export function planChecks(changed, files, ctx = {}) {
     api: false,
     sections: false,
     tests: new Set(),
+    regressions: new Set(),
     flows: new Set(),
     screens: new Set(),
   };
@@ -204,6 +205,25 @@ export function planChecks(changed, files, ctx = {}) {
       note("tests", p);
     }
   }
+  // Old Mari Kit regressions (scripts/regressions/mari-kit-*.mjs) that load a changed shell file, directly or through
+  // its imports: they run outside a browser, so a change that assumes one breaks them.
+  const changedSet = new Set(changed);
+  for (const r of Object.keys(files).filter((p) =>
+    /^scripts\/regressions\/mari-kit-[\w-]+\.regression\.mjs$/.test(p),
+  )) {
+    const seen = new Set();
+    const walk = (p) => {
+      if (seen.has(p) || files[p] === undefined) return;
+      seen.add(p);
+      for (const q of importsOf(p, files[p])) walk(q);
+    };
+    walk(r);
+    const hit = [...seen].find((p) => changedSet.has(p));
+    if (hit) {
+      plan.regressions.add(r.slice("scripts/regressions/".length));
+      note("regressions", hit);
+    }
+  }
   // Tests that name a changed module.
   const changedBases = changed
     .filter((p) => p.startsWith("custom-modules/") && /\.m?js$/.test(p))
@@ -223,6 +243,7 @@ export function planChecks(changed, files, ctx = {}) {
   return {
     ...plan,
     tests: [...plan.tests].sort(),
+    regressions: [...plan.regressions].sort(),
     flows: [...plan.flows],
     screens: [...plan.screens].sort(),
     why,
