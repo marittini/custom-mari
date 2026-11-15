@@ -16,7 +16,7 @@ import { mkdir } from "node:fs/promises";
 import { fileURLToPath } from "node:url";
 import { tmpdir } from "node:os";
 import { startFakeLlm } from "./e2e/fake-llm.mjs";
-import { screenTour } from "./e2e/screens.mjs";
+import { offscreenText, screenTour } from "./e2e/screens.mjs";
 
 const here = dirname(fileURLToPath(import.meta.url));
 const args = process.argv.slice(2);
@@ -105,6 +105,16 @@ const convo = await newChat("e2e convo", "conversation", [a.id]);
 const group = await newChat("e2e group", "conversation", [a.id, b.id]);
 const rp = await newChat("e2e rp", "roleplay", [a.id]);
 const other = await newChat("e2e other", "conversation", [b.id]);
+// Text with no place to break (Japanese has no spaces; a long link) must still wrap at 360px on every screen that
+// shows messages: the screen tour fails on a sentence that runs off the screen.
+const LONG_JA = "大丈夫だよ、今日はどうだった？ずっと待ってたんだからね、もう少し早く電話してくれてもよかったのに。";
+const LONG_LINK = `https://example.com/${"e2e".repeat(30)}`;
+await api("POST", `/chats/${convo.id}/messages`, { role: "assistant", characterId: a.id, content: LONG_JA });
+await api("POST", `/chats/${rp.id}/messages`, {
+  role: "assistant",
+  characterId: a.id,
+  content: `「${LONG_JA}」\n\n${LONG_LINK}`,
+});
 // Its own character, because a status override lives on the character card (the Engine's presence).
 const yui = await api("POST", "/characters", { data: { name: "Yui", description: "e2e" } });
 const presence = await newChat("e2e presence", "conversation", [yui.id]);
@@ -653,7 +663,7 @@ const flows = {
         participantKind: "character",
         characterId: a.id,
         kind: "speech",
-        content: "여보세요? 늦었네",
+        content: `もしもし？遅かったね。${LONG_JA}`,
         extra: {},
       },
       { id: "u1", participantKind: "user", kind: "speech", content: "응 미안", extra: {} },
@@ -662,7 +672,7 @@ const flows = {
         participantKind: "character",
         characterId: a.id,
         kind: "speech",
-        content: "괜찮아, 오늘 어땠어?",
+        content: `괜찮아, 오늘 어땠어? ${LONG_JA}`,
         extra: {},
       },
     ];
@@ -712,6 +722,8 @@ const flows = {
     const capPx = await page.locator(".cx-line.now .cx-t").evaluate((e) => parseFloat(getComputedStyle(e).fontSize));
     if (capPx < 21) throw new Error(`caption should be large, got ${capPx}px`);
     await snap(page, "call-caption");
+    const offCap = await page.evaluate(offscreenText);
+    if (offCap.length) throw new Error(`call caption runs off the screen: ${offCap.join(" | ")}`);
     await page.locator(".cx-in").fill("좋았어");
     await page.locator(".cx-send").click();
     await page.locator(".cx-line.wait").filter({ hasText: "답하는 중" }).waitFor({ timeout: 3000 });
@@ -723,6 +735,8 @@ const flows = {
     if (!(await page.locator(".callx.subs-first[data-size='l']").count())) throw new Error("자막 choices not applied");
     if ((await page.locator(".cx-subs:not(.one) .cx-line").count()) < 3)
       throw new Error("지난 대사까지 should show every line");
+    const offList = await page.evaluate(offscreenText);
+    if (offList.length) throw new Error(`call subtitles run off the screen: ${offList.join(" | ")}`);
     await page.keyboard.press("Escape");
     await page
       .locator(".scrim")
@@ -746,6 +760,8 @@ const flows = {
     await page.locator(".callcard").first().click();
     await page.locator(".tlog").getByText("통화 기록").first().waitFor();
     await page.locator(".tlog").getByRole("button", { name: "전체 복사" }).waitFor();
+    const offLog = await page.evaluate(offscreenText);
+    if (offLog.length) throw new Error(`call record runs off the screen: ${offLog.join(" | ")}`);
     await api("PATCH", `/chats/${convo.id}/metadata`, { conversationCallsEnabled: false });
     await page.unroute("**/api/conversation-calls/**");
     await page.unroute("**/api/tts/config");

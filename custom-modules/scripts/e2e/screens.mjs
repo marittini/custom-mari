@@ -98,6 +98,37 @@ export const FLOW_SCREENS = {
 };
 
 /** Runs the tour (only screens drawn by `mods`, if given). Returns { rows, failed }. app: the shell URL. */
+/**
+ * Runs in the page: sentences (text nodes of 20+ characters) that reach past the screen's edge, because a line had no
+ * place to break (Japanese or Chinese with no spaces, a long link) and its box scrolls or clips sideways instead of
+ * wrapping. Short labels are left out (a chip row that scrolls sideways is a separate warning), and so are previews
+ * cut short with "…" or a line clamp.
+ */
+export function offscreenText(root = document.body) {
+  const out = [];
+  const walk = document.createTreeWalker(root, NodeFilter.SHOW_TEXT);
+  for (let n = walk.nextNode(); n; n = walk.nextNode()) {
+    const text = n.textContent.trim();
+    if (text.length < 20 || !n.parentElement?.getClientRects().length) continue;
+    // A preview cut short on purpose ("…" or a line clamp) is not a sentence running off.
+    let cut = false;
+    for (let el = n.parentElement; el && el !== document.body && !cut; el = el.parentElement) {
+      const cs = getComputedStyle(el);
+      cut = cs.textOverflow === "ellipsis" || (cs.webkitLineClamp && cs.webkitLineClamp !== "none");
+    }
+    if (cut) continue;
+    const range = document.createRange();
+    range.selectNodeContents(n);
+    for (const r of range.getClientRects()) {
+      if (r.width && (r.right > innerWidth + 1 || r.left < -1)) {
+        out.push(text.slice(0, 24));
+        break;
+      }
+    }
+  }
+  return [...new Set(out)].slice(0, 4);
+}
+
 export async function screenTour({ browser, app, ids, mods = null, shots = null, log = console.log }) {
   if (shots) await mkdir(shots, { recursive: true });
   const ctx = await browser.newContext({
@@ -145,7 +176,8 @@ export async function screenTour({ browser, app, ids, mods = null, shots = null,
       }
       return { wide, sideways: [...new Set(sideways)].slice(0, 4) };
     });
-    const bad = check.wide > 1 || errors.length > 0;
+    check.offscreen = await page.evaluate(offscreenText);
+    const bad = check.wide > 1 || check.offscreen.length > 0 || errors.length > 0;
     if (bad) failed += 1;
     rows.push({ name, hash, kb: bytes / 1024, ...check, errors: [...errors] });
     if (shots)
@@ -157,13 +189,14 @@ export async function screenTour({ browser, app, ids, mods = null, shots = null,
   for (const r of rows) {
     const notes = [
       r.wide > 1 ? `PAGE SCROLLS SIDEWAYS +${r.wide}px` : "",
+      r.offscreen.length ? `TEXT RUNS OFF THE SCREEN: ${r.offscreen.join(" | ")}` : "",
       r.errors.length ? `ERROR ${r.errors[0].slice(0, 120)}` : "",
       r.sideways.length ? `sideways: ${r.sideways.join(", ")}` : "",
     ]
       .filter(Boolean)
       .join(" · ");
     log(
-      `  ${r.wide > 1 || r.errors.length ? "FAIL" : "ok  "} ${r.name.padEnd(14)} ${r.kb.toFixed(1).padStart(7)}KB  ${notes}`,
+      `  ${r.wide > 1 || r.offscreen.length || r.errors.length ? "FAIL" : "ok  "} ${r.name.padEnd(14)} ${r.kb.toFixed(1).padStart(7)}KB  ${notes}`,
     );
   }
   if (shots) log(`  screenshots: ${shots}`);
