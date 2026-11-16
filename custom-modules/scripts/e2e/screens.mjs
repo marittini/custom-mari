@@ -170,9 +170,15 @@ export function layoutFaults(root = document.body) {
     if (!svg) continue;
     const drawn = [...svg.querySelectorAll("path, circle, rect, line, polyline, polygon")].some((p) => {
       const cs = getComputedStyle(p);
-      return (
-        (cs.fill !== "none" && cs.fill !== "transparent") || (cs.stroke !== "none" && parseFloat(cs.strokeWidth) > 0)
-      );
+      const filled = cs.fill !== "none" && cs.fill !== "transparent";
+      const stroked = cs.stroke !== "none" && parseFloat(cs.strokeWidth) > 0;
+      if (!filled && !stroked) return false;
+      // Lines as short as a dot ("h.01") draw nothing without round ends.
+      let length = Infinity;
+      try {
+        length = p.getTotalLength?.() ?? Infinity;
+      } catch {}
+      return filled || length >= 1 || cs.strokeLinecap !== "butt";
     });
     if (!drawn) out.add(`invisible: ${b.getAttribute("aria-label") || b.className || "button"}`);
   }

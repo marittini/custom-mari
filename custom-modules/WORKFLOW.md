@@ -147,6 +147,12 @@ real provider accounts (ElevenLabs, credits), Android WebView quirks.
 The owner's rules for anything drawn in the shell, from the mistakes that reached the owner. Read them before
 building UI; the layout ones are checked automatically (section 7).
 
+0. **Read the Engine's screen before drawing it.** Run the Engine, look at the screen at 360px and on a desktop,
+   measure it, and write down why it is built that way (what work it makes fast: scanning a long list, comparing
+   values down a column, editing in place). Keep those reasons; change only the look (monotone, fonts, spacing) and
+   what the Engine does badly on a phone, saying why. Show the owner the Engine, the plan and a mockup side by side
+   before building. (The first lorebook port turned the Engine's one-line, compare-down-the-column entry list into
+   two columns of cards and a page per entry, which broke both.)
 1. **No buttons, notices or steps nobody asked for.** No "＋ 새 답", "지금 답하게", "곧 대답합니다", "잠시 기다려 주세요".
    When porting an Engine feature, port what the Engine has, no more. Anything extra goes into the mockup first, as
    a question.
@@ -163,18 +169,13 @@ building UI; the layout ones are checked automatically (section 7).
    quietly picked up the presence sheet's margins and pushed cards off the screen.
 5. **Menus and lists are the existing ones.** A menu of actions is the quick-reply menu (`.qr`: icon and name per
    row), a longer choice is a `sheet` of `.r` rows, a setting is a row in `gcard`/`grow`. Chips are only for picking
-   one value out of a few (a size, a mode), never as a menu or a row of buttons.
-   5a. **Libraries are cards in columns.** Lists of things the user keeps (lorebooks and their entries, presets,
-   personas) are cards in `.cardgrid` (two columns at 360px; `sectioned(…, "cardgrid")` for folders), not one row a
-   line: `.lcard` for a card with its own switch, `.libcard` for a card that is one button. Chat lists and settings
-   rows stay rows.
-6. **Filled icons are filled.** `icon(path, size, 0)` draws a filled shape; never a line 0 wide.
-7. **No raw Engine text.** English system lines and ids are shown in Korean, in the shell's monotone style.
-8. **One flow, one place.** When two screens do the same thing (organize memory, make a voice clip), they share one
+   one value out of a few (a size, a mode), never as a menu or a row of buttons. 6. **Filled icons are filled.** `icon(path, size, 0)` draws a filled shape; never a line 0 wide.
+6. **No raw Engine text.** English system lines and ids are shown in Korean, in the shell's monotone style.
+7. **One flow, one place.** When two screens do the same thing (organize memory, make a voice clip), they share one
    `lib/` module. Number limits and defaults come from one constant (the server's, sent to the screen).
-9. **Say only what happened.** A notice never claims something that did not happen ("되돌렸어요" only after a real
+8. **Say only what happened.** A notice never claims something that did not happen ("되돌렸어요" only after a real
    restore).
-10. **Before reporting:** run the whole flow at 360px, back and reload included; look at the screenshots.
+9. **Before reporting:** run the whole flow at 360px, back and reload included; look at the screenshots.
 
 ## 9. Delegating
 

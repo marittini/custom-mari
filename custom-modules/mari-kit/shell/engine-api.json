@@ -159,6 +159,8 @@
     "GET /lorebooks/:id/entries/:id",
     "PATCH /lorebooks/:id/entries/:id",
     "DELETE /lorebooks/:id/entries/:id",
-    "DELETE /lorebooks/:id"
+    "DELETE /lorebooks/:id",
+    "PUT /lorebooks/:id/entries/reorder",
+    "PATCH /lorebooks/:id/folders/:id"
   ]
 }

@@ -33,7 +33,7 @@ export function tokensOf(text) {
   return Math.ceil(ascii / 4 + other / 1.6);
 }
 
-export function createEditor({ mount, title, label, back, record, save, more = null }) {
+export function createEditor({ mount, title, label, back, record, save, more = null, tab = null }) {
   let orig = clone(record);
   let draft = clone(record);
   const paths = new Set(); // every path a field edits
@@ -553,7 +553,9 @@ export function createEditor({ mount, title, label, back, record, save, more = n
   // Tabs: one section at a time; the chips wrap so every tab is in sight. The open tab is remembered while the
   // app is open (per editor), so coming back from a picker or a sheet keeps it.
   const tabKey = `mari-ed-tab:${title}`;
+  // `tab`: open on that section (a link to one entry opens its book on 항목).
   let current = (() => {
+    if (tab) return tab;
     try {
       return sessionStorage.getItem(tabKey) || "";
     } catch {

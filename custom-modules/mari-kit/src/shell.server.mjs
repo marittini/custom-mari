@@ -180,6 +180,12 @@ const loreKeys = (v) => {
   return Array.isArray(v) ? v.filter((k) => typeof k === "string").slice(0, 20) : [];
 };
 const loreFlag = (v, def = false) => (v === undefined || v === null ? def : v === true || v === "true" || v === 1);
+function loreTokens(text) {
+  let ascii = 0;
+  let other = 0;
+  for (const ch of text) ch.charCodeAt(0) < 128 ? (ascii += 1) : (other += 1);
+  return Math.ceil(ascii / 4 + other / 1.6);
+}
 /** What a lorebook entry row shows: never its content (only its length and first words). */
 export function slimLoreEntry(e) {
   const content = typeof e.content === "string" ? e.content : "";
@@ -197,7 +203,10 @@ export function slimLoreEntry(e) {
     folderId: e.folderId || null,
     tag: e.tag || "",
     locked: loreFlag(e.locked),
+    useRegex: loreFlag(e.useRegex),
     chars: content.length,
+    // The shell's own estimate (lib/editor.js tokensOf): about 4 ASCII characters or 1.6 others a token.
+    tokens: loreTokens(content),
     preview: content.replace(/\s+/g, " ").trim().slice(0, 80),
     updatedAt: e.updatedAt || null,
   };

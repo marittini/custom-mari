@@ -44,6 +44,9 @@ export function icon(d, size = 20, stroke = 1.5) {
       fill: stroke === 0 ? "currentColor" : "none",
       stroke: stroke === 0 ? "none" : "currentColor",
       "stroke-width": stroke || null,
+      // Round ends like the Engine's (lucide) icons; a dot drawn as a 0.01-long line ("h.01": ⋯, eyes) needs them.
+      "stroke-linecap": stroke === 0 ? null : "round",
+      "stroke-linejoin": stroke === 0 ? null : "round",
       "aria-hidden": "true",
     },
     ...[].concat(d).map((p) => h("path", { d: p })),

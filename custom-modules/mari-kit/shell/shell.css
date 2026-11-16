@@ -4266,29 +4266,46 @@ button.cx-line {
 .callx.typing .cx-ppl {
   display: none;
 }
-/* The lorebook library and editor (screens/lorebooks.js, lib/edit-lorebook.js): rows of a name (tap to open) and
-   its own switch, search and chips above, actions below. A switched-off book or entry is dimmed. */
-.lore-tools {
+/* Lorebooks (screens/lorebooks.js, lib/edit-lorebook.js, lib/lore-entries.js), in the Engine's grammar: one line per
+   book or entry, every line the same height so a list is scanned and compared top to bottom; an entry opens in place
+   under its line. A line: what opens it (name over keys, with position · order on the right), its switch, ⋯. */
+.lb-head {
   display: flex;
   flex-direction: column;
   gap: 10px;
   padding: 4px 20px 12px;
 }
-.lore-tools .ed-chiprow,
-.lore-cats {
+.lb-cats {
   flex-wrap: wrap;
 }
-.lore-tools .ed-hint {
-  margin: 0;
-}
-.lore-open {
+.lb-acts {
   display: flex;
-  flex-direction: column;
-  gap: 2px;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 8px;
+  padding: 20px 20px 8px;
+}
+.lb-line {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto auto;
+  align-items: center;
+  min-height: 56px;
+  border-bottom: 1px solid var(--line);
+}
+.list .lb-line {
+  padding: 0 4px 0 20px;
+}
+.lb-line:last-child {
+  border-bottom: 0;
+}
+.lb-open {
+  display: grid;
+  grid-template-columns: 18px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 8px;
   min-width: 0;
-  min-height: 44px;
-  justify-content: center;
-  padding: 0;
+  min-height: 52px;
+  padding: 4px 0;
   border: 0;
   background: transparent;
   color: inherit;
@@ -4296,116 +4313,237 @@ button.cx-line {
   text-align: left;
   cursor: pointer;
 }
-.lore-name {
+.lb-book .lb-open {
+  grid-template-columns: minmax(0, 1fr);
+}
+.lb-chev {
+  color: var(--ink-3);
+  font-size: 14px;
+  text-align: center;
+}
+.lb-txt {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  min-width: 0;
+}
+.lb-name {
   font-size: 15px;
+  font-weight: 500;
   overflow-wrap: anywhere;
-}
-.lore-name.off {
-  color: var(--ink-3);
-}
-.lore-open small {
-  font-size: 12px;
-  color: var(--ink-3);
-  overflow-wrap: anywhere;
-}
-.lore-open .lore-prev {
   display: -webkit-box;
   -webkit-line-clamp: 2;
   -webkit-box-orient: vertical;
   overflow: hidden;
 }
-.lore-sw {
+.lb-name.off,
+.lb-fname.off {
+  color: var(--ink-3);
+  font-weight: 400;
+}
+.lb-txt small {
+  font-size: 12px;
+  color: var(--ink-3);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.lb-dot {
+  display: inline-block;
+  width: 7px;
+  height: 7px;
+  margin-right: 6px;
+  border: 1.5px solid var(--ink-2);
+  border-radius: 50%;
+  vertical-align: 2px;
+}
+.lb-dot.on {
+  background: var(--ink-2);
+}
+.lb-re {
+  margin-left: 6px;
+  font-family: ui-monospace, monospace;
+  font-size: 11px;
+  color: var(--ink-3);
+}
+.lb-meta {
+  font-size: 12px;
+  color: var(--ink-2);
+  text-align: right;
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+.lb-meta i {
+  display: block;
+  font-style: normal;
+  color: var(--ink-3);
+}
+.lb-sw {
   width: 52px;
   height: 44px;
   display: flex;
   align-items: center;
-  justify-content: flex-end;
+  justify-content: center;
   padding: 0;
   border: 0;
   background: transparent;
   cursor: pointer;
 }
-.lore-more {
-  display: block;
-  margin: 12px auto 0;
+.lb-more {
+  width: 44px;
+  height: 44px;
 }
-.lore-acts {
+.lb-fname {
+  font-size: 14px;
+  font-weight: 600;
+  overflow-wrap: anywhere;
+}
+.lb-fline {
+  background: var(--surface);
+}
+.lb-kids {
+  margin-left: 8px;
+  padding-left: 6px;
+  border-left: 1px solid var(--line-2);
+}
+.lb-tools {
   display: flex;
   flex-wrap: wrap;
-  justify-content: flex-end;
   gap: 8px;
-  padding: 20px 20px 8px;
+}
+.lb-tools input[type="search"] {
+  flex: 1 1 100%;
+}
+.lb-sort {
+  flex: 1 1 auto;
+  width: auto;
+}
+.lb-add {
+  flex: none;
+}
+.lb-stat {
+  margin: 8px 0;
+  font-size: 12px;
+  color: var(--ink-3);
+}
+.lb-list {
+  border-top: 1px solid var(--line);
+}
+.lb-item.open {
+  background: var(--surface);
+}
+.lb-drawer {
+  padding: 4px 4px 14px 26px;
+  border-bottom: 1px solid var(--line);
+}
+.lb-f {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin-top: 12px;
+  min-width: 0;
+}
+.lb-l {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+  font-size: 12px;
+  color: var(--ink-3);
+}
+.lb-in {
+  width: 100%;
+  min-height: 42px;
+}
+.lb-area {
+  width: 100%;
+  min-height: 96px;
+  resize: vertical;
+  font-size: 14px;
+  line-height: 1.55;
+}
+.lb-keys,
+.lb-chips {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+}
+.lb-keys .lb-in {
+  flex: 1 1 140px;
+  width: auto;
+}
+.lb-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px 10px;
+  margin-top: 4px;
+}
+.lb-grid > .lb-f {
+  margin-top: 8px;
+}
+.lb-toggle {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  min-height: 44px;
+  margin-top: 8px;
+  padding: 0 10px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--bg);
+  color: var(--ink);
+  font: inherit;
+  font-size: 13px;
+  text-align: left;
+  cursor: pointer;
+}
+.lb-rest {
+  margin-top: 12px;
+}
+.lb-rest > summary {
+  display: flex;
+  align-items: center;
+  min-height: 44px;
+  font-size: 13px;
+  color: var(--ink-2);
+  cursor: pointer;
+  list-style: none;
+}
+.lb-rest > summary::-webkit-details-marker {
+  display: none;
+}
+.lb-rest > summary::before {
+  content: "▸";
+  width: 16px;
+}
+.lb-rest[open] > summary::before {
+  content: "▾";
+}
+.lb-foot {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-top: 12px;
+}
+.lb-saved {
+  font-size: 12px;
+  color: var(--ink-3);
+}
+.lb-page {
+  display: block;
+  margin: 12px auto 0;
 }
 .ed-num {
   max-width: 160px;
 }
-/* Inside an editor section the page already has its side margin: the entry tools and rows use it, not their own. */
-.lore-entries .lore-tools {
-  padding: 4px 0 12px;
+/* The lorebook's 항목 tab: no heading under its own tab (the Engine shows none), and no 저장 bar — entries save
+   themselves; the bar is for 개요. */
+.ed-body [data-ed-section="entries"] > .ed-sec-t,
+.ed-body [data-ed-section="entries"] > .ed-sec-about {
+  display: none;
 }
-.lore-count {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 12px;
-}
-/* Cards in columns (the owner asked for lists in several columns, not one row a line): as many 150px+ columns as
-   fit (two at 360px). Each card holds its name (opens it) over its details, and its own switch at the bottom. */
-.cardgrid {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
-  gap: 10px;
-  padding: 4px 20px 12px;
-}
-.lore-entries .cardgrid {
-  padding: 4px 0 12px;
-}
-.lcard {
-  display: flex;
-  flex-direction: column;
-  justify-content: space-between;
-  gap: 4px;
-  min-width: 0;
-  min-height: 96px;
-  padding: 10px 10px 4px 12px;
-  border: 1px solid var(--line);
-  border-radius: 14px;
-  background: var(--surface);
-}
-.lcard .lore-open {
-  flex: 1;
-  justify-content: flex-start;
-}
-.lcard .lore-sw {
-  align-self: flex-end;
-}
-.lcard.off {
-  background: transparent;
-}
-/* A card that is one button (presets, personas): a face if any, the name in up to two lines, a small note. */
-.libcard {
-  width: 100%;
-  display: flex;
-  flex-direction: column;
-  align-items: flex-start;
-  justify-content: center;
-  gap: 6px;
-  min-width: 0;
-  min-height: 72px;
-  padding: 12px;
-  border: 1px solid var(--line);
-  border-radius: 14px;
-  background: var(--surface);
-  color: var(--ink);
-  font: inherit;
-  text-align: left;
-  cursor: pointer;
-}
-.libcard-name {
-  font-size: 14px;
-  overflow-wrap: anywhere;
-}
-.libcard small {
-  font-size: 12px;
-  color: var(--ink-3);
+.ed-body:has(> [data-ed-section="entries"]:not([hidden])) + .ed-bar {
+  display: none;
 }

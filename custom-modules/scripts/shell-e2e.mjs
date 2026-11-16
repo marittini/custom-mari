@@ -1216,44 +1216,37 @@ const flows = {
     await page.unroute("**/api/tts/config");
   },
 
-  // 설정 › 로어북 (no Engine screen): find a book, change its overview, switch an entry off from the list, edit an
-  // entry's text and keys, add one. The list reads entries without their text (Mari Kit's slim route).
+  // 설정 › 로어북 in the Engine's grammar: find a book, change its overview (saved on leave), switch an entry off on
+  // its line, open an entry in place and change its text, keys and position (each saved by itself), add an entry and
+  // delete it from ⋯. The list reads entries without their text (Mari Kit's slim route).
   async "lorebook-edit"({ page }) {
     await open(page);
     await goIn(page, "#/settings/lorebooks");
-    await page.locator(".lore-tools input[type=search]").fill("e2e 세계");
+    await page.locator(".lb-head input[type=search]").fill("e2e 세계");
     const slimP = page.waitForResponse((r) => r.url().includes(`/mari-kit/shell/lorebook/${lore.id}/entries`));
-    await page.locator(".lore-open").filter({ hasText: "e2e 세계" }).first().click();
+    await page.locator(".lb-book .lb-open").filter({ hasText: "e2e 세계" }).first().click();
     const slim = await (await slimP).text();
-    await page.getByRole("tab", { name: "개요" }).waitFor({ timeout: 10000 });
-    await page.locator(".ed-field").filter({ hasText: "설명" }).locator("textarea").fill("하늘섬 왕국");
-    await page.getByRole("tab", { name: "항목" }).click();
-    await page.locator(".lore-open").filter({ hasText: "수도" }).waitFor({ timeout: 10000 });
     if (!slim.includes("수도") || slim.includes("긴 설명 ".repeat(30)))
       throw new Error("the entry list should carry names and a short preview, not the text");
+    await page.getByRole("tab", { name: "개요" }).click();
+    await page.locator(".ed-field").filter({ hasText: "설명" }).locator("textarea").fill("하늘섬 왕국");
+    await page.getByRole("tab", { name: "항목" }).click();
+    const lineOf = (name) => page.locator(".lb-item").filter({ has: page.locator(".lb-name", { hasText: name }) });
+    await lineOf("수도").waitFor({ timeout: 10000 });
     await page.getByRole("switch", { name: "기사단 사용" }).click();
     await until(
       async () =>
         (await api("GET", `/lorebooks/${lore.id}/entries`)).some((e) => e.name === "기사단" && e.enabled === false),
       8000,
-      "an entry switched off from the list",
+      "an entry switched off on its line",
     );
+    await lineOf("수도").locator(".lb-open").click();
+    const drawer = lineOf("수도").locator(".lb-drawer");
+    await drawer.getByLabel("내용").fill("왕국의 수도는 하늘섬.");
+    await drawer.getByLabel("보조 키 넣기").fill("왕도");
+    await drawer.getByLabel("보조 키 넣기").press("Enter");
+    await drawer.getByLabel("넣는 곳").selectOption("2");
     await snap(page, "lorebook-entries");
-    await page.locator(".lore-open").filter({ hasText: "수도" }).click();
-    await page.getByRole("tab", { name: "내용" }).waitFor({ timeout: 10000 });
-    await page
-      .locator(".ed-field")
-      .filter({ hasText: "내용" })
-      .locator("textarea")
-      .first()
-      .fill("왕국의 수도는 하늘섬.");
-    const keys = page.locator(".ed-field").filter({ hasText: "보조 키" }).locator("input");
-    await keys.fill("왕도");
-    await keys.press("Enter");
-    await page.getByRole("tab", { name: "위치" }).click();
-    await page.getByRole("radio", { name: "깊이" }).click();
-    await snap(page, "lorebook-entry");
-    await page.locator(".ed-bar").getByRole("button", { name: "저장" }).click();
     await until(
       async () => {
         const e = await api("GET", `/lorebooks/${lore.id}/entries/${loreEntry.id}`);
@@ -1262,7 +1255,12 @@ const flows = {
         );
       },
       8000,
-      "the entry's text, keys and position saved",
+      "the entry's text, keys and position saved by themselves",
+    );
+    await until(
+      async () => (await lineOf("수도").locator(".lb-meta").innerText()).includes("깊이"),
+      5000,
+      "the line shows the new position",
     );
     await page.goBack();
     await until(
@@ -1270,10 +1268,19 @@ const flows = {
       8000,
       "overview saved on leave",
     );
+    await page.goForward();
     await page.getByRole("tab", { name: "항목" }).click();
-    await page.locator(".lore-tools").getByRole("button", { name: "＋ 새 항목" }).click();
-    await page.getByRole("tab", { name: "내용" }).waitFor({ timeout: 10000 });
-    if ((await api("GET", `/lorebooks/${lore.id}/entries`)).length !== 3) throw new Error("새 항목 should add one");
+    await page.locator(".lb-tools").getByRole("button", { name: "＋ 항목" }).click();
+    await lineOf("새 항목").locator(".lb-drawer").waitFor({ timeout: 10000 });
+    if ((await api("GET", `/lorebooks/${lore.id}/entries`)).length !== 3) throw new Error("＋ 항목 should add one");
+    await lineOf("새 항목").getByRole("button", { name: "새 항목 더보기" }).click();
+    await page.getByRole("menuitem", { name: "지우기" }).click();
+    await page.locator(".sheet").getByRole("button", { name: "지우기" }).click();
+    await until(
+      async () => (await api("GET", `/lorebooks/${lore.id}/entries`)).length === 2,
+      8000,
+      "지우기 in ⋯ deletes the entry",
+    );
   },
 
   // Reactions and replies (the Engine's data): react from the quick row and take it back, see a character's
