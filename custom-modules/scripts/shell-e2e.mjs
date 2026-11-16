@@ -112,6 +112,14 @@ const convo = await newChat("e2e convo", "conversation", [a.id]);
 const group = await newChat("e2e group", "conversation", [a.id, b.id]);
 const rp = await newChat("e2e rp", "roleplay", [a.id]);
 const other = await newChat("e2e other", "conversation", [b.id]);
+// A lorebook with entries (one long, so the list must not carry entry text).
+const lore = await api("POST", "/lorebooks", { name: "e2e 세계", category: "world" });
+const loreEntry = await api("POST", `/lorebooks/${lore.id}/entries`, {
+  name: "수도",
+  content: `왕국의 수도는 하늘섬이다. ${"긴 설명 ".repeat(400)}`,
+  keys: ["수도", "하늘섬"],
+});
+await api("POST", `/lorebooks/${lore.id}/entries`, { name: "기사단", content: "흰 망토의 기사단.", keys: ["기사"] });
 // Text with no place to break (Japanese has no spaces; a long link) must still wrap at 360px on every screen that
 // shows messages: the screen tour fails on a sentence that runs off the screen.
 const LONG_JA = "大丈夫だよ、今日はどうだった？ずっと待ってたんだからね、もう少し早く電話してくれてもよかったのに。";
@@ -1208,6 +1216,73 @@ const flows = {
     await page.unroute("**/api/tts/config");
   },
 
+  // 설정 › 로어북 in the Engine's grammar: find a book, change its overview (saved on leave), switch an entry off on
+  // its line, open an entry in place and change its text, keys and position (each saved by itself), add an entry and
+  // delete it from ⋯. The list reads entries without their text (Mari Kit's slim route).
+  async "lorebook-edit"({ page }) {
+    await open(page);
+    await goIn(page, "#/settings/lorebooks");
+    await page.locator(".lb-head input[type=search]").fill("e2e 세계");
+    const slimP = page.waitForResponse((r) => r.url().includes(`/mari-kit/shell/lorebook/${lore.id}/entries`));
+    await page.locator(".lb-book .lb-open").filter({ hasText: "e2e 세계" }).first().click();
+    const slim = await (await slimP).text();
+    if (!slim.includes("수도") || slim.includes("긴 설명 ".repeat(30)))
+      throw new Error("the entry list should carry names and a short preview, not the text");
+    await page.getByRole("tab", { name: "개요" }).click();
+    await page.locator(".ed-field").filter({ hasText: "설명" }).locator("textarea").fill("하늘섬 왕국");
+    await page.getByRole("tab", { name: "항목" }).click();
+    const lineOf = (name) => page.locator(".lb-item").filter({ has: page.locator(".lb-name", { hasText: name }) });
+    await lineOf("수도").waitFor({ timeout: 10000 });
+    await page.getByRole("switch", { name: "기사단 사용" }).click();
+    await until(
+      async () =>
+        (await api("GET", `/lorebooks/${lore.id}/entries`)).some((e) => e.name === "기사단" && e.enabled === false),
+      8000,
+      "an entry switched off on its line",
+    );
+    await lineOf("수도").locator(".lb-open").click();
+    const drawer = lineOf("수도").locator(".lb-drawer");
+    await drawer.getByLabel("내용").fill("왕국의 수도는 하늘섬.");
+    await drawer.getByLabel("보조 키 넣기").fill("왕도");
+    await drawer.getByLabel("보조 키 넣기").press("Enter");
+    await drawer.getByLabel("넣는 곳").selectOption("2");
+    await snap(page, "lorebook-entries");
+    await until(
+      async () => {
+        const e = await api("GET", `/lorebooks/${lore.id}/entries/${loreEntry.id}`);
+        return (
+          e.content === "왕국의 수도는 하늘섬." && (e.secondaryKeys || []).includes("왕도") && Number(e.position) === 2
+        );
+      },
+      8000,
+      "the entry's text, keys and position saved by themselves",
+    );
+    await until(
+      async () => (await lineOf("수도").locator(".lb-meta").innerText()).includes("깊이"),
+      5000,
+      "the line shows the new position",
+    );
+    await page.goBack();
+    await until(
+      async () => (await api("GET", `/lorebooks/${lore.id}`)).description === "하늘섬 왕국",
+      8000,
+      "overview saved on leave",
+    );
+    await page.goForward();
+    await page.getByRole("tab", { name: "항목" }).click();
+    await page.locator(".lb-tools").getByRole("button", { name: "＋ 항목" }).click();
+    await lineOf("새 항목").locator(".lb-drawer").waitFor({ timeout: 10000 });
+    if ((await api("GET", `/lorebooks/${lore.id}/entries`)).length !== 3) throw new Error("＋ 항목 should add one");
+    await lineOf("새 항목").getByRole("button", { name: "새 항목 더보기" }).click();
+    await page.getByRole("menuitem", { name: "지우기" }).click();
+    await page.locator(".sheet").getByRole("button", { name: "지우기" }).click();
+    await until(
+      async () => (await api("GET", `/lorebooks/${lore.id}/entries`)).length === 2,
+      8000,
+      "지우기 in ⋯ deletes the entry",
+    );
+  },
+
   // Reactions and replies (the Engine's data): react from the quick row and take it back, see a character's
   // reaction, reply to a message (sent as replyTo) and see its quote.
   async "convo-react"({ page }) {
@@ -1441,7 +1516,15 @@ if (tourMods ? tourMods.length : !only) {
     mods: tourMods,
     browser,
     app: APP,
-    ids: { convo: convo.id, group: group.id, rp: rp.id, a: a.id, persona: persona.id },
+    ids: {
+      convo: convo.id,
+      group: group.id,
+      rp: rp.id,
+      a: a.id,
+      persona: persona.id,
+      lore: lore.id,
+      loreEntry: loreEntry.id,
+    },
     shots,
     resources,
   });
@@ -1453,7 +1536,15 @@ if (crawl) {
     browser,
     app: APP,
     mods: tourMods,
-    ids: { convo: convo.id, group: group.id, rp: rp.id, a: a.id, persona: persona.id },
+    ids: {
+      convo: convo.id,
+      group: group.id,
+      rp: rp.id,
+      a: a.id,
+      persona: persona.id,
+      lore: lore.id,
+      loreEntry: loreEntry.id,
+    },
   });
   failed += result.failed;
 }

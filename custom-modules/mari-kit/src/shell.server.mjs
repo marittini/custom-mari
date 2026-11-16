@@ -169,6 +169,49 @@ async function writeShellAppearance(runtime, theme) {
   throw Object.assign(new Error("Appearance changed while saving. Try again."), { statusCode: 409 });
 }
 
+const loreKeys = (v) => {
+  if (typeof v === "string") {
+    try {
+      v = JSON.parse(v);
+    } catch {
+      return [];
+    }
+  }
+  return Array.isArray(v) ? v.filter((k) => typeof k === "string").slice(0, 20) : [];
+};
+const loreFlag = (v, def = false) => (v === undefined || v === null ? def : v === true || v === "true" || v === 1);
+function loreTokens(text) {
+  let ascii = 0;
+  let other = 0;
+  for (const ch of text) ch.charCodeAt(0) < 128 ? (ascii += 1) : (other += 1);
+  return Math.ceil(ascii / 4 + other / 1.6);
+}
+/** What a lorebook entry row shows: never its content (only its length and first words). */
+export function slimLoreEntry(e) {
+  const content = typeof e.content === "string" ? e.content : "";
+  return {
+    id: e.id,
+    name: e.name || "",
+    keys: loreKeys(e.keys),
+    secondaryKeys: loreKeys(e.secondaryKeys),
+    enabled: loreFlag(e.enabled, true),
+    constant: loreFlag(e.constant),
+    selective: loreFlag(e.selective),
+    position: Number(e.position) || 0,
+    depth: Number(e.depth) || 0,
+    order: Number.isFinite(Number(e.order)) ? Number(e.order) : 100,
+    folderId: e.folderId || null,
+    tag: e.tag || "",
+    locked: loreFlag(e.locked),
+    useRegex: loreFlag(e.useRegex),
+    chars: content.length,
+    // The shell's own estimate (lib/editor.js tokensOf): about 4 ASCII characters or 1.6 others a token.
+    tokens: loreTokens(content),
+    preview: content.replace(/\s+/g, " ").trim().slice(0, 80),
+    updatedAt: e.updatedAt || null,
+  };
+}
+
 /** What a character list needs — never the card body, which with a lorebook can be hundreds of KB a character. */
 export function slimCharacter(record) {
   let data = record?.data;
@@ -537,6 +580,15 @@ export async function shellRoutes(app, { runtime } = {}) {
     reply.header("Cache-Control", "public, max-age=31536000, immutable");
     reply.header("Content-Type", "image/webp");
     return reply.send(data);
+  });
+  // A lorebook's entries without their text (the Engine's GET /lorebooks/:id/entries sends every entry's full
+  // content): the editor's list needs names, keys and switches; an entry's content is read when it is opened.
+  app.get("/shell/lorebook/:id/entries", async (request, reply) => {
+    const id = String(request.params.id || "").slice(0, 200);
+    const [book] = id ? await runtime.resources.listLorebooks([id]) : [];
+    if (!book) return reply.code(404).send({ error: "Lorebook not found" });
+    reply.header("Cache-Control", "no-store");
+    return (book.entries || []).map(slimLoreEntry);
   });
   app.get("/shell/characters", async () =>
     (await runtime.resources.listCharacters()).filter((c) => !BUILT_IN.has(c.id)).map(slimCharacter),

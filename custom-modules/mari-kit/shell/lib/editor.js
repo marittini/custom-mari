@@ -33,7 +33,7 @@ export function tokensOf(text) {
   return Math.ceil(ascii / 4 + other / 1.6);
 }
 
-export function createEditor({ mount, title, label, back, record, save, more = null }) {
+export function createEditor({ mount, title, label, back, record, save, more = null, tab = null }) {
   let orig = clone(record);
   let draft = clone(record);
   const paths = new Set(); // every path a field edits
@@ -326,6 +326,31 @@ export function createEditor({ mount, title, label, back, record, save, more = n
     return frame(path, labelText, input, { hint, side: val });
   }
 
+  /** A whole number typed in (depth, budget, order): kept within min..max; empty is `def` (null = not set). */
+  function count(path, labelText, { min = 0, max = 1e9, hint, def = null, placeholder = "" } = {}) {
+    bind(path);
+    const shown = (v) => (v === null || v === undefined ? "" : String(v));
+    const input = h("input", {
+      id: fieldId(path),
+      class: "inp ed-inp ed-num",
+      type: "number",
+      inputmode: "numeric",
+      min,
+      max,
+      step: 1,
+      placeholder,
+      value: shown(getPath(draft, path)),
+      onInput: (e) => {
+        const raw = e.target.value.trim();
+        const n = Math.trunc(Number(raw));
+        put(path, raw === "" || !Number.isFinite(n) ? def : Math.min(max, Math.max(min, n)));
+      },
+      onBlur: (e) => (e.target.value = shown(getPath(draft, path))),
+    });
+    syncers.push(() => document.activeElement !== input && (input.value = shown(getPath(draft, path))));
+    return frame(path, labelText, input, { hint });
+  }
+
   /** Tags as chips, added with Enter or a comma. */
   function tags(path, labelText, { hint } = {}) {
     bind(path, (v) => v);
@@ -528,7 +553,9 @@ export function createEditor({ mount, title, label, back, record, save, more = n
   // Tabs: one section at a time; the chips wrap so every tab is in sight. The open tab is remembered while the
   // app is open (per editor), so coming back from a picker or a sheet keeps it.
   const tabKey = `mari-ed-tab:${title}`;
+  // `tab`: open on that section (a link to one entry opens its book on 항목).
   let current = (() => {
+    if (tab) return tab;
     try {
       return sessionStorage.getItem(tabKey) || "";
     } catch {
@@ -583,6 +610,7 @@ export function createEditor({ mount, title, label, back, record, save, more = n
     toggle,
     choice,
     number,
+    count,
     tags,
     list,
     color,

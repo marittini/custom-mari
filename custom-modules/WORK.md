@@ -23,6 +23,9 @@ _(none)_
 
 ## Done
 
+- Lorebooks in Mari (D1) — Mari Kit 0.31.0: 설정 › 로어북 lists the Engine's lorebooks (search, categories, folders,
+  a switch each, 새 로어북); the editor has 개요 · 검색 · 항목 · 엔진에서 like the Engine's; entries open in their own
+  page (내용 · 조건 · 위치, copy, delete). The entry list comes from Mari Kit without the entries' text.
 - Calls — Mari Kit 0.30.0: a character's call rings for 통화 설정 › 전화 울리는 시간 (20/30/60s) and then stays as
   부재중 전화 with 다시 걸기 (거절한 전화 when declined); call translations are kept per call, so the record opens
   without translating again; my lines in call records carry the persona's name and voice; in a group call the

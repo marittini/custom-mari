@@ -6,7 +6,7 @@
 import { join } from "node:path";
 import { mkdir } from "node:fs/promises";
 
-/** The screens to visit, from the seeded ids: { convo, group, rp, a, persona }. */
+/** The screens to visit, from the seeded ids: { convo, group, rp, a, persona, lore, loreEntry }. */
 export function tourScreens(ids) {
   const e = encodeURIComponent;
   return [
@@ -25,6 +25,11 @@ export function tourScreens(ids) {
     ["캐릭터 프로필", `character/${e(ids.a)}`],
     ["캐릭터 편집", `edit/character/${e(ids.a)}`],
     ["페르소나 편집", `edit/persona/${e(ids.persona)}`],
+    ["로어북", "settings/lorebooks"],
+    ["프리셋", "settings/presets"],
+    ["페르소나", "settings/personas"],
+    ["로어북 편집", `edit/lorebook/${e(ids.lore)}`],
+    ["로어북 항목", `edit/lorebook/${e(ids.lore)}/${e(ids.loreEntry)}`],
     ["내 일정", `schedule/default/now/${e(ids.convo)}`],
     ["캐릭터 일정", `char-schedule/${e(ids.convo)}/${e(ids.a)}`],
     ["기억 서재", `memory/${e(ids.rp)}`],
@@ -100,6 +105,7 @@ export const FLOW_SCREENS = {
   "call-missed": ["convo"],
   "call-group": ["convo"],
   "call-translation-kept": ["convo"],
+  "lorebook-edit": ["settings", "edit"],
 };
 
 /** Runs the tour (only screens drawn by `mods`, if given). Returns { rows, failed }. app: the shell URL. */
@@ -164,9 +170,15 @@ export function layoutFaults(root = document.body) {
     if (!svg) continue;
     const drawn = [...svg.querySelectorAll("path, circle, rect, line, polyline, polygon")].some((p) => {
       const cs = getComputedStyle(p);
-      return (
-        (cs.fill !== "none" && cs.fill !== "transparent") || (cs.stroke !== "none" && parseFloat(cs.strokeWidth) > 0)
-      );
+      const filled = cs.fill !== "none" && cs.fill !== "transparent";
+      const stroked = cs.stroke !== "none" && parseFloat(cs.strokeWidth) > 0;
+      if (!filled && !stroked) return false;
+      // Lines as short as a dot ("h.01") draw nothing without round ends.
+      let length = Infinity;
+      try {
+        length = p.getTotalLength?.() ?? Infinity;
+      } catch {}
+      return filled || length >= 1 || cs.strokeLinecap !== "butt";
     });
     if (!drawn) out.add(`invisible: ${b.getAttribute("aria-label") || b.className || "button"}`);
   }
@@ -186,6 +198,38 @@ export function layoutFaults(root = document.body) {
       first.textContent.trim().length > 1
     )
       out.add(`cells: ${first.textContent.trim().slice(0, 16)} (${kids.length} of ${tracks.length})`);
+  }
+  // Buttons and cards past the screen's side (a stray margin pushes a whole column off), unless they sit in a box
+  // that scrolls sideways on purpose.
+  const scrollsX = (el) => {
+    for (let p = el.parentElement; p && p !== document.body; p = p.parentElement) {
+      const o = getComputedStyle(p).overflowX;
+      if (o === "auto" || o === "scroll" || o === "hidden") return true;
+    }
+    return false;
+  };
+  const edge = document.documentElement.clientWidth + 1;
+  for (const b of root.querySelectorAll("button, [role=button], [class*=card]")) {
+    if (!visible(b)) continue;
+    const box = b.getBoundingClientRect();
+    if (box.width > 0 && (box.right > edge || box.left < -1) && !scrollsX(b))
+      out.add(`off screen: ${(b.getAttribute("aria-label") || b.textContent || b.className).trim().slice(0, 16)}`);
+  }
+  // Cards in a grid that spill out of it (a stray margin pushes a column past the others or the page side).
+  for (const g of root.querySelectorAll(".cardgrid, [class*=grid]")) {
+    if (!visible(g) || getComputedStyle(g).display !== "grid") continue;
+    const cs = getComputedStyle(g);
+    const box = g.getBoundingClientRect();
+    const left = box.left + parseFloat(cs.paddingLeft) - 1;
+    const right = box.right - parseFloat(cs.paddingRight) + 1;
+    for (const c of g.children) {
+      if (!visible(c)) continue;
+      const r = c.getBoundingClientRect();
+      if (r.width > 0 && (r.left < left || r.right > right))
+        out.add(
+          `out of its grid: ${(c.getAttribute("aria-label") || c.textContent || c.className).trim().slice(0, 16)}`,
+        );
+    }
   }
   return [...out].slice(0, 6);
 }

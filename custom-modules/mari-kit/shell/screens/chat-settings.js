@@ -767,7 +767,11 @@ export function chatSettingsScreen({ mount, args, go, back }) {
                 ),
                 h(
                   "button",
-                  { type: "button", class: "txtbtn", onClick: () => openEngine(chat.id, { lorebook: v.book.id }) },
+                  {
+                    type: "button",
+                    class: "txtbtn",
+                    onClick: () => go(`edit/lorebook/${encodeURIComponent(v.book.id)}`),
+                  },
                   "편집",
                 ),
                 auto

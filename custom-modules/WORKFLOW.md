@@ -68,9 +68,17 @@ Title: `Mari Kit <version>: <what changed in plain words>`. Body sections:
 
 Leave checkboxes unchecked. Do not claim pending CI as passed.
 
-The Engine's own PR workflows also run here. Their **Branch policy check** always fails ("Contributions must target
-staging"): it is upstream's rule for upstream's repository and does not apply. A shard job that shows `cancelled`
-after a new push is not a failure. The checks that matter are **Mari Engine guard** and **Mari verify**.
+The Engine's own PR workflows also run here, on the Engine source this repository keeps unmodified. Two of them are
+red on every Mari Kit PR and on `main`'s own nightly run, for reasons outside Mari Kit:
+
+- **Branch policy check** (pull-request-triage.yml): "Contributions must target staging" — upstream's rule for
+  upstream's repository.
+- **Regression Checks** (playwright.yml: the desktop/mobile shards and node-regressions): the Engine's own browser
+  tests, which fail on this runner without any Mari Kit change (the nightly run on `main` fails the same way).
+  A shard job that shows `cancelled` after a new push is not a failure either. The checks that matter are **Mari Engine
+  guard** and **Mari verify**. Do not report the two above to the owner as problems; comment once per PR as the PR rules
+  ask. Their workflow files are Engine source (the guard rejects edits); the owner can switch them off for this
+  repository in GitHub (Actions → the workflow → ⋯ → Disable workflow), which changes no file.
 
 ## 6. Release and catalog
 
@@ -125,7 +133,8 @@ When you add a flow to `shell-e2e.mjs`, add it to `FLOW_SCREENS` too (its fallba
 Flows run at 360px (a phone's narrowest common width). Every flow and every toured screen is also checked for
 layout faults (`layoutFaults` in `scripts/e2e/screens.mjs`):
 text squeezed into a one- or two-letter column, an icon button that draws nothing, a `.r` row with fewer cells than
-its grid has columns, and text running off the screen. A fault fails the check; fix it, do not loosen the check.
+its grid has columns, a card or button spilling out of its grid or past the screen's side, and text running off
+the screen. A fault fails the check; fix it, do not loosen the check.
 
 The fake model (`scripts/e2e/fake-llm.mjs`) answers every request with fixed text. A flow that needs a particular
 reply (a reaction, a selfie command, a schedule) adds a scenario there instead of calling a real model.
@@ -138,6 +147,12 @@ real provider accounts (ElevenLabs, credits), Android WebView quirks.
 The owner's rules for anything drawn in the shell, from the mistakes that reached the owner. Read them before
 building UI; the layout ones are checked automatically (section 7).
 
+0. **Read the Engine's screen before drawing it.** Run the Engine, look at the screen at 360px and on a desktop,
+   measure it, and write down why it is built that way (what work it makes fast: scanning a long list, comparing
+   values down a column, editing in place). Keep those reasons; change only the look (monotone, fonts, spacing) and
+   what the Engine does badly on a phone, saying why. Show the owner the Engine, the plan and a mockup side by side
+   before building. (The first lorebook port turned the Engine's one-line, compare-down-the-column entry list into
+   two columns of cards and a page per entry, which broke both.)
 1. **No buttons, notices or steps nobody asked for.** No "＋ 새 답", "지금 답하게", "곧 대답합니다", "잠시 기다려 주세요".
    When porting an Engine feature, port what the Engine has, no more. Anything extra goes into the mockup first, as
    a question.
@@ -150,16 +165,17 @@ building UI; the layout ones are checked automatically (section 7).
    `.r`. Cards: `gcard` / `grow`. Text in a cell may wrap (`min-width: 0`, `overflow-wrap: anywhere`; `keep-all`
    only together with `overflow-wrap: anywhere`); a short label that must stay whole (a time) gets `nowrap` and the
    long neighbour wraps.
+   4a. **A new CSS class gets a name nobody uses.** Search `shell.css` and the shell for it first: a second `.pcard`
+   quietly picked up the presence sheet's margins and pushed cards off the screen.
 5. **Menus and lists are the existing ones.** A menu of actions is the quick-reply menu (`.qr`: icon and name per
    row), a longer choice is a `sheet` of `.r` rows, a setting is a row in `gcard`/`grow`. Chips are only for picking
-   one value out of a few (a size, a mode), never as a menu or a row of buttons.
-6. **Filled icons are filled.** `icon(path, size, 0)` draws a filled shape; never a line 0 wide.
-7. **No raw Engine text.** English system lines and ids are shown in Korean, in the shell's monotone style.
-8. **One flow, one place.** When two screens do the same thing (organize memory, make a voice clip), they share one
+   one value out of a few (a size, a mode), never as a menu or a row of buttons. 6. **Filled icons are filled.** `icon(path, size, 0)` draws a filled shape; never a line 0 wide.
+6. **No raw Engine text.** English system lines and ids are shown in Korean, in the shell's monotone style.
+7. **One flow, one place.** When two screens do the same thing (organize memory, make a voice clip), they share one
    `lib/` module. Number limits and defaults come from one constant (the server's, sent to the screen).
-9. **Say only what happened.** A notice never claims something that did not happen ("되돌렸어요" only after a real
+8. **Say only what happened.** A notice never claims something that did not happen ("되돌렸어요" only after a real
    restore).
-10. **Before reporting:** run the whole flow at 360px, back and reload included; look at the screenshots.
+9. **Before reporting:** run the whole flow at 360px, back and reload included; look at the screenshots.
 
 ## 9. Delegating
 
